@@ -1,0 +1,11 @@
+# .gitignore_global
+
+# Игнорировать файлы macOS
+.DS_Store
+
+# Игнорировать файлы IDE
+.idea/
+.vscode/
+
+# Игнорировать node_modules
+node_modules/
