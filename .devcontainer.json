@@ -1,0 +1,26 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "onCreateCommand": "sudo chsh -s /usr/bin/zsh $USER",
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    "terminal.integrated.profiles.linux": {
+      "zsh": {
+        "path": "/usr/bin/zsh"
+      }
+    }
+  },
+  "remoteEnv": {
+    "LANG": "en_US.UTF-8"
+  },
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "runArgs": [
+    "--privileged",
+    "--pid=host",
+    "--network=host"
+  ],
+}
