@@ -7,6 +7,9 @@ sudo apt update && sudo apt upgrade -y
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
+# Ставим starship
+curl -sS https://starship.rs/install.sh | sh
+
 # Устанавливаем необходимые пакеты
 packages=(
   'gcc'
@@ -76,6 +79,7 @@ links=(
   "$PWD/zsh/.zshrc:$HOME/.zshrc"
   "$PWD/git/.gitignore_global:$HOME/.gitignore_global"
   "$PWD/git/.gitconfig:$HOME/.gitconfig"
+  "$PWD/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
   "$PWD/nvim:$XDG_CONFIG_HOME/nvim"
   "$PWD/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
   "$PWD/lazygit/conf.yml:$XDG_CONFIG_HOME/lazygit/conf.yml"
