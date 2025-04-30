@@ -14,18 +14,20 @@ packages=(
   ripgrep
   lua
   luarocks
-  nodejs # вместо npm, он включает его
+  nodejs
   neovim
   eza
   tmux
   btop
   lazygit
   lazydocker
-  # superfile может быть не в nixpkgs — его можно отдельно собрать
+  superfile
 )
 
-echo "Installing packages with nix-env..."
-nix-env -iA nixpkgs.${packages[@]}
+for package in "${packages[@]}"; do
+  echo "Installing packages ${package} with nix-env..."
+  nix-env -iA nixpkgs.$package
+done
 
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
