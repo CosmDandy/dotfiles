@@ -4,12 +4,8 @@
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 
-# Ставим starship
-curl -sS https://starship.rs/install.sh | sh
-
 # Устанавливаем необходимые пакеты
 packages=(
-  'gcc'
   # Prompt
   'starship'
   # Nvim
@@ -37,10 +33,15 @@ for package in "${packages[@]}"; do
   brew install "$package"
 done
 
-# Установка пакетов с опцией --build-from-source
+# Установка пакетов с опцией --build-from-source или без...
 for package in "${build_from_source_packages[@]}"; do
-  echo "Installing $package from source..."
-  brew install --build-from-source "$package"
+  if [[ $(uname -m) = "arm64" ]]; then
+    echo "Installing $package from source..."
+    brew install --build-from-source "$package"
+  else
+    echo "Installing $package..."
+    brew install "$package"
+  fi
 done
 
 # Создаем символьные ссылки
