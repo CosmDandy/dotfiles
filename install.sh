@@ -34,13 +34,14 @@ for package in "${packages[@]}"; do
 done
 
 # Установка пакетов с опцией --build-from-source или без...
+arch=$(uname -m)
 for package in "${build_from_source_packages[@]}"; do
-  if [[ $(uname -m) = "arm64" ]]; then
-    echo "Installing $package from source..."
-    brew install --build-from-source "$package"
-  else
+  if [[ "$arch" == *x86_64* || "$arch" == *amd64* ]]; then
     echo "Installing $package..."
     brew install "$package"
+  else
+    echo "Installing $package from source..."
+    brew install --build-from-source "$package"
   fi
 done
 
