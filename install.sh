@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Обновляем систему
-sudo apt update && sudo apt upgrade -y
-
 # Ставим brew
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
