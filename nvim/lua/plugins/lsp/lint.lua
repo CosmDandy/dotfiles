@@ -16,8 +16,6 @@ return {
         typescript = { 'eslint_d' },
         html = { 'markuplint' },
         css = { 'stylelint' },
-        -- Файлы данных
-        json = { 'prettierd' },
         -- Текстовые файлы
         markdown = { 'vale' },
         latex = { 'vale' },
