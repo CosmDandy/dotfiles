@@ -1,48 +1,31 @@
 #!/bin/bash
 
-# Ставим brew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+# Установка Nix (если еще не установлен)
+if ! command -v nix &>/dev/null; then
+  echo "Installing Nix..."
+  curl -L https://nixos.org/nix/install | sh
+  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+fi
 
-# Устанавливаем необходимые пакеты
+# Устанавливаем пакеты через nix
 packages=(
-  # Prompt
-  'starship'
-  # Nvim
-  'fd'
-  'ripgrep'
-  'lua'
-  'luarocks'
-  'npm'
-  'nvim'
-  # Утилиты
-  'eza'
-  'tmux'
-  'btop'
+  starship
+  fd
+  ripgrep
+  lua
+  luarocks
+  nodejs # вместо npm, он включает его
+  neovim
+  eza
+  tmux
+  btop
+  lazygit
+  lazydocker
+  # superfile может быть не в nixpkgs — его можно отдельно собрать
 )
 
-build_from_source_packages=(
-  'lazygit'
-  'lazydocker'
-  'superfile'
-)
-
-# Установка обычных пакетов
-for package in "${packages[@]}"; do
-  echo "Installing $package..."
-  brew install "$package"
-done
-
-# Установка пакетов с опцией --build-from-source или без...
-for package in "${build_from_source_packages[@]}"; do
-  if [[ $(uname -m) = "arm64" ]]; then
-    echo "Installing $package from source..."
-    brew install --build-from-source "$package"
-  else
-    echo "Installing $package..."
-    brew install "$package"
-  fi
-done
+echo "Installing packages with nix-env..."
+nix-env -iA nixpkgs.${packages[@]}
 
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
