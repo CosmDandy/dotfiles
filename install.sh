@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Установка Nix (если еще не установлен)
+# Установка Nix
 if ! command -v nix &>/dev/null; then
   echo "Installing Nix..."
   curl -L https://nixos.org/nix/install | sh
