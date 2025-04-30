@@ -1,6 +1,6 @@
 {
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-  "onCreateCommand": "sudo chsh -s /usr/bin/zsh $USER",
+  "onCreateCommand": "echo 'en_US.UTF-8 UTF-8' | sudo tee /etc/locale.gen && sudo locale-gen && sudo update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && sudo chsh -s /usr/bin/zsh $USER",
   "settings": {
     "terminal.integrated.defaultProfile.linux": "zsh",
     "terminal.integrated.profiles.linux": {
@@ -10,13 +10,10 @@
     }
   },
   "remoteEnv": {
-    "LANG": "en_US.UTF-8"
+    "LANG": "en_US.UTF-8",
+    "LC_ALL": "en_US.UTF-8"
   },
-  "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-  ],
   "runArgs": [
-    "--privileged",
     "--pid=host",
     "--network=host"
   ],
