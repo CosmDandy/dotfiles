@@ -9,6 +9,7 @@ fi
 
 # Устанавливаем пакеты через nix
 packages=(
+  python313
   starship
   fd
   ripgrep
@@ -72,3 +73,5 @@ links=(
 
 create_directories "${dirs[@]}"
 create_symlinks "${links[@]}"
+
+nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
