@@ -27,7 +27,9 @@ packages=(
 )
 
 for package in "${packages[@]}"; do
-  echo "Installing packages ${package} with nix-env..."
+  printf '%0.s~' {1..70}
+  echo "Installing packages ${package}"
+  printf '%0.s~' {1..70}
   nix-env -iA nixpkgs.$package
 done
 
@@ -80,10 +82,7 @@ ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
 
-zinit self-update; zinit update
 zinit light zsh-users/zsh-autosuggestions
 zinit light zdharma-continuum/fast-syntax-highlighting
 
 nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
-
-ssh -T git@github.com
