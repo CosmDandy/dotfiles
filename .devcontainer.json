@@ -1,5 +1,5 @@
 {
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/base:debian",
   "onCreateCommand": "echo 'en_US.UTF-8 UTF-8' | sudo tee /etc/locale.gen && sudo locale-gen && sudo update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && sudo chsh -s /usr/bin/zsh $USER",
   "settings": {
     "terminal.integrated.defaultProfile.linux": "zsh",
