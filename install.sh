@@ -19,6 +19,7 @@ packages=(
   neovim
   eza
   tmux
+  zellij
   btop
   lazygit
   lazydocker
