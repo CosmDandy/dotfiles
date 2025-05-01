@@ -1,7 +1,6 @@
 [user]
 	name = Timofey Kondrashin
 	email = tkondrashin@icloud.com
-	signingkey = key::ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBIb4dWsr7C6pKPzrZ9UieC9F8ObiiJ9ouvjjDWvAwmumQ1AihMACLy+eNxGWHa2g83bXG+a/Uk1NBO7wcnugYEk= ecdsa-sha2-nistp256
 [commit]
 	gpgsign = true
 [tag]
