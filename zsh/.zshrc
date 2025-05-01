@@ -30,6 +30,7 @@ alias ks='k9s'
 alias lg='lazygit'
 alias lzd='lazydocker'
 alias t='tmux'
+alias z='zellij'
 alias ds='devpod ssh'
 alias dv='devpod'
 
