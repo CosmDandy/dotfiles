@@ -69,7 +69,7 @@ links=(
   "$PWD/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
   "$PWD/nvim:$XDG_CONFIG_HOME/nvim"
   "$PWD/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  "$PWD/lazygit/conf.yml:$XDG_CONFIG_HOME/lazygit/conf.yml"
+  "$PWD/lazygit/conf.yml:$XDG_CONFIG_HOME/lazygit/conf.yml" # TODO: доделать конфиг
   "$PWD/superfile/config.toml:$XDG_CONFIG_HOME/superfile/config.toml"
   "$PWD/superfile/hotkeys.toml:$XDG_CONFIG_HOME/superfile/hotkeys.toml"
   )
@@ -86,3 +86,5 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light zdharma-continuum/fast-syntax-highlighting
 
 nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
+
+git config --global core.excludesfile ~/.gitignore_global
