@@ -1,48 +1,33 @@
-#!/bin/bash
+#!/usr/bin/env zsh
 
-# Ставим brew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+# Установка Nix
+if ! command -v nix &>/dev/null; then
+  echo "Installing Nix..."
+  curl -L https://nixos.org/nix/install | sh
+  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+fi
 
-# Устанавливаем необходимые пакеты
+# Устанавливаем пакеты через nix
 packages=(
-  # Prompt
-  'starship'
-  # Nvim
-  'fd'
-  'ripgrep'
-  'lua'
-  'luarocks'
-  'npm'
-  'nvim'
-  # Утилиты
-  'eza'
-  'tmux'
-  'btop'
+  python313
+  starship
+  fd
+  ripgrep
+  lua
+  luarocks
+  nodejs
+  neovim
+  eza
+  tmux
+  btop
+  lazygit
+  lazydocker
+  superfile
 )
 
-build_from_source_packages=(
-  'lazygit'
-  'lazydocker'
-  'superfile'
-)
-
-# Установка обычных пакетов
 for package in "${packages[@]}"; do
-  echo "Installing $package..."
-  brew install "$package"
-done
-
-# Установка пакетов с опцией --build-from-source или без...
-arch=$(uname -m)
-for package in "${build_from_source_packages[@]}"; do
-  if [[ "$arch" == *x86_64* || "$arch" == *amd64* ]]; then
-    echo "Installing $package..."
-    brew install "$package"
-  else
-    echo "Installing $package from source..."
-    brew install --build-from-source "$package"
-  fi
+  echo "Installing packages ${package} with nix-env..."
+  nix-env -iA nixpkgs.$package
 done
 
 # Создаем символьные ссылки
@@ -88,3 +73,14 @@ links=(
 
 create_directories "${dirs[@]}"
 create_symlinks "${links[@]}"
+
+nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
+
+ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+source "${ZINIT_HOME}/zinit.zsh"
+
+zinit self-update; zinit update
+zinit light zsh-users/zsh-autosuggestions
+zinit light zdharma-continuum/fast-syntax-highlighting

@@ -1,2 +1,11 @@
 # Inserts a blank line between shell prompts
 add_newline = false
+
+[git_branch]
+format = 'on [$branch(:$remote_branch)]($style) '
+
+[git_status]
+format = ''
+
+[container]
+format = '[$symbol ]($style) '
