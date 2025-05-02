@@ -6,6 +6,13 @@ softwareupdate --install-rosetta
 
 # homebrew
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+. "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
+export PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"
+export NIX_PATH="nixpkgs=/nix/var/nix/profiles/per-user/$USER/channels/nixpkgs"
+
+source ./install.sh
+
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
 # uv
@@ -14,35 +21,41 @@ source $HOME/.local/bin/env
 
 # Installing packages
 packages=(
+  devpod
   iperf3
   speedtest-cli
-  duf
-  dua-cli
-  mosh
 )
+# dua-cli
+# mosh
 
 for package in "${packages[@]}"; do
-  printf '%0.s~' {1..70}
-  echo "Installing packages ${package}"
-  printf '%0.s~' {1..70}
+  print_section "Installing package ${package}"
   nix-env -iA nixpkgs.$package
 done
 
 # Installing casks
 casks=(
-  ghostty
-  raycast
-  nikitabobko/tap/aerospace
   utm
+  ghostty
+  nikitabobko/tap/aerospace
 )
 
 for cask in "${casks[@]}"; do
-  printf '%0.s~' {1..70}
-  echo "Installing cask $cask..."
+  print_section "Installing cask $cask..."
   brew install --cask "$cask"
-  printf '%0.s~' {1..70}
 done
 brew install secretive
+brew install orbstack
 
-chsh -s $(which zsh)
+dirs=(
+  "$XDG_CONFIG_HOME/ghostty"
+  )
+
+links=(
+  "$PWD/ghostty/config:$XDG_CONFIG_HOME/ghostty/config"
+  )
+
+create_directories "${dirs[@]}"
+create_symlinks "${links[@]}"
+
 source ~/.zshrc
