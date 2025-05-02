@@ -1,0 +1,7 @@
+font-size = 15
+theme = light:Builtin Solarized Light,dark:Builtin Solarized Dark
+
+fullscreen = true
+
+mouse-hide-while-typing = true
+
