@@ -25,11 +25,17 @@ packages=(
   lazydocker
   superfile
 )
+# devpod
+
+print_section() {
+  local message="$*"
+  printf '%0.s~' {1..70}; echo
+  echo "$message"
+  printf '%0.s~' {1..70}; echo
+}
 
 for package in "${packages[@]}"; do
-  printf '%0.s~' {1..70}
-  echo "Installing packages ${package}"
-  printf '%0.s~' {1..70}
+  print_section "Installing package ${package}"
   nix-env -iA nixpkgs.$package
 done
 
@@ -37,10 +43,12 @@ done
 export XDG_CONFIG_HOME="$HOME/.config"
 mkdir -p "$XDG_CONFIG_HOME"
 
+print_section "Create symbolic links and dirs"
 create_directories() {
   local directories=("$@")
   for dir in "${directories[@]}"; do
     mkdir -p "$dir"
+    echo "Created dir ${dir}"
   done
 }
 
@@ -58,12 +66,14 @@ dirs=(
   "$XDG_CONFIG_HOME/btop"
   "$XDG_CONFIG_HOME/lazygit"
   "$XDG_CONFIG_HOME/superfile"
+  "$HOME/.zsh/completions"
   )
 
 links=(
   "$PWD/tmux/.tmux.conf:$HOME/.tmux.conf"
   "$PWD/zsh/.zprofile:$HOME/.zprofile"
   "$PWD/zsh/.zshrc:$HOME/.zshrc"
+  "$PWD/zsh/completions:$HOME/.zsh/completions"
   "$PWD/git/.gitignore_global:$HOME/.gitignore_global"
   "$PWD/git/.gitconfig:$HOME/.gitconfig"
   "$PWD/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
@@ -77,14 +87,18 @@ links=(
 create_directories "${dirs[@]}"
 create_symlinks "${links[@]}"
 
+print_section "Installing zinit"
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 [ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
 [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
 
 zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-history-substring-search
 zinit light zdharma-continuum/fast-syntax-highlighting
 
+print_section "Installing nvim plugins"
 nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
 
+print_section "Setup global gitignore"
 git config --global core.excludesfile ~/.gitignore_global
