@@ -1,3 +1,7 @@
+# . "$HOME/.local/bin/env"
+
+# export SSH_AUTH_SOCK="$HOME/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh"
+
 # Prompt
 eval "$(starship init zsh)"
 
@@ -15,7 +19,6 @@ SAVEHIST=100000
 setopt HIST_IGNORE_SPACE # Don't save when prefixed with space
 setopt HIST_IGNORE_DUPS # Don't save duplicate lines
 setopt SHARE_HISTORY # Share history between sessions
-
 
 # Aliases
 alias ..="cd .."
@@ -53,9 +56,15 @@ ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
 
-autoload -Uz _zinit
-(( ${+_comps} )) && _comps[zinit]=_zinit
+fpath=("$HOME/.zsh/completions" $fpath)
+
+autoload -Uz compinit
+compinit
 
 # Plugins
 zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-history-substring-search
 zinit light zdharma-continuum/fast-syntax-highlighting
+
+autoload -Uz _zinit
+(( ${+_comps} )) && _comps[zinit]=_zinit
