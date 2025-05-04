@@ -25,7 +25,6 @@ packages=(
   lazydocker
   superfile
 )
-# devpod
 
 print_section() {
   local message="$*"

@@ -25,8 +25,6 @@ packages=(
   iperf3
   speedtest-cli
 )
-# dua-cli
-# mosh
 
 for package in "${packages[@]}"; do
   print_section "Installing package ${package}"
@@ -46,6 +44,7 @@ for cask in "${casks[@]}"; do
 done
 brew install secretive
 brew install orbstack
+brew install leader-key
 
 dirs=(
   "$XDG_CONFIG_HOME/ghostty"
@@ -53,6 +52,8 @@ dirs=(
 
 links=(
   "$PWD/ghostty/config:$XDG_CONFIG_HOME/ghostty/config"
+  "$PWD/leader_key/congig.json:$HOME/Library/Application\ Support/Leader\ Key/config.json"
+  "$PWD/aerospace/.aerospace.toml $HOME/.aerospace.toml"
   )
 
 create_directories "${dirs[@]}"

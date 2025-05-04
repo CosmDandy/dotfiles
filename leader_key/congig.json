@@ -1,0 +1,196 @@
+{
+  "actions" : [
+    {
+      "key" : "a",
+      "type" : "application",
+      "value" : "/Applications/Arc.app"
+    },
+    {
+      "actions" : [
+        {
+          "key" : "g",
+          "type" : "application",
+          "value" : "/Applications/Ghostty.app"
+        },
+        {
+          "key" : "p",
+          "type" : "application",
+          "value" : "/Applications/DevPod.app"
+        },
+        {
+          "key" : "o",
+          "type" : "application",
+          "value" : "/Applications/OrbStack.app"
+        },
+        {
+          "key" : "s",
+          "type" : "application",
+          "value" : "/Applications/Secretive.app"
+        },
+        {
+          "key" : "t",
+          "type" : "application",
+          "value" : "/Applications/Transmit.app"
+        },
+        {
+          "key" : "d",
+          "type" : "application",
+          "value" : "/Applications/TablePlus.app"
+        },
+        {
+          "key" : "n",
+          "type" : "application",
+          "value" : "/Applications/Network Radar.app"
+        },
+        {
+          "key" : "u",
+          "type" : "application",
+          "value" : "/Applications/UTM.app"
+        }
+      ],
+      "iconPath" : "apple.terminal",
+      "key" : "d",
+      "label" : "Development",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : "s",
+          "type" : "application",
+          "value" : "/Applications/Screen Studio.app"
+        },
+        {
+          "key" : "f",
+          "type" : "application",
+          "value" : "/Applications/Final Cut Pro.app"
+        },
+        {
+          "key" : "c",
+          "type" : "application",
+          "value" : "/Applications/Capture One.app"
+        }
+      ],
+      "iconPath" : "camera",
+      "key" : "e",
+      "label" : "Editing",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : " ",
+          "type" : "application",
+          "value" : "/Applications/Chorus.app"
+        },
+        {
+          "key" : "g",
+          "type" : "application",
+          "value" : "/Applications/ChatGPT.app"
+        },
+        {
+          "key" : "c",
+          "type" : "application",
+          "value" : "/Applications/Claude.app"
+        },
+        {
+          "key" : "p",
+          "type" : "application",
+          "value" : "/Applications/Perplexity.app"
+        }
+      ],
+      "iconPath" : "brain",
+      "key" : "i",
+      "label" : "AI",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : " ",
+          "type" : "application",
+          "value" : "/Applications/Telegram.app"
+        },
+        {
+          "key" : "m",
+          "type" : "application",
+          "value" : "/System/Applications/Mail.app"
+        },
+        {
+          "key" : "t",
+          "type" : "application",
+          "value" : "/Applications/Microsoft Teams.app"
+        },
+        {
+          "key" : "w",
+          "type" : "application",
+          "value" : "/Applications/WhatsApp.app"
+        }
+      ],
+      "iconPath" : "message.badge",
+      "key" : "s",
+      "label" : "Social",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : "t",
+          "type" : "application",
+          "value" : "/Applications/Things3.app"
+        },
+        {
+          "key" : "c",
+          "type" : "application",
+          "value" : "/System/Applications/Calendar.app"
+        },
+        {
+          "key" : "s",
+          "type" : "application",
+          "value" : "/Applications/Session.app"
+        }
+      ],
+      "iconPath" : "note.text",
+      "key" : "p",
+      "label" : "Planing",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : "e",
+          "type" : "url",
+          "value" : "raycast://extensions/raycast/emoji-symbols/search-emoji-symbols"
+        },
+        {
+          "key" : "p",
+          "type" : "url",
+          "value" : "raycast://confetti"
+        },
+        {
+          "key" : "c",
+          "type" : "url",
+          "value" : "raycast://extensions/raycast/system/open-camera"
+        }
+      ],
+      "iconPath" : "lasso.badge.sparkles",
+      "key" : "t",
+      "label" : "Tools",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : "h",
+          "type" : "url",
+          "value" : "https://homepage.cosmdandy.ru"
+        }
+      ],
+      "iconPath" : "link",
+      "key" : "l",
+      "label" : "Links",
+      "type" : "group"
+    }
+  ],
+  "type" : "group"
+}
