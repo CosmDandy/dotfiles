@@ -227,7 +227,13 @@ alt-shift-e = ['join-with right', 'mode main']
 if.app-id = 'com.apple.finder'
 run = 'layout floating'
 [[on-window-detected]]
-if.app-id = 'org.mOk.transmission'
+if.app-id = 'org.m0k.transmission'
+run = 'layout floating'
+[[on-window-detected]]
+if.app-id = 'com.jordanbaird.Ice'
+run = 'layout floating'
+[[on-window-detected]]
+if.app-id = 'org.sil.ukelele'
 run = 'layout floating'
 [[on-window-detected]]
 if.app-id = 'com.sonarworks.soundid.reference.systemwide'
@@ -283,6 +289,12 @@ run = 'move-node-to-workspace 1'
 [[on-window-detected]]
 if.app-id = 'md.obsidian'
 run = 'move-node-to-workspace 2'
+[[on-window-detected]]
+if.app-id = 'com.apple.FinalCut'
+run = 'move-node-to-workspace 2'
+[[on-window-detected]]
+if.app-id = 'com.captureone.captureone16'
+run = 'move-node-to-workspace 2'
 
 # 3
 [[on-window-detected]]
@@ -294,6 +306,9 @@ run = 'move-node-to-workspace 3'
 [[on-window-detected]]
 if.app-id = 'com.electron.dockerdesktop'
 run = 'move-node-to-workspace 3'
+[[on-window-detected]]
+if.app-id = 'com.utmapp.UTM'
+run = 'move-node-to-workspace 3'
 
 # 5
 [[on-window-detected]]
@@ -301,6 +316,12 @@ if.app-id = 'com.philipyoungg.session'
 run = 'move-node-to-workspace 5'
 [[on-window-detected]]
 if.app-id = 'com.culturedcode.ThingsMac'
+run = 'move-node-to-workspace 5'
+[[on-window-detected]]
+if.app-id = 'com.linear'
+run = 'move-node-to-workspace 5'
+[[on-window-detected]]
+if.app-id = 'com.apple.shortcuts'
 run = 'move-node-to-workspace 5'
 
 # 6
@@ -313,10 +334,25 @@ run = 'move-node-to-workspace 6'
 [[on-window-detected]]
 if.app-id = 'sh.chorus.app'
 run = 'move-node-to-workspace 6'
+[[on-window-detected]]
+if.app-id = 'ai.perplexity.mac'
+run = 'move-node-to-workspace 6'
 
 # 7
 [[on-window-detected]]
 if.app-id = 'com.maxgoedjen.Secretive.Host'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'com.panic.Transmit'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'com.mac-attender.Network-Radar'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'com.intuitibits.wifiexplorerpro3'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'org.m0k.transmission'
 run = 'move-node-to-workspace 7'
 
 # 8
@@ -336,4 +372,7 @@ if.app-id = 'net.whatsapp.WhatsApp'
 run = 'move-node-to-workspace 9'
 [[on-window-detected]]
 if.app-id = 'com.apple.mail'
+run = 'move-node-to-workspace 9'
+[[on-window-detected]]
+if.app-id = 'app.legcord.Legcord'
 run = 'move-node-to-workspace 9'
