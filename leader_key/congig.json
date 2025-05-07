@@ -6,6 +6,11 @@
       "value" : "/Applications/Arc.app"
     },
     {
+      "key" : "o",
+      "type" : "application",
+      "value" : "/Applications/Obsidian.app"
+    },
+    {
       "actions" : [
         {
           "key" : "g",
@@ -72,8 +77,8 @@
         }
       ],
       "iconPath" : "camera",
-      "key" : "e",
-      "label" : "Editing",
+      "key" : "c",
+      "label" : "Creating",
       "type" : "group"
     },
     {
@@ -97,6 +102,11 @@
           "key" : "p",
           "type" : "application",
           "value" : "/Applications/Perplexity.app"
+        },
+        {
+          "key" : "s",
+          "type" : "application",
+          "value" : "/Applications/superwhisper.app"
         }
       ],
       "iconPath" : "brain",
@@ -125,6 +135,11 @@
           "key" : "w",
           "type" : "application",
           "value" : "/Applications/WhatsApp.app"
+        },
+        {
+          "key" : "D",
+          "type" : "application",
+          "value" : "/Applications/legcord.app"
         }
       ],
       "iconPath" : "message.badge",
@@ -140,14 +155,14 @@
           "value" : "/Applications/Things3.app"
         },
         {
-          "key" : "c",
-          "type" : "application",
-          "value" : "/System/Applications/Calendar.app"
-        },
-        {
           "key" : "s",
           "type" : "application",
           "value" : "/Applications/Session.app"
+        },
+        {
+          "key" : "c",
+          "type" : "application",
+          "value" : "/System/Applications/Calendar.app"
         }
       ],
       "iconPath" : "note.text",
@@ -171,6 +186,21 @@
           "key" : "c",
           "type" : "url",
           "value" : "raycast://extensions/raycast/system/open-camera"
+        },
+        {
+          "key" : "o",
+          "type" : "application",
+          "value" : "/Applications/OnyX.app"
+        },
+        {
+          "key" : "t",
+          "type" : "application",
+          "value" : "/Applications/Tailscale.app"
+        },
+        {
+          "key" : "v",
+          "type" : "application",
+          "value" : "/Applications/OpenVPN Connect/OpenVPN Connect.app"
         }
       ],
       "iconPath" : "lasso.badge.sparkles",
