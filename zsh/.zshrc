@@ -10,6 +10,7 @@ set -o vi
 export VISUAL='nvim'
 export EDITOR='nvim'
 export TERM='tmux-256color'
+export COLORTERM='truecolor'
 
 # History
 HISTFILE=~/.zsh_history
