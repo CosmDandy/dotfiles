@@ -7,6 +7,8 @@ if ! command -v nix &>/dev/null; then
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Устанавливаем пакеты через nix
 packages=(
   python313
@@ -25,7 +27,6 @@ packages=(
   lazydocker
   superfile
 )
-# devpod
 
 print_section() {
   local message="$*"
