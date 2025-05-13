@@ -5,6 +5,8 @@ return {
   opts = function()
     return {
       on_highlights = function(hl, c)
+        local is_dark = vim.o.background == 'dark'
+
         -- Telescope
         hl.TelescopeNormal = {
           bg = c.bg_dark,
@@ -35,21 +37,105 @@ return {
           fg = c.bg_dark,
         }
 
-        -- WhichKey
+        -- WhichKey с прозрачным фоном
         hl.WhichKey = {
-          bg = c.bg_highlight, -- или любой другой цвет
+          bg = "NONE", -- прозрачный фон
           fg = c.fg,
         }
         hl.WhichKeyTitle = {
-          bg = c.bg_highlight,
+          bg = "NONE",
           fg = c.fg,
         }
         hl.WhichKeyBorder = {
-          bg = c.bg_highlight,
+          bg = "NONE",
           fg = c.fg,
         }
         hl.WhichKeyFloat = {
-          bg = c.bg_highlight,
+          bg = "NONE",
+        }
+        hl.WhichKeyDesc = {
+          bg = "NONE",
+        }
+        hl.WhichKeyGroup = {
+          bg = "NONE",
+        }
+        hl.WhichKeySeparator = {
+          bg = "NONE",
+        }
+        hl.WhichKeyValue = {
+          bg = "NONE",
+        }
+
+        -- Barbecue (winbar) с прозрачным фоном
+        hl.BarbecueNormal = {
+          bg = "NONE",
+        }
+        hl.BarbecueEllipsis = {
+          bg = "NONE",
+        }
+        hl.BarbecueSeparator = {
+          bg = "NONE",
+        }
+        hl.BarbecueDirectory = {
+          bg = "NONE",
+        }
+        hl.BarbecueDirectoryBasename = {
+          bg = "NONE",
+        }
+        hl.BarbecueContext = {
+          bg = "NONE",
+        }
+        hl.BarbecueContextPrefix = {
+          bg = "NONE",
+        }
+        hl.BarbecueContextSuffix = {
+          bg = "NONE",
+        }
+        hl.BarbecueModified = {
+          bg = "NONE",
+        }
+
+        -- Статусная строка (mini.statusline) с прозрачным фоном
+        hl.StatusLine = {
+          bg = "NONE",
+        }
+        hl.StatusLineNC = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineDevinfo = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineFilename = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineFileinfo = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineInactive = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineModeNormal = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineModeInsert = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineModeVisual = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineModeReplace = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineModeCommand = {
+          bg = "NONE",
+        }
+        hl.MiniStatuslineMode = {
+          bg = "NONE",
+        }
+
+        -- Текущая строка с прозрачным фоном
+        hl.CursorLine = {
+          bg = is_dark and "#073642" or "#e3dcc8",
         }
 
         -- GitSigns
