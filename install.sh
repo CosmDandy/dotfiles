@@ -98,6 +98,10 @@ zinit light zsh-users/zsh-autosuggestions
 zinit light zsh-users/zsh-history-substring-search
 zinit light zdharma-continuum/fast-syntax-highlighting
 
+print_section "Installing tmux plugins"
+mkdir -p ~/.tmux/plugins
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+
 print_section "Installing nvim plugins"
 nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
 
