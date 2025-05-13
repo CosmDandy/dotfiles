@@ -7,6 +7,8 @@ if ! command -v nix &>/dev/null; then
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Устанавливаем пакеты через nix
 packages=(
   python313
@@ -95,6 +97,10 @@ source "${ZINIT_HOME}/zinit.zsh"
 zinit light zsh-users/zsh-autosuggestions
 zinit light zsh-users/zsh-history-substring-search
 zinit light zdharma-continuum/fast-syntax-highlighting
+
+print_section "Installing tmux plugins"
+mkdir -p ~/.tmux/plugins
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 print_section "Installing nvim plugins"
 nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
