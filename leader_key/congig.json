@@ -6,11 +6,6 @@
       "value" : "/Applications/Arc.app"
     },
     {
-      "key" : "o",
-      "type" : "application",
-      "value" : "/Applications/Obsidian.app"
-    },
-    {
       "actions" : [
         {
           "key" : "g",
@@ -51,11 +46,34 @@
           "key" : "u",
           "type" : "application",
           "value" : "/Applications/UTM.app"
+        },
+        {
+          "key" : "k",
+          "type" : "application",
+          "value" : "/Applications/Kaleidoscope.app"
         }
       ],
       "iconPath" : "apple.terminal",
       "key" : "d",
       "label" : "Development",
+      "type" : "group"
+    },
+    {
+      "actions" : [
+        {
+          "key" : "o",
+          "type" : "application",
+          "value" : "/Applications/Obsidian.app"
+        },
+        {
+          "key" : "t",
+          "type" : "application",
+          "value" : "/Applications/Texifier.app"
+        }
+      ],
+      "iconPath" : "scribble.variable",
+      "key" : "w",
+      "label" : "Writing",
       "type" : "group"
     },
     {
@@ -117,7 +135,7 @@
     {
       "actions" : [
         {
-          "key" : " ",
+          "key" : "t",
           "type" : "application",
           "value" : "/Applications/Telegram.app"
         },
@@ -127,7 +145,7 @@
           "value" : "/System/Applications/Mail.app"
         },
         {
-          "key" : "t",
+          "key" : "s",
           "type" : "application",
           "value" : "/Applications/Microsoft Teams.app"
         },
@@ -155,14 +173,14 @@
           "value" : "/Applications/Things3.app"
         },
         {
-          "key" : "s",
-          "type" : "application",
-          "value" : "/Applications/Session.app"
-        },
-        {
           "key" : "c",
           "type" : "application",
           "value" : "/System/Applications/Calendar.app"
+        },
+        {
+          "key" : "s",
+          "type" : "application",
+          "value" : "/Applications/Session.app"
         }
       ],
       "iconPath" : "note.text",
@@ -201,6 +219,11 @@
           "key" : "v",
           "type" : "application",
           "value" : "/Applications/OpenVPN Connect/OpenVPN Connect.app"
+        },
+        {
+          "key" : "i",
+          "type" : "application",
+          "value" : "/Applications/iStatistica Pro.app"
         }
       ],
       "iconPath" : "lasso.badge.sparkles",
@@ -220,6 +243,11 @@
       "key" : "l",
       "label" : "Links",
       "type" : "group"
+    },
+    {
+      "key" : "m",
+      "type" : "application",
+      "value" : "/System/Applications/Music.app"
     }
   ],
   "type" : "group"
