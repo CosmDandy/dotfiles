@@ -265,6 +265,12 @@ run = 'layout floating'
 [[on-window-detected]]
 if.app-id = 'com.mac-attender.Network-Radar'
 run = 'layout floating'
+[[on-window-detected]]
+if.app-id = 'com.hardcoded-software.dupeguru'
+run = 'layout floating'
+[[on-window-detected]]
+if.app-id = 'app.kaleidoscope.v4'
+run = 'layout floating'
 
 # 0
 [[on-window-detected]]
