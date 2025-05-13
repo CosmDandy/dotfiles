@@ -64,6 +64,16 @@ fpath=("$HOME/.zsh/completions" $fpath)
 autoload -Uz compinit
 compinit
 
+# Настройки для history-substring-search
+HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_FOUND='bg=green,fg=white,bold'
+HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_NOT_FOUND='bg=red,fg=white,bold'
+HISTORY_SUBSTRING_SEARCH_GLOBBING_FLAGS='i'
+HISTORY_SUBSTRING_SEARCH_ENSURE_UNIQUE=true
+HISTORY_SUBSTRING_SEARCH_FUZZY=true
+
+# Настройки для zsh-autosuggestions
+export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#586e75"
+
 # Plugins
 zinit light zsh-users/zsh-autosuggestions
 zinit light zsh-users/zsh-history-substring-search
@@ -71,6 +81,10 @@ zinit light zdharma-continuum/fast-syntax-highlighting
 
 bindkey '^[[A' history-beginning-search-backward
 bindkey '^[[B' history-beginning-search-forward
+
+# Для tmux
+bindkey '^[OA' history-substring-search-up
+bindkey '^[OB' history-substring-search-down
 
 autoload -Uz _zinit
 (( ${+_comps} )) && _comps[zinit]=_zinit
