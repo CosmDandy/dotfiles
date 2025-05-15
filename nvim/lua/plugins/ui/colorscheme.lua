@@ -135,7 +135,21 @@ return {
 
         -- Текущая строка с прозрачным фоном
         hl.CursorLine = {
-          bg = is_dark and "#073642" or "#e3dcc8",
+          bg = is_dark and "#073642" or "#151003",
+        }
+
+        -- Выделение
+        hl.Visual = {
+          bg = is_dark and "#073642" or "#151003",
+          fg = is_dark and "#FDF6E3" or "#FDF6E3", -- base3 (светлый текст)
+          bold = true,                             -- Делаем текст жирным для лучшей видимости
+        }
+
+        -- Поиск
+        hl.Search = {
+          bg = is_dark and "#B58900" or "#CB4B16", -- Желтый для темной, Оранжевый для светлой
+          fg = is_dark and "#002B36" or "#FDF6E3", -- base03 для темной, base3 для светлой
+          bold = true,
         }
 
         -- GitSigns
