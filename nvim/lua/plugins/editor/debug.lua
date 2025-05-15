@@ -14,12 +14,31 @@ return {
     'williamboman/mason.nvim',
     'jay-babu/mason-nvim-dap.nvim',
     'theHamsta/nvim-dap-virtual-text',
+    { 'nvim-telescope/telescope-dap.nvim' },
     {
       'mfussenegger/nvim-dap-python',
       ft = 'python',
-      config = function(_, opts)
-        local path = '~/.local/share/nvim/mason/packages/debugpy/venv/bin/python'
+      config = function()
+        -- ИЗМЕНЕНО: Улучшенная автоматическая настройка debugpy
+        local path = vim.fn.stdpath("data") .. '/mason/packages/debugpy/venv/bin/python'
+        require('dap-python').setup(path)
+
+        -- НОВОЕ: Добавление testpy для тестирования
+        require('dap-python').test_runner = 'pytest'
+
+        -- НОВОЕ: Настройка представлений переменных для лучшей читаемости
+        require('dap-python').resolve_python = function()
+          return path
+        end
       end,
+    },
+    -- НОВОЕ: Продвинутая визуализация профилирования для Python
+    { 'lvimuser/lsp-inlayhints.nvim' }, -- для отображения подсказок типов
+
+    -- НОВОЕ: Улучшенное отображение ошибок и состояний отладки
+    {
+      'folke/trouble.nvim',
+      dependencies = { 'nvim-tree/nvim-web-devicons' },
     },
   },
   keys = {
@@ -72,6 +91,83 @@ return {
       end,
       desc = 'See last session result.',
     },
+    -- НОВОЕ: Дополнительные полезные сочетания клавиш
+    {
+      '<leader>dc',
+      function()
+        require('telescope').extensions.dap.commands()
+      end,
+      desc = '[d]ebug [c]ommands',
+    },
+    {
+      '<leader>dv',
+      function()
+        require('telescope').extensions.dap.variables()
+      end,
+      desc = '[d]ebug [v]ariables',
+    },
+    {
+      '<leader>df',
+      function()
+        require('telescope').extensions.dap.frames()
+      end,
+      desc = '[d]ebug [f]rames',
+    },
+    {
+      '<leader>dt',
+      function()
+        require('dap-python').test_method()
+      end,
+      desc = '[d]ebug [t]est method',
+    },
+    {
+      '<leader>dT',
+      function()
+        require('dap-python').test_class()
+      end,
+      desc = '[d]ebug [T]est class',
+    },
+    {
+      '<leader>dpp',
+      function()
+        -- НОВОЕ: Запуск профилирования текущего файла
+        local Terminal = require('toggleterm.terminal').Terminal
+        local prof_term = Terminal:new({
+          cmd = string.format(
+            "python -m cProfile -o profile.prof %s && python -m pyprof2calltree -i profile.prof -o profile.calltree && kcachegrind profile.calltree",
+            vim.fn.expand("%:p")),
+          hidden = false,
+        })
+        prof_term:toggle()
+      end,
+      desc = '[d]ebug [p]rofile [p]ython',
+    },
+    {
+      '<leader>dpm',
+      function()
+        -- НОВОЕ: Запуск memory_profiler для текущего файла
+        local Terminal = require('toggleterm.terminal').Terminal
+        local memprof_term = Terminal:new({
+          cmd = string.format("python -m memory_profiler %s", vim.fn.expand("%:p")),
+          hidden = false,
+        })
+        memprof_term:toggle()
+      end,
+      desc = '[d]ebug [p]rofile [m]emory',
+    },
+    {
+      '<leader>dps',
+      function()
+        -- НОВОЕ: Запуск scalene профилировщика
+        local Terminal = require('toggleterm.terminal').Terminal
+        local scalene_term = Terminal:new({
+          cmd = string.format("python -m scalene %s", vim.fn.expand("%:p")),
+          hidden = false,
+        })
+        scalene_term:toggle()
+      end,
+      desc = '[d]ebug [p]rofile [s]calene',
+    },
   },
   config = function()
     local dap = require 'dap'
@@ -93,8 +189,134 @@ return {
     }
 
     require('nvim-dap-virtual-text').setup {
-      commented = true, -- Show virtual text alongside comment
+      enabled = true,                     -- включено по умолчанию
+      enabled_commands = true,            -- команды для включения/отключения
+      highlight_changed_variables = true, -- подсветка измененных переменных
+      highlight_new_as_changed = true,    -- подсветка новых переменных
+      show_stop_reason = true,            -- показ причины остановки
+      commented = true,                   -- текст как комментарии
+      only_first_definition = false,      -- показать только первое определение
+      all_references = true,              -- показать все ссылки
+      all_frames = false,                 -- показать значения из всех фреймов
+      virt_text_pos = 'eol',              -- позиция виртуального текста
+      virt_text_win_col = nil,            -- фиксированная позиция столбца
     }
+
+    require('telescope').load_extension('dap')
+
+    require('trouble').setup {
+      position = "bottom",
+      height = 10,
+      auto_preview = false,
+      auto_close = true,
+    }
+
+    -- Настройка интерфейса отладчика
+    -- dapui.setup({
+    --   layouts = {
+    --     {
+    --       elements = {
+    --         { id = "scopes",      size = 0.25 },
+    --         { id = "breakpoints", size = 0.25 },
+    --         { id = "stacks",      size = 0.25 },
+    --         { id = "watches",     size = 0.25 },
+    --       },
+    --       size = 40,
+    --       position = "left",
+    --     },
+    --     {
+    --       elements = {
+    --         { id = "repl",    size = 0.5 },
+    --         { id = "console", size = 0.5 },
+    --       },
+    --       size = 10,
+    --       position = "bottom",
+    --     },
+    --   },
+    -- })
+    -- ИЗМЕНЕНО: Улучшенная настройка дизайна dapui
+    dapui.setup {
+      controls = {
+        element = "repl",
+        enabled = true,
+        icons = {
+          disconnect = "",
+          pause = "",
+          play = "",
+          run_last = "",
+          step_back = "",
+          step_into = "",
+          step_out = "",
+          step_over = "",
+          terminate = ""
+        }
+      },
+      element_mappings = {},
+      expand_lines = true,
+      floating = {
+        border = "single",
+        mappings = {
+          close = { "q", "<Esc>" }
+        }
+      },
+      force_buffers = true,
+      icons = {
+        collapsed = "",
+        current_frame = "",
+        expanded = ""
+      },
+      layouts = {
+        {
+          elements = {
+            {
+              id = "scopes",
+              size = 0.4
+            },
+            {
+              id = "breakpoints",
+              size = 0.15
+            },
+            {
+              id = "stacks",
+              size = 0.25
+            },
+            {
+              id = "watches",
+              size = 0.2
+            }
+          },
+          position = "left",
+          size = 40
+        },
+        {
+          elements = {
+            {
+              id = "repl",
+              size = 0.5
+            },
+            {
+              id = "console",
+              size = 0.5
+            }
+          },
+          position = "bottom",
+          size = 15
+        }
+      },
+      mappings = {
+        edit = "e",
+        expand = { "<CR>", "<2-LeftMouse>" },
+        open = "o",
+        remove = "d",
+        repl = "r",
+        toggle = "t"
+      },
+      render = {
+        indent = 1,
+        max_value_lines = 100
+      }
+    }
+
 
     dap.adapters.python = {
       type = 'server',
@@ -237,8 +459,32 @@ return {
         },
       },
     }
+    vim.api.nvim_set_hl(0, 'DapBreak', { fg = '#e51400' })
+    vim.api.nvim_set_hl(0, 'DapStop', { fg = '#ffcc00' })
+    vim.api.nvim_set_hl(0, 'DapContinue', { fg = '#00ff00' })
+    vim.api.nvim_set_hl(0, 'DapLogPoint', { fg = '#00bfff' })
 
-    dapui.setup {}
+    -- НОВОЕ: Интеграция с inlayhints для отображения типов при отладке
+    require('lsp-inlayhints').setup {
+      inlay_hints = {
+        parameter_hints = {
+          show = true,
+          prefix = "<- ",
+          separator = ", ",
+          remove_colon_start = false,
+          remove_colon_end = false,
+        },
+        type_hints = {
+          show = true,
+          prefix = "=> ",
+          separator = ", ",
+          remove_colon_start = false,
+          remove_colon_end = false,
+        },
+        only_current_line = false,
+        highlight = "Comment",
+      }
+    }
 
     -- Change breakpoint icons
     -- vim.api.nvim_set_hl(0, 'DapBreak', { fg = '#e51400' })
