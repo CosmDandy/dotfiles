@@ -66,6 +66,10 @@ return {
           bg = "NONE",
         }
 
+        hl.TreesitterContext = {
+          bg = is_dark and "#073642" or "#151003",
+        }
+
         -- Barbecue (winbar) с прозрачным фоном
         hl.BarbecueNormal = {
           bg = "NONE",

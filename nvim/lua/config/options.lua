@@ -4,7 +4,7 @@ vim.g.maplocalleader = ' '
 vim.g.have_nerd_font = true -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.opt.number = true       -- Make line numbers default
 vim.opt.relativenumber = true
-vim.opt.mouse = ''          -- Enable mouse mode, can be useful for resizing splits for example!
+vim.opt.mouse = 'a'         -- Enable mouse mode, can be useful for resizing splits for example!
 vim.opt.showmode = false    -- Don't show the mode, since it's already in the status line
 
 vim.schedule(function()     -- Sync clipboard between OS and Neovim.
@@ -27,7 +27,15 @@ vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
 vim.opt.inccommand = 'split'           -- Preview substitutions live, as you type!
 vim.opt.cursorline = true              -- Show which line your cursor is on
 vim.opt.scrolloff = 10                 -- Minimal number of screen lines to keep above and below the cursor.
+vim.opt.sidescrolloff = 10             -- Горизонтальный отступ при сайдскроллинге
 vim.opt.termguicolors = true           -- Поддержка 24-битного цвета
+vim.opt.wrap = true
+vim.opt.linebreak = true
+vim.opt.encoding = "utf-8"
+vim.opt.fileencoding = "utf-8"
+vim.opt.ambiwidth = "single"
+vim.opt.ttimeoutlen = 10 -- Сократить время ожидания терминальных кодов
+
 
 vim.loader.enable()
 vim.o.laststatus = 3
