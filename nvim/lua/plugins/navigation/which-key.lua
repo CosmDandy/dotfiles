@@ -3,7 +3,7 @@ return {
   event = 'VimEnter',
   opts = {
     preset = 'modern',
-    delay = 0,
+    delay = 1000,
     icons = {
       mappings = false,
       keys = vim.g.have_nerd_font and {} or {
