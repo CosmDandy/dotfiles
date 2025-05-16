@@ -1,9 +1,9 @@
 # . "$HOME/.local/bin/env"
-
-# export SSH_AUTH_SOCK="$HOME/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh"
+. "$HOME/.atuin/bin/env"
 
 # Prompt
 eval "$(starship init zsh)"
+eval "$(atuin init zsh)"
 
 # Editing mode
 set -o vi
@@ -11,6 +11,7 @@ export VISUAL='nvim'
 export EDITOR='nvim'
 export TERM='tmux-256color'
 export COLORTERM='truecolor'
+# export SSH_AUTH_SOCK="$HOME/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh"
 
 # History
 HISTFILE=~/.zsh_history
