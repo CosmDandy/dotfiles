@@ -1,9 +1,14 @@
 #!/usr/bin/env zsh
 
+set -e
+
+RED='\033[0;31m'
+NC='\033[0m'
+
 print_section() {
   local message="$*"
   printf '%0.s~' {1..70}; echo
-  echo "$message"
+  echo -e "${RED}$message${NC}"
   printf '%0.s~' {1..70}; echo
 }
 
@@ -25,8 +30,19 @@ create_symlinks() {
   done
 }
 
-print_section "Installing uv"
+print_section "Installing mise(for all lang)"
+curl https://mise.run | sh
+echo "eval \"\$(/home/vscode/.local/bin/mise activate zsh)\"" >> "/home/vscode/.zshrc"
+eval "$($HOME/.local/bin/mise activate zsh)"
+
+print_section "Installing rust" 
+mise install rust@latest
+print_section "Installing go"
+mise install go@latest
+
+print_section "Installing uv(python)"
 curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.14
 
 print_section "Installing atuin"
 curl --proto '=https' --tlsv1.2 -LsSf https://setup.atuin.sh | sh
@@ -82,7 +98,6 @@ links=(
   "$PWD/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$PWD/nvim:$XDG_CONFIG_HOME/nvim"
   "$PWD/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  "$PWD/lazygit/conf.yml:$XDG_CONFIG_HOME/lazygit/conf.yml" # TODO: доделать конфиг
   "$PWD/superfile/config.toml:$XDG_CONFIG_HOME/superfile/config.toml"
   "$PWD/superfile/hotkeys.toml:$XDG_CONFIG_HOME/superfile/hotkeys.toml"
   )
