@@ -30,19 +30,20 @@ create_symlinks() {
   done
 }
 
-print_section "Installing mise(for all lang)"
+print_section "Installing mise"
 curl https://mise.run | sh
 echo "eval \"\$(/home/vscode/.local/bin/mise activate zsh)\"" >> "/home/vscode/.zshrc"
 eval "$($HOME/.local/bin/mise activate zsh)"
 
+print_section "Installing python"
+mise install python@latest
 print_section "Installing rust" 
 mise install rust@latest
 print_section "Installing go"
 mise install go@latest
 
-print_section "Installing uv(python)"
+print_section "Installing uv"
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv python install 3.14
 
 print_section "Installing atuin"
 curl --proto '=https' --tlsv1.2 -LsSf https://setup.atuin.sh | sh
@@ -108,16 +109,6 @@ create_directories "${dirs[@]}"
 print_section "Create symbolic links"
 create_symlinks "${links[@]}"
 
-print_section "Installing zinit"
-ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
-[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
-[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
-source "${ZINIT_HOME}/zinit.zsh"
-
-zinit light zsh-users/zsh-autosuggestions
-zinit light zsh-users/zsh-history-substring-search
-zinit light zdharma-continuum/fast-syntax-highlighting
-
 print_section "Installing tmux plugins"
 mkdir -p ~/.tmux/plugins
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
@@ -127,3 +118,13 @@ nvim --headless "+Lazy! sync" "+TSUpdateSync" +qa
 
 print_section "Setup global gitignore"
 git config --global core.excludesfile ~/.gitignore_global
+
+print_section "Installing zinit"
+bash -c "$(curl --fail --show-error --silent --location https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh)"
+exec zsh
+
+zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-history-substring-search
+zinit light zdharma-continuum/fast-syntax-highlighting
+
+print_section "Install complete"
