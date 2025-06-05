@@ -3,7 +3,6 @@ return {
   ---@module 'oil'
   ---@type oil.SetupOpts
   opts = {
-    delete_to_trash = true,
     view_options = {
       show_hidden = true,
     }
