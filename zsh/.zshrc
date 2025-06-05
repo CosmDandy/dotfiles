@@ -10,8 +10,6 @@ if [[ -r "$HOME/.atuin/bin/env" ]]; then
     source "$HOME/.atuin/bin/env"
 fi
 
-source "$HOME/.local/share/uv"
-
 # =============================================================================
 # ZSH OPTIONS
 # =============================================================================
@@ -63,7 +61,6 @@ alias ds='devpod ssh'
 
 alias c='clear'
 alias e='exit'
-
 
 alias ls='eza'
 alias la='eza -laghm@ --all --icons --git --color=always'
@@ -159,8 +156,5 @@ eval "$(starship init zsh)"
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
 
-# Zoxide - умная навигация по директориям (замена cd)
-eval "$(zoxide init zsh)"
-
-# Mise - менеджер версий языков программирования (замена asdf)
+# Mise - менеджер версий языков программирования
 eval "$($HOME/.local/bin/mise activate zsh)"
