@@ -349,7 +349,6 @@ return {
         -- Formatters для автоформатирования
         'black',        -- Python formatter (стандарт PEP 8)
         'isort',        -- Python import sorter
-        'autopep8',     -- Альтернативный Python formatter
         'stylua',       -- Lua formatter
         'prettierd',    -- JavaScript/TypeScript/HTML/CSS formatter
         'yamlfmt',      -- YAML formatter
