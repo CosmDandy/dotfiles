@@ -35,7 +35,7 @@
         {
           "key" : "d",
           "type" : "application",
-          "value" : "/Applications/TablePlus.app"
+          "value" : "/Users/cosmdandy/Applications/DataGrip.app"
         },
         {
           "key" : "n",
@@ -51,6 +51,16 @@
           "key" : "k",
           "type" : "application",
           "value" : "/Applications/Kaleidoscope.app"
+        },
+        {
+          "key" : "c",
+          "type" : "application",
+          "value" : "/Applications/Cursor.app"
+        },
+        {
+          "key" : "v",
+          "type" : "application",
+          "value" : "/Applications/Visual Studio Code.app"
         }
       ],
       "iconPath" : "apple.terminal",
@@ -180,7 +190,12 @@
         {
           "key" : "s",
           "type" : "application",
-          "value" : "/Applications/Session.app"
+          "value" : "/Applications/Timing.app"
+        },
+        {
+          "key" : "l",
+          "type" : "application",
+          "value" : "/Applications/Linear.app"
         }
       ],
       "iconPath" : "note.text",
