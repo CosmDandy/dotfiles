@@ -52,8 +52,12 @@ dirs=(
 
 links=(
   "$PWD/ghostty/config:$XDG_CONFIG_HOME/ghostty/config"
-  "$PWD/leader_key/congig.json:$HOME/Library/Application\ Support/Leader\ Key/config.json"
-  "$PWD/aerospace/.aerospace.toml $HOME/.aerospace.toml"
+  "$PWD/vscode/settings.json:$HOME/Library/Application Support/Cursor/User/settings.json"
+  "$PWD/vscode/keybindings.json:$HOME/Library/Application Support/Cursor/User/keybindings.json"
+  "$PWD/vscode/settings.json:$HOME/Library/Application Support/Code/User/settings.json"
+  "$PWD/vscode/keybindings.json:$HOME/Library/Application Support/Code/User/keybindings.json"
+  "$PWD/leader_key/congig.json:$HOME/Library/Application Support/Leader Key/config.json"
+  "$PWD/aerospace/.aerospace.toml:$HOME/.aerospace.toml"
   )
 
 create_directories "${dirs[@]}"
