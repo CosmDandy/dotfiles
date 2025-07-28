@@ -162,7 +162,7 @@
     "debug.console.fontSize": 13,
     "markdown.preview.fontSize": 13,
     "workbench.tree.indent": 20,
-    "workbench.tree.renderIndentGuides": "always"
+    "workbench.tree.renderIndentGuides": "always",
 
     // ====== TELESCOPE-LIKE BEHAVIOR ======
     "workbench.quickOpen.closeOnFocusLost": true,
@@ -239,5 +239,12 @@
     "editor.cursorSmoothCaretAnimation": "on",
     "workbench.iconTheme": "material-icon-theme",
     "workbench.colorTheme": "Solarized Dark",
-    "cursor.composer.shouldChimeAfterChatFinishes": true
+    "cursor.composer.shouldChimeAfterChatFinishes": true,
+    "remote.SSH.remotePlatform": {
+      "work-dev.devpod": "linux",
+      "client_7": "linux",
+      "client_3": "linux"
+    },
+    "cursor.cpp.enablePartialAccepts": true,
+    "cursorpyright.analysis.typeCheckingMode": "basic"
   }
