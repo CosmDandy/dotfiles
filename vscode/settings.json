@@ -27,18 +27,6 @@
         "commands": ["workbench.action.findInFiles"]
       },
       {
-        "before": ["<leader>", "s", "w"],
-        "commands": ["editor.action.addSelectionToNextFindMatch"]
-      },
-      {
-        "before": ["<leader>", "d", "s"],
-        "commands": ["workbench.action.gotoSymbol"]
-      },
-      {
-        "before": ["<leader>", "w", "s"],
-        "commands": ["workbench.action.showAllSymbols"]
-      },
-      {
         "before": ["<leader>", "<leader>"],
         "commands": ["workbench.action.showAllEditors"]
       },
@@ -49,7 +37,15 @@
       // Git functionality
       {
         "before": ["<leader>", "g", "b"],
-        "commands": ["git.toggleBlame"]
+        "commands": ["gitlens.toggleFileBlame:key"]
+      },
+      {
+        "before": ["<leader>", "g", "h"],
+        "commands": ["gitlens.toggleFileHeatmap:editor"]
+      },
+      {
+        "before": ["<leader>", "g", "c"],
+        "commands": ["gitlens.toggleFileChanges:editor"]
       },
       {
         "before": ["<leader>", "g", "r"],
@@ -62,10 +58,6 @@
       {
         "before": ["<leader>", "g", "u"],
         "commands": ["git.unstage"]
-      },
-      {
-        "before": ["<leader>", "g", "c"],
-        "commands": ["git.commit"]
       },
       // Window navigation
       {
@@ -98,24 +90,6 @@
         "before": ["<leader>", "f"],
         "commands": ["editor.action.formatDocument"]
       },
-      // Split management
-      {
-        "before": ["<leader>", "w", "v"],
-        "commands": ["workbench.action.splitEditorRight"]
-      },
-      {
-        "before": ["<leader>", "w", "s"],
-        "commands": ["workbench.action.splitEditorDown"]
-      },
-      // AI Cursor features
-      {
-        "before": ["<leader>", "a", "c"],
-        "commands": ["cursor.chat.newSession"]
-      },
-      {
-        "before": ["<leader>", "a", "e"],
-        "commands": ["cursor.composer.newSession"]
-      },
       // File explorer
       {
         "before": ["<leader>", "e"],
@@ -126,12 +100,11 @@
         "before": ["<leader>", "g"],
         "commands": ["workbench.view.scm"]
       },
-      // Debug panel
+      // Debugging
       {
         "before": ["<leader>", "d"],
         "commands": ["workbench.view.debug"]
       },
-      // Debugging
       {
         "before": ["<leader>", "b"],
         "commands": ["editor.debug.action.toggleBreakpoint"]
@@ -154,15 +127,19 @@
     "editor.inlayHints.enabled": "on",
     "editor.minimap.enabled": false,
     "editor.renderWhitespace": "boundary",
-    "editor.rulers": [80, 100],
+    "editor.rulers": [88, 120],
     "editor.suggestSelection": "first",
     "editor.acceptSuggestionOnCommitCharacter": false,
     "editor.acceptSuggestionOnEnter": "on",
+    "editor.linkedEditing": true,
+    "editor.renderLineHighlight": "gutter",
+    "editor.copyWithSyntaxHighlighting": false,
     "window.zoomLevel": 0,
     "debug.console.fontSize": 13,
     "markdown.preview.fontSize": 13,
-    "workbench.tree.indent": 20,
+    "workbench.tree.indent": 15,
     "workbench.tree.renderIndentGuides": "always",
+    "cursor.telemetryLevel": "off",
 
     // ====== TELESCOPE-LIKE BEHAVIOR ======
     "workbench.quickOpen.closeOnFocusLost": true,
@@ -202,11 +179,13 @@
     "git.blame.ignoreWhitespace": true,
     "git.blame.compact": true,
     "git.blame.avatars": true,
+    "scm.diffDecorations": "gutter",
 
     // ====== FILES ======
     "files.autoSave": "onFocusChange",
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
+    "explorer.compactFolders": true,
     "files.exclude": {
       "**/__pycache__": true,
       "**/.venv": true,
@@ -219,6 +198,9 @@
 
     // ====== AI CURSOR SPECIFIC ======
     "cursor.chat.enabled": true,
+    "cursor.codeLens.enabled": true,
+    "cursor.inlineChat.enabled": true,
+    "cursor.autoShowChatPanelOnRequest": true,
     "cursor.cpp.disabledLanguages": [],
 
     // ====== PERFORMANCE ======
@@ -232,19 +214,42 @@
     "workbench.preferredLightColorTheme": "Solarized Light",
     "workbench.preferredDarkColorTheme": "Solarized Dark",
     "workbench.fontAliasing": "auto",
+    "workbench.editor.tabCloseButton": "right",
+    "window.menuBarVisibility": "toggle",
+    "breadcrumbs.enabled": true,
     "redhat.telemetry.enabled": false,
-    "workbench.editor.enablePreview": false,
     "workbench.startupEditor": "none",
-    "workbench.layoutControl.enabled": false,
     "editor.cursorSmoothCaretAnimation": "on",
     "workbench.iconTheme": "material-icon-theme",
     "workbench.colorTheme": "Solarized Dark",
+    "editor.cursorStyle": "line-thin",
+    "editor.cursorBlinking": "smooth",
+    "editor.smoothScrolling": true,
     "cursor.composer.shouldChimeAfterChatFinishes": true,
     "remote.SSH.remotePlatform": {
       "work-dev.devpod": "linux",
       "client_7": "linux",
-      "client_3": "linux"
+      "client_3": "linux",
+      "scheduler-local.devpod": "linux",
+      "work-infra-all-local.devpod": "linux",
+      "homelab-local.devpod": "linux",
+      "polytech-parser-local.devpod": "linux",
+      "dev": "linux"
     },
     "cursor.cpp.enablePartialAccepts": true,
-    "cursorpyright.analysis.typeCheckingMode": "basic"
+    "cursorpyright.analysis.typeCheckingMode": "basic",
+    "diffEditor.ignoreTrimWhitespace": true,
+    "[python]": {
+      "diffEditor.ignoreTrimWhitespace": true
+    },
+    "database-client.autoSync": true,
+    "remote.autoForwardPortsSource": "hybrid",
+    "workbench.editor.tabActionLocation": "right",
+    "workbench.editor.enablePreview": false,
+    "window.customTitleBarVisibility": "windowed",
+    "workbench.editor.editorActionsLocation": "titleBar",
+    "workbench.panel.defaultLocation": "top",
+    "workbench.panel.showLabels": false,
+    "workbench.editor.showTabs": "none",
+    "workbench.layoutControl.enabled": false
   }
