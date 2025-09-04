@@ -112,11 +112,6 @@
     {
       "actions" : [
         {
-          "key" : " ",
-          "type" : "application",
-          "value" : "/Applications/Chorus.app"
-        },
-        {
           "key" : "g",
           "type" : "application",
           "value" : "/Applications/ChatGPT.app"
@@ -125,11 +120,6 @@
           "key" : "c",
           "type" : "application",
           "value" : "/Applications/Claude.app"
-        },
-        {
-          "key" : "p",
-          "type" : "application",
-          "value" : "/Applications/Perplexity.app"
         },
         {
           "key" : "s",
@@ -165,9 +155,9 @@
           "value" : "/Applications/WhatsApp.app"
         },
         {
-          "key" : "D",
+          "key" : "f",
           "type" : "application",
-          "value" : "/Applications/legcord.app"
+          "value" : "/System/Applications/FaceTime.app"
         }
       ],
       "iconPath" : "message.badge",
@@ -191,11 +181,6 @@
           "key" : "s",
           "type" : "application",
           "value" : "/Applications/Timing.app"
-        },
-        {
-          "key" : "l",
-          "type" : "application",
-          "value" : "/Applications/Linear.app"
         }
       ],
       "iconPath" : "note.text",
@@ -260,9 +245,21 @@
       "type" : "group"
     },
     {
+      "actions" : [
+        {
+          "key" : "m",
+          "type" : "application",
+          "value" : "/System/Applications/Music.app"
+        },
+        {
+          "key" : "s",
+          "type" : "application",
+          "value" : "/Applications/SoundID Reference.app"
+        }
+      ],
       "key" : "m",
-      "type" : "application",
-      "value" : "/System/Applications/Music.app"
+      "label" : "Music",
+      "type" : "group"
     }
   ],
   "type" : "group"

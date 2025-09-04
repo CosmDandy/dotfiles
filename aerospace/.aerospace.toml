@@ -285,6 +285,15 @@ run = 'move-node-to-workspace 0'
 if.app-id = 'dev.warp.Warp-Stable'
 run = 'move-node-to-workspace 0'
 [[on-window-detected]]
+if.app-id = 'com.jetbrains.datagrip'
+run = 'move-node-to-workspace 0'
+[[on-window-detected]]
+if.app-id = 'com.todesktop.230313mzl4w4u92'
+run = 'move-node-to-workspace 0'
+[[on-window-detected]]
+if.app-id = 'com.microsoft.VSCode'
+run = 'move-node-to-workspace 0'
+[[on-window-detected]]
 if.app-id = 'com.tinyapp.TablePlus'
 run = 'move-node-to-workspace 0'
 
@@ -324,6 +333,9 @@ run = 'move-node-to-workspace 3'
 # 5
 [[on-window-detected]]
 if.app-id = 'com.philipyoungg.session'
+run = 'move-node-to-workspace 5'
+[[on-window-detected]]
+if.app-id = 'info.eurocomp.Timing2'
 run = 'move-node-to-workspace 5'
 [[on-window-detected]]
 if.app-id = 'com.culturedcode.ThingsMac'
