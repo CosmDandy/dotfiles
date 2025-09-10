@@ -52,12 +52,15 @@ alias dt='cd ~/Desktop'
 alias docs='cd ~/Documents'
 
 alias v='nvim'
+alias cr='cursor .'
 alias s='spf'
 alias b='btop'
 alias t='tmux'
 alias lg='lazygit'
 alias lzd='lazydocker'
+
 alias ds='devpod ssh'
+alias dpd='devpod delete'
 
 alias c='clear'
 alias e='exit'
