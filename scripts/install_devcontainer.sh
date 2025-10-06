@@ -8,8 +8,8 @@ source "$SCRIPT_DIR/scripts/common.sh"
 print_section "Installing Nix"
 curl -L https://nixos.org/nix/install | sh
 
-if [ -e '/home/vscode/.nix-profile/etc/profile.d/nix.sh' ]; then
-  . /home/vscode/.nix-profile/etc/profile.d/nix.sh
+if [ -e "$HOME.nix-profile/etc/profile.d/nix.sh" ]; then
+  . $HOME.nix-profile/etc/profile.d/nix.sh
 fi
 
 bash $SCRIPT_DIR/scripts/devcontainer/setup_symlinks.sh

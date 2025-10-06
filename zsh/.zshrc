@@ -53,7 +53,6 @@ alias docs='cd ~/Documents'
 
 alias v='nvim'
 alias cr='cursor .'
-alias s='spf'
 alias b='btop'
 alias t='tmux'
 alias lg='lazygit'
@@ -158,6 +157,3 @@ eval "$(starship init zsh)"
 
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
-
-# Mise - менеджер версий языков программирования
-eval "$($HOME/.local/bin/mise activate zsh)"

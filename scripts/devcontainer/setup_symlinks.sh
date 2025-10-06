@@ -25,8 +25,6 @@ links=(
   "$PWD/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$PWD/nvim:$XDG_CONFIG_HOME/nvim"
   "$PWD/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  # "$PWD/superfile/config.toml:$XDG_CONFIG_HOME/superfile/config.toml"
-  # "$PWD/superfile/hotkeys.toml:$XDG_CONFIG_HOME/superfile/hotkeys.toml"
 )
 
 print_section "Create directories for symbolic links"
