@@ -30,18 +30,6 @@ create_symlinks() {
   done
 }
 
-print_section "Installing mise"
-curl https://mise.run | sh
-echo "eval \"\$(/home/vscode/.local/bin/mise activate zsh)\"" >> "/home/vscode/.zshrc"
-eval "$($HOME/.local/bin/mise activate zsh)"
-
-print_section "Installing python"
-mise install python@latest
-print_section "Installing rust" 
-mise install rust@latest
-print_section "Installing go"
-mise install go@latest
-
 print_section "Installing uv"
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
