@@ -59,6 +59,8 @@ alias t='tmux'
 alias lg='lazygit'
 alias lzd='lazydocker'
 
+alias cl='claude'
+
 alias ds='devpod ssh'
 alias dpd='devpod delete'
 
@@ -93,7 +95,7 @@ alias localip="ipconfig getifaddr en0"                         # Локальн�
 alias pss='source .venv/bin/activate'
 alias psd='deactivate'
 
-alias update='sudo softwareupdate -i -a; brew update; brew upgrade; brew cleanup; npm install npm -g; npm update -g; zinit self-update; zinit update'
+alias upd='sudo apt update && sudo apt upgrade -y'
 
 alias ports='netstat -tulanp'
 
@@ -159,5 +161,3 @@ eval "$(starship init zsh)"
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
 
-# Mise - менеджер версий языков программирования
-eval "$($HOME/.local/bin/mise activate zsh)"
