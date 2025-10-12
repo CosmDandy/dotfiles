@@ -2,6 +2,11 @@
 # EXTERNAL ENVIRONMENT SETUP
 # =============================================================================
 
+# Home Manager
+if [[ -f "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]]; then
+    source "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+fi
+
 # if [[ -r "$HOME/.local/bin/env" ]]; then
 #     source "$HOME/.local/bin/env"
 # fi
