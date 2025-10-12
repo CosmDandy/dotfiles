@@ -15,6 +15,16 @@ fi
 bash $SCRIPT_DIR/scripts/devcontainer/setup_symlinks.sh
 
 print_section "Activating Nix development environment and installing nvim plugins"
+# ВАЖНО: Загружаем Nix окружение перед использованием
+if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then
+  source ~/.nix-profile/etc/profile.d/nix.sh
+fi
+
+# Теперь можно использовать команды nix
+nix --version
+
+# Активация Home Manager или другие nix команды
+cd ~/dotfiles/nix
 nix develop $SCRIPT_DIR/nix --impure --accept-flake-config --extra-experimental-features "nix-command flakes" --command bash -c "nvim --headless '+Lazy! sync' '+TSUpdateSync' +qa"
 
 print_section "Setup global gitignore"
