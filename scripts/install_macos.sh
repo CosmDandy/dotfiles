@@ -27,8 +27,14 @@ if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
 fi
 
 print_section "Applying nix-darwin configuration"
-darwin-rebuild switch --flake $SCRIPT_DIR/nix#default
-# sudo nix --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake $SCRIPT_DIR/nix/flake.nix
+# Вариант 1: Простое условие
+if command -v darwin-rebuild &> /dev/null; then
+  echo "darwin-rebuild установлен"
+  darwin-rebuild switch --flake $SCRIPT_DIR/nix#macbook-cosmdandy
+else
+  echo "darwin-rebuild не найден, используем nix run"
+  sudo nix --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake $SCRIPT_DIR/nix#macbook-cosmdandy
+fi
 
 print_section "Creating symbolic links"
 "$SCRIPT_DIR/macos/setup_symlinks.sh"

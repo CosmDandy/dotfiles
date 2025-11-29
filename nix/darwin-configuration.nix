@@ -35,10 +35,10 @@
       "visual-studio-code"
       "devpod"
       "utm"
-      #"datagrip"
       # AI инструменты
       "chatgpt"
       "claude"
+      "lm-studio"
       # Продуктивность
       "obsidian"
       "timing"
@@ -75,6 +75,7 @@
     btop
     lazygit
     lazydocker
+    k9s
     nodejs
     python3
     uv
@@ -88,11 +89,12 @@
     neovim
     atuin
     iperf3
-    speedtest-cli
     git
     unzip
     wget
     curl
+    ffmpeg
+    claude-code
   ];
 
   # ===============================
