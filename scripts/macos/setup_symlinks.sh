@@ -25,6 +25,7 @@ links=(
   "$PWD/zsh/completions:$HOME/.zsh/completions"
   "$PWD/git/.gitignore_global:$HOME/.gitignore_global"
   "$PWD/git/.gitconfig:$HOME/.gitconfig"
+  "$PWD/lazygit/config.yml:$XDG_CONFIG_HOME/lazygit/config.yml"
   "$PWD/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
   "$PWD/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$PWD/nvim:$XDG_CONFIG_HOME/nvim"
