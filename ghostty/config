@@ -1,7 +1,8 @@
 font-size = 15
 theme = light:Builtin Solarized Light,dark:Builtin Solarized Dark
 
-# fullscreen = true
+fullscreen = true
 
 mouse-hide-while-typing = true
 
+keybind = shift+enter=text:\x1b\r
