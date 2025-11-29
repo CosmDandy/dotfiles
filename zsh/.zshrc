@@ -52,7 +52,6 @@ alias dt='cd ~/Desktop'
 alias docs='cd ~/Documents'
 
 alias v='nvim'
-alias cr='cursor .'
 alias s='spf'
 alias b='btop'
 alias t='tmux'
@@ -61,6 +60,7 @@ alias lzd='lazydocker'
 
 alias ds='devpod ssh'
 alias dpd='devpod delete'
+alias dps='devpod stop'
 
 alias c='clear'
 alias e='exit'
@@ -87,7 +87,6 @@ alias du='du -h'
 alias free='free -h'
 alias ps='ps aux'
 
-alias t='tmux'
 alias ta='tmux attach'
 alias tl='tmux list-sessions'
 alias tk='tmux kill-session -t'
@@ -186,3 +185,8 @@ zinit light-mode for \
     zdharma-continuum/zinit-annex-rust
 
 ### End of Zinit's installer chunk
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/Users/cosmdandy/.lmstudio/bin"
+# End of LM Studio CLI section
+
