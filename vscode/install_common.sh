@@ -20,7 +20,7 @@ install_extensions() {
 # Проверяем доступность команд
 check_command() {
   local cmd="$1"
-  if ! command -v "$cmd" &> /dev/null; then
+  if ! command -v "$cmd" &>/dev/null; then
     echo "Warning: $cmd is not available"
     return 1
   fi

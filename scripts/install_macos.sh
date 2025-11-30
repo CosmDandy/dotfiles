@@ -1,48 +1,26 @@
 #!/usr/bin/env zsh
 
 set -e
+START_TIME=$(date +%s)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/scripts/common.sh"
 
-print_section "Installing system dependencies"
-softwareupdate --install-rosetta
+"$SCRIPT_DIR/scripts/macos/install_nix.sh"
 
-print_section "Installing Homebrew"
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+"$SCRIPT_DIR/scripts/macos/install_brew.sh"
 
-print_section "Configuring Homebrew environment"
-BREW_PROFILE="$HOME/.zprofile"
-if ! grep -q 'eval "\$\(\/opt\/homebrew\/bin\/brew shellenv\)"' "$BREW_PROFILE"; then
-  echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$BREW_PROFILE"
-fi
-eval "$(/opt/homebrew/bin/brew shellenv)"
+"$SCRIPT_DIR/scripts/macos/install_extra.sh"
 
-print_section "Installing Nix"
-curl -L https://nixos.org/nix/install | sh
+"$SCRIPT_DIR/scripts/macos/setup_devpod.sh"
 
-if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
-  print_section "Loading Nix into current session"
-  . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
-fi
+"$SCRIPT_DIR/scripts/macos/setup_symlinks.sh"
 
-print_section "Applying nix-darwin configuration"
-# Вариант 1: Простое условие
-if command -v darwin-rebuild &> /dev/null; then
-  echo "darwin-rebuild установлен"
-  darwin-rebuild switch --flake $SCRIPT_DIR/nix#macbook-cosmdandy
-else
-  echo "darwin-rebuild не найден, используем nix run"
-  sudo nix --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake $SCRIPT_DIR/nix#macbook-cosmdandy
-fi
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+MINUTES=$((ELAPSED / 60))
+SECONDS=$((ELAPSED % 60))
 
-print_section "Creating symbolic links"
-"$SCRIPT_DIR/macos/setup_symlinks.sh"
+print_section "Setup complete. Script execution time: ${MINUTES}m ${SECONDS}s"
 
-print_section "Setting up devpod"
-"$SCRIPT_DIR/macos/setup_devpod.sh"
-
-print_section "Installing apps"
-"$SCRIPT_DIR/macos/setup_extra.sh"
-
-print_section "Install complete"
+# сделать сортировку по типу параметром по умолчанию на рабочем столе и в папках

@@ -5,6 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/scripts/common.sh"
 
+print_section "Creating symbolic links"
 export XDG_CONFIG_HOME="$HOME/.config"
 dirs=(
   "$XDG_CONFIG_HOME"
@@ -39,6 +40,7 @@ links=(
   "$PWD/vscode/keybindings.json:$HOME/Library/Application Support/Code/User/keybindings.json"
   "$PWD/leader_key/config.json:$HOME/Library/Application Support/Leader Key/config.json"
   "$PWD/aerospace/.aerospace.toml:$HOME/.aerospace.toml"
+  "$HOME/.dotfiles-private/ssh/config:$HOME/.ssh/config"
 )
 
 print_section "Create directories for symbolic links"

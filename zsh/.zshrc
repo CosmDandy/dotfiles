@@ -175,7 +175,6 @@ eval "$(starship init zsh)"
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
 
-export SSH_AUTH_SOCK=/Users/cosmdandy/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh
 # Load a few important annexes, without Turbo
 # (this is currently required for annexes)
 zinit light-mode for \
