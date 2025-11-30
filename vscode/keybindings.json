@@ -15,7 +15,7 @@
     "command": "composerMode.chat"
   },
   {
-    "key": "cmd+shift+i",
+    "key": "cmd+i",
     "command": "composerMode.agent"
   },
   // ====== GLOBAL NAVIGATION (work in all modes) ======
