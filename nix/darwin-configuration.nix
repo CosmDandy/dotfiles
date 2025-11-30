@@ -24,7 +24,13 @@
       upgrade = true;
     };
     casks = [
-      "secretive"
+      # with password
+      "karabiner-elements"
+      "microsoft-teams"
+      "openvpn-connect"
+      # "amneziavpn"
+      # ----------
+      # "secretive"
       "orbstack"
       "leader-key"
       # Браузеры
@@ -46,17 +52,13 @@
       # Коммуникации
       "telegram"
       "whatsapp"
-      "microsoft-teams"
       # Системные утилиты
-      "amneziavpn"
-      "openvpn-connect"
       "onyx"
       "ukelele"
       "betterdisplay"
       "jordanbaird-ice"
       # Дополнительные утилиты
       "flux"
-      "karabiner-elements"
       # Оконный менеджер
       "nikitabobko/tap/aerospace"
     ];
