@@ -39,143 +39,152 @@ return {
 
         -- WhichKey с прозрачным фоном
         hl.WhichKey = {
-          bg = "NONE", -- прозрачный фон
+          bg = 'NONE', -- прозрачный фон
           fg = c.fg,
         }
         hl.WhichKeyTitle = {
-          bg = "NONE",
+          bg = 'NONE',
           fg = c.fg,
         }
         hl.WhichKeyBorder = {
-          bg = "NONE",
+          bg = 'NONE',
           fg = c.fg,
         }
         hl.WhichKeyFloat = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.WhichKeyDesc = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.WhichKeyGroup = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.WhichKeySeparator = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.WhichKeyValue = {
-          bg = "NONE",
+          bg = 'NONE',
         }
 
         hl.TreesitterContext = {
-          bg = is_dark and "#073642" or "#151003",
+          bg = is_dark and '#073642' or '#151003',
         }
 
         -- Barbecue (winbar) с прозрачным фоном
         hl.BarbecueNormal = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueEllipsis = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueSeparator = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueDirectory = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueDirectoryBasename = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueContext = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueContextPrefix = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueContextSuffix = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.BarbecueModified = {
-          bg = "NONE",
+          bg = 'NONE',
         }
 
         -- Статусная строка (mini.statusline) с прозрачным фоном
         hl.StatusLine = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.StatusLineNC = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineDevinfo = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineFilename = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineFileinfo = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineInactive = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineModeNormal = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineModeInsert = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineModeVisual = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineModeReplace = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineModeCommand = {
-          bg = "NONE",
+          bg = 'NONE',
         }
         hl.MiniStatuslineMode = {
-          bg = "NONE",
+          bg = 'NONE',
         }
 
         -- Текущая строка с прозрачным фоном
         hl.CursorLine = {
-          bg = is_dark and "#073642" or "#151003",
+          bg = is_dark and '#073642' or '#151003',
+        }
+        hl.LineNr = {
+          fg = '#576d74',
+        }
+        hl.LineNrAbove = {
+          fg = '#576d74',
+        }
+        hl.LineNrBelow = {
+          fg = '#576d74',
         }
 
         -- Выделение
         hl.Visual = {
-          bg = is_dark and "#073642" or "#151003",
-          fg = is_dark and "#FDF6E3" or "#FDF6E3", -- base3 (светлый текст)
-          bold = true,                             -- Делаем текст жирным для лучшей видимости
+          bg = is_dark and '#073642' or '#151003',
+          fg = is_dark and '#FDF6E3' or '#FDF6E3', -- base3 (светлый текст)
+          bold = true, -- Делаем текст жирным для лучшей видимости
         }
 
         -- Поиск
         hl.Search = {
-          bg = is_dark and "#B58900" or "#CB4B16", -- Желтый для темной, Оранжевый для светлой
-          fg = is_dark and "#002B36" or "#FDF6E3", -- base03 для темной, base3 для светлой
+          bg = is_dark and '#B58900' or '#CB4B16', -- Желтый для темной, Оранжевый для светлой
+          fg = is_dark and '#002B36' or '#FDF6E3', -- base03 для темной, base3 для светлой
           bold = true,
         }
 
         -- GitSigns
         hl.FloatBorder = {
           bg = c.bg_dark,
-          fg = c.fg
+          fg = c.fg,
         }
         hl.NormalFloat = {
           bg = c.bg_dark,
-          fg = c.fg
+          fg = c.fg,
         }
         hl.GitSignsAdd = {
           bg = c.bg_dark,
-          fg = c.green
+          fg = c.green,
         }
         hl.GitSignsChange = {
           bg = c.bg_dark,
-          fg = c.yellow
+          fg = c.yellow,
         }
         hl.GitSignsDelete = {
           bg = c.bg_dark,
-          fg = c.red
+          fg = c.red,
         }
       end,
     }

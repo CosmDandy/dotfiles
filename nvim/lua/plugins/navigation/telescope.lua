@@ -1,6 +1,11 @@
 return { -- Fuzzy Finder (files, lsp, etc)
   'nvim-telescope/telescope.nvim',
-  event = 'VimEnter',
+  cmd = 'Telescope',
+  keys = {
+    { '<leader>s', desc = '[S]earch' },
+    { '<leader>/', desc = 'Search in buffer' },
+    { '<leader><leader>', desc = 'Buffers' },
+  },
   branch = '0.1.x',
   dependencies = {
     'nvim-lua/plenary.nvim',
@@ -14,132 +19,18 @@ return { -- Fuzzy Finder (files, lsp, etc)
     {
       'nvim-telescope/telescope-ui-select.nvim',
     },
-    {
-      'nvim-tree/nvim-web-devicons',
-      enabled = vim.g.have_nerd_font,
-    },
+    -- {
+    --   'nvim-tree/nvim-web-devicons',
+    --   enabled = vim.g.have_nerd_font,
+    -- },
     {
       'nvim-telescope/telescope-file-browser.nvim',
     },
   },
   config = function()
-    local telescope = require('telescope')
-    local actions = require('telescope.actions')
-    local action_state = require('telescope.actions.state')
-
     require('telescope').setup {
       defaults = {
         path_display = { 'smart' },
-        file_ignore_patterns = {
-          -- Python специфичные исключения
-          '__pycache__/',
-          '%.pyc$',
-          '%.pyo$',
-          '%.pyd$',
-          '.Python',
-          'pip-log%.txt',
-          'pip-delete-this-directory%.txt',
-          '%.egg%-info/',
-          '%.egg/',
-          -- Виртуальные окружения
-          'venv/',
-          '.venv/',
-          'env/',
-          '.env/',
-          'virtualenv/',
-          -- Node.js для fullstack проектов
-          'node_modules/',
-          'package%-lock%.json',
-          -- DevOps артефакты
-          '%.terraform/',
-          'terraform%.tfstate',
-          'terraform%.tfstate%.backup',
-          -- IDE и редакторы
-          '%.vscode/',
-          '%.idea/',
-          '%.DS_Store',
-          -- Git
-          '%.git/',
-          -- Логи и временные файлы
-          '%.log$',
-          '%.tmp$',
-          '%.temp$',
-        },
-
-        -- Сортировка результатов с пониманием приоритетов разработчика
-        cache_picker = {
-          num_pickers = 10, -- Кешируем последние 10 поисков для быстрого доступа
-        },
-        pickers = {
-          find_files = {
-            hidden = true,
-            find_command = {
-              'fd',
-              '--type', 'f',
-              '--strip-cwd-prefix',
-              '--exclude', '__pycache__',
-              '--exclude', '.git',
-              '--exclude', 'node_modules',
-              '--exclude', 'venv',
-              '--exclude', '.venv',
-            },
-          },
-          live_grep = {
-            additional_args = function()
-              return {
-                '--smart-case',             -- Умная чувствительность к регистру
-                '--hidden',                 -- Поиск в скрытых файлах (конфигурации)
-                '--glob', '!.git/*',        -- Исключаем .git
-                '--glob', '!__pycache__/*', -- Исключаем Python кеш
-                '--glob', '!venv/*',        -- Исключаем виртуальные окруженя
-                '--glob', '!.venv/*',
-                '--glob', '!node_modules/*',
-              }
-            end,
-          },
-        },
-        sorting_strategy = 'ascending',
-        layout_strategy = 'horizontal',
-        layout_config = {
-          horizontal = {
-            prompt_position = 'top',
-            preview_width = 0.6, -- Больше места для предварительного просмотра кода
-            results_width = 0.4,
-          },
-          vertical = {
-            mirror = false,
-          },
-          width = 0.90, -- Используем почти весь экран для эффективности
-          height = 0.85,
-          preview_cutoff = 120,
-        },
-
-        mappings = {
-          i = {
-            ['<C-j>'] = actions.move_selection_next,
-            ['<C-k>'] = actions.move_selection_previous,
-            ['<C-q>'] = actions.send_to_qflist + actions.open_qflist,
-            ['<C-s>'] = actions.send_selected_to_qflist + actions.open_qflist,
-            ['<C-h>'] = actions.which_key,         -- Показать доступные действия
-            ['<CR>'] = smart_open_file,            -- Используем нашу умную функцию открытия
-
-            ['<C-t>'] = actions.select_tab,        -- Открыть в новой вкладке
-            ['<C-v>'] = actions.select_vertical,   -- Вертикальный сплит
-            ['<C-x>'] = actions.select_horizontal, -- Горизонтальный сплит
-
-            ['<C-u>'] = actions.preview_scrolling_up,
-            ['<C-d>'] = actions.preview_scrolling_down,
-          },
-
-          n = {
-            ['q'] = actions.close,
-            ['<CR>'] = smart_open_file,
-            ['<C-q>'] = actions.send_to_qflist + actions.open_qflist,
-            ['<C-s>'] = actions.send_selected_to_qflist + actions.open_qflist,
-            ['gg'] = actions.move_to_top,
-            ['G'] = actions.move_to_bottom,
-          },
-        },
       },
       extensions = {
         -- TODO: разобраться с файловым менеджером
@@ -160,26 +51,97 @@ return { -- Fuzzy Finder (files, lsp, etc)
           },
         },
       },
+      pickers = {
+        git_bcommits = {
+          prompt_title = 'File history',
+          theme = 'ivy',
+          layout_config = {
+            height = 0.6,
+            preview_width = 0.6,
+          },
+          git_command = {
+            'git',
+            'log',
+            '--pretty=%h %ad %s',
+            '--date=short',
+            '--follow',
+            '--',
+          },
+        },
+
+        git_commits = {
+          layout_strategy = 'vertical',
+          layout_config = {
+            width = 0.9,
+            height = 0.9,
+            preview_height = 0.6,
+          },
+        },
+
+        find_files = {
+          layout_strategy = 'vertical',
+          layout_config = {
+            width = 0.9,
+            height = 0.9,
+            preview_height = 0.6,
+          },
+        },
+
+        live_grep = {
+          layout_strategy = 'vertical',
+          layout_config = {
+            width = 0.9,
+            height = 0.9,
+            preview_height = 0.6,
+          },
+        },
+
+        buffers = {
+          theme = 'dropdown',
+          previewer = false,
+        },
+
+        builtin = {
+          theme = 'dropdown',
+          previewer = false,
+        },
+
+        diagnostics = {
+          layout_strategy = 'vertical',
+          layout_config = {
+            width = 0.9,
+            height = 0.9,
+            preview_height = 0.6,
+          },
+        },
+
+        oldfiles = {
+          theme = 'dropdown',
+          previewer = false,
+        },
+      },
     }
     pcall(require('telescope').load_extension, 'fzf')
     pcall(require('telescope').load_extension, 'ui-select')
 
-
     -- [[Telescope Keymaps]]
     local builtin = require 'telescope.builtin'
-    vim.keymap.set('n', '<leader>s/', builtin.search_history, { desc = '[h]istory' })
+    vim.keymap.set('n', '<leader>gf', builtin.git_bcommits, { desc = '[f]ile history' })
+    vim.keymap.set('n', '<leader>gh', builtin.git_commits, { desc = 'commits [h]istory' })
+    vim.keymap.set('n', '<leader>gc', builtin.git_branches, { desc = '[c]hange branches' })
+    vim.keymap.set('n', '<leader>sh', builtin.search_history, { desc = '[h]istory' })
     vim.keymap.set('n', '<leader>sH', builtin.help_tags, { desc = '[H]elp' })
-    vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[k]eymaps' })
-    vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[f]iles' })
+    vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[K]eymaps' })
+    vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[F]iles' })
     vim.keymap.set('n', '<leader>s?', builtin.builtin, { desc = 'Telescope' })
-    vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[w]ord' })
-    vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[g]rep' })
-    vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[d]iagnostics' })
-    vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[r]esume' })
-    vim.keymap.set('n', '<leader>sm', builtin.marks, { desc = '[m]arks' })
+    vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[W]ord' })
+    vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[G]rep' })
+    vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[D]iagnostics' })
+    vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[R]esume' })
+    vim.keymap.set('n', '<leader>sm', builtin.marks, { desc = '[M]arks' })
     vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[.] Recent Files' })
     vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Buffers' })
-    vim.keymap.set('n', '<leader>st', '<cmd>TodoTelescope keywords=TODO,FIX<CR>', {
+    vim.keymap.set('n', '<leader>st', '<cmd>TodoTelescope<CR>', {
       desc = '[T]odo',
       noremap = true,
       silent = true,
@@ -187,29 +149,29 @@ return { -- Fuzzy Finder (files, lsp, etc)
 
     vim.keymap.set('n', '<leader>/', function()
       builtin.current_buffer_fuzzy_find(require('telescope.themes').get_dropdown {
+        winblend = 10,
         previewer = false,
       })
     end, { desc = '[/] Search' })
 
     -- Поиск по открытым файлам
-    vim.keymap.set('n', '<leader>sG', function()
+    vim.keymap.set('n', '<leader>s/', function()
       builtin.live_grep {
         grep_open_files = true,
-        prompt_title = '[G]rep in Open Files',
+        prompt_title = 'Grep in Open Files',
       }
-    end, { desc = '[G]rep in Open Files' })
+    end, { desc = '[/] in Open Files' })
 
     -- Shortcut for searching your Neovim configuration files
     vim.keymap.set('n', '<leader>sn', function()
       builtin.find_files { cwd = vim.fn.stdpath 'config' }
-    end, { desc = '[n]eovim files' })
+    end, { desc = '[N]eovim files' })
 
-    -- Файловый браузер
-    vim.keymap.set('n', '<leader>e', function()
-      require('telescope').extensions.file_browser.file_browser({
-        path = vim.fn.expand('%:p:h'),
-        select_buffer = true,
-      })
-    end, { desc = 'File [e]xplorer' })
+    -- Grep по типу файлов
+    vim.keymap.set('n', '<leader>sl', function()
+      builtin.live_grep {
+        type_filter = vim.fn.input 'File type: ',
+      }
+    end, { desc = 'Grep by [L]anguage' })
   end,
 }

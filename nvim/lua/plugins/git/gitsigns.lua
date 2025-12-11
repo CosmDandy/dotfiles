@@ -1,5 +1,6 @@
 return {
   'lewis6991/gitsigns.nvim',
+  event = "BufRead",
   opts = {
     max_file_length = 200000,
     preview_config = {
@@ -49,8 +50,9 @@ return {
       map('n', '<leader>gr', gitsigns.reset_hunk, { desc = '[r]eset hunk' })
       map('n', '<leader>gS', gitsigns.stage_buffer, { desc = '[S]tage buffer' })
       map('n', '<leader>gR', gitsigns.reset_buffer, { desc = '[R]eset buffer' })
-      map('n', '<leader>gp', gitsigns.preview_hunk, { desc = '[p]review hunk' })
-      map('n', '<leader>gP', gitsigns.preview_hunk_inline, { desc = '[P]review hunk inline' })
+      map('n', '<leader>gP', gitsigns.preview_hunk, { desc = '[P]review hunk' })
+      map('n', '<leader>gp', gitsigns.preview_hunk_inline, { desc = '[p]review hunk inline' })
+      -- TODO: сделать в обеих командах чтобы фон менялся а не цвет текста
       map('n', '<leader>gB', gitsigns.blame, { desc = '[B]lame' })
       map('n', '<leader>gb', gitsigns.blame_line, { desc = '[b]lame line' })
       map('n', '<leader>gt', gitsigns.toggle_current_line_blame, { desc = 'curent [b]lame line' })
