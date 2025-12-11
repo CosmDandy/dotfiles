@@ -1,6 +1,9 @@
+-- barbecue
+-- https://github.com/utilyre/barbecue.nvim
+
 return {
   'utilyre/barbecue.nvim',
-  event = "VeryLazy",
+  event = 'BufReadPost',
   name = 'barbecue',
   version = '*',
   dependencies = {
