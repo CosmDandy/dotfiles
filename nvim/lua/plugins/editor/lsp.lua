@@ -121,9 +121,9 @@ return {
           },
           float = {
             border = 'rounded',
-            source = 'always',      -- Всегда показывать источник в всплывающих окнах
+            source = 'always', -- Всегда показывать источник в всплывающих окнах
           },
-          severity_sort = true,     -- Сортировать по важности
+          severity_sort = true, -- Сортировать по важности
           update_in_insert = false, -- Не отвлекать во время набора текста
         }
       end
@@ -210,30 +210,52 @@ return {
           settings = {
             yaml = {
               schemaStore = {
-                enable = false, -- Отключаем встроенное хранилище схем
+                enable = false,
                 url = '',
               },
               schemas = require('schemastore').yaml.schemas {
-                -- Добавляем популярные схемы для DevOps
+                extra = {
+                  {
+                    name = 'Kubernetes',
+                    url = 'https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.28.0-standalone-strict/all.json',
+                  },
+                  {
+                    name = 'Ansible',
+                    url = 'https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook',
+                  },
+                },
                 select = {
                   'docker-compose.yml',
                   'GitHub Workflow',
                   'gitlab-ci',
-                  'docker-compose.yml',
+                  'kustomization.yaml',
+                  'Helm Chart.yaml',
                 },
               },
-              -- Настройки валидации YAML
               validate = true,
               completion = true,
               hover = true,
-              -- Форматирование YAML с правильными отступами
               format = {
                 enable = true,
                 singleQuote = false,
                 bracketSpacing = true,
               },
+              -- Важно для Kubernetes multi-document YAML
+              customTags = {
+                '!vault',
+                '!encrypted/pkcs1-oaep',
+                '!reference sequence',
+              },
             },
           },
+          on_attach = function(client, bufnr)
+            -- Автоопределение схемы по имени файла
+            if vim.fn.expand('%:t'):match 'kustomization%.yaml' then
+              vim.b.yaml_schema = 'Kustomization'
+            elseif vim.fn.expand('%:t'):match 'Chart%.yaml' then
+              vim.b.yaml_schema = 'Helm Chart'
+            end
+          end,
         },
 
         -- Bash LSP для shell скриптов и DevOps автоматизации
@@ -314,54 +336,99 @@ return {
             },
           },
         },
+
+        -- В lsp.lua, добавить в servers:
+        terraformls = {
+          filetypes = { 'terraform', 'hcl', 'tf' },
+          settings = {
+            terraform = {
+              experimentalFeatures = {
+                validateOnSave = true,
+              },
+            },
+          },
+        },
+
+        ansiblels = {
+          settings = {
+            ansible = {
+              ansible = {
+                path = 'ansible',
+              },
+              executionEnvironment = {
+                enabled = false,
+              },
+              python = {
+                interpreterPath = 'python3',
+              },
+              validation = {
+                enabled = true,
+                lint = {
+                  enabled = true,
+                  path = 'ansible-lint',
+                },
+              },
+            },
+          },
+          filetypes = { 'yaml.ansible' },
+        },
       }
 
       -- Список инструментов для автоматической установки через Mason
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         -- LSP серверы
-        'pyright',                         -- Python LSP
-        'lua-language-server',             -- Lua LSP
-        'json-lsp',                        -- JSON LSP
-        'yaml-language-server',            -- YAML LSP
-        'bash-language-server',            -- Bash LSP
-        'dockerfile-language-server',      -- Docker LSP
+        'pyright', -- Python LSP
+        'lua-language-server', -- Lua LSP
+        'json-lsp', -- JSON LSP
+        'yaml-language-server', -- YAML LSP
+        'bash-language-server', -- Bash LSP
+        'dockerfile-language-server', -- Docker LSP
         'docker-compose-language-service', -- Docker Compose LSP
-        'html-lsp',                        -- HTML LSP
-        'css-lsp',                         -- CSS LSP
-        'typescript-language-server',      -- TypeScript/JavaScript LSP
+        'html-lsp', -- HTML LSP
+        'css-lsp', -- CSS LSP
+        'typescript-language-server', -- TypeScript/JavaScript LSP
 
         -- DAP для отладки
         'debugpy', -- Python debugger
 
         -- Linters для дополнительной проверки кода
-        'ruff',       -- Python linter (быстрый, современный)
-        'mypy',       -- Python type checker
-        'pylint',     -- Python code analysis
-        'luacheck',   -- Lua linter
-        'eslint_d',   -- JavaScript/TypeScript linter
+        'ruff', -- Python linter (быстрый, современный)
+        'mypy', -- Python type checker
+        'pylint', -- Python code analysis
+        'luacheck', -- Lua linter
+        'eslint_d', -- JavaScript/TypeScript linter
         'markuplint', -- HTML linter
-        'stylelint',  -- CSS linter
-        'hadolint',   -- Dockerfile linter
-        'yamllint',   -- YAML linter
+        'stylelint', -- CSS linter
+        'hadolint', -- Dockerfile linter
+        'yamllint', -- YAML linter
         'shellcheck', -- Shell script linter
 
         -- Formatters для автоформатирования
-        'black',        -- Python formatter (стандарт PEP 8)
-        'isort',        -- Python import sorter
-        'stylua',       -- Lua formatter
-        'prettierd',    -- JavaScript/TypeScript/HTML/CSS formatter
-        'yamlfmt',      -- YAML formatter
+        'black', -- Python formatter (стандарт PEP 8)
+        'isort', -- Python import sorter
+        'autopep8', -- Альтернативный Python formatter
+        'stylua', -- Lua formatter
+        'prettierd', -- JavaScript/TypeScript/HTML/CSS formatter
+        'yamlfmt', -- YAML formatter
         'xmlformatter', -- XML formatter
-        'beautysh',     -- Bash formatter
-        'shfmt',        -- Shell script formatter
+        'beautysh', -- Bash formatter
+        'shfmt', -- Shell script formatter
+
+        'terraform-ls',
+        'tflint',
+        'terraform-fmt',
+
+        'ansible-language-server',
+        'ansible-lint',
+        'jinja-lsp',
       })
 
       -- Автоматическая установка инструментов
       require('mason-tool-installer').setup {
         ensure_installed = ensure_installed,
-        auto_update = true,  -- Автообновление инструментов
-        run_on_start = true, -- Проверка при запуске
+        auto_update = false, -- Отключаем автообновление для быстрого запуска
+        run_on_start = false, -- Отключаем проверку при запуске (используйте :MasonToolsInstall вручную)
       }
 
       -- Настройка серверов через mason-lspconfig
