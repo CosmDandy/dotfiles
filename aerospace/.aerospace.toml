@@ -366,6 +366,12 @@ run = 'move-node-to-workspace 6'
 
 # 7
 [[on-window-detected]]
+if.app-id = 'com.brnbw.Leader-Key'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'com.electron.wispr-flow'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
 if.app-id = 'com.maxgoedjen.Secretive.Host'
 run = 'move-node-to-workspace 7'
 [[on-window-detected]]
