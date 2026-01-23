@@ -417,7 +417,6 @@ return {
 
         'terraform-ls',
         'tflint',
-        'terraform-fmt',
 
         'ansible-language-server',
         'ansible-lint',

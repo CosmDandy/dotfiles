@@ -10,6 +10,7 @@ return {
   dependencies = {
     {
       'L3MON4D3/LuaSnip',
+      event = 'InsertEnter',
       build = (function()
         return 'make install_jsregexp'
       end)(),
