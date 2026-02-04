@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/scripts/common.sh"
 
 print_section "Setting up devpod"
 print_section "Setting up devpod options"
-devpod context set-options --option DOTFILES_URL=git@github.com:CosmDandy/dotfiles-devpod.git --option GIT_SSH_SIGNATURE_FORWARDING=true --option SSH_ADD_PRIVATE_KEYS=true --option SSH_AGENT_FORWARDING=true --option SSH_INJECT_DOCKER_CREDENTIALS=true --option SSH_INJECT_GIT_CREDENTIALS=false
+devpod context set-options --option DOTFILES_URL=git@github.com:CosmDandy/dotfiles-devpod.git --option GIT_SSH_SIGNATURE_FORWARDING=false --option SSH_ADD_PRIVATE_KEYS=true --option SSH_AGENT_FORWARDING=true --option SSH_INJECT_DOCKER_CREDENTIALS=true --option SSH_INJECT_GIT_CREDENTIALS=false
 
 print_section "Setting up default ide: cursor"
 devpod ide use none

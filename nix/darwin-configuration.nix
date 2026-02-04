@@ -28,7 +28,6 @@
       "karabiner-elements"
       "microsoft-teams"
       "openvpn-connect"
-      # "amneziavpn"
       # ----------
       # "secretive"
       "orbstack"
@@ -51,12 +50,12 @@
       "raycast"
       # Коммуникации
       "telegram"
-      "whatsapp"
       # Системные утилиты
       "onyx"
       "ukelele"
       "betterdisplay"
       "jordanbaird-ice"
+      "syncthing-app"
       # Дополнительные утилиты
       "flux"
       # Оконный менеджер
@@ -97,6 +96,7 @@
     curl
     ffmpeg
     claude-code
+    dive
   ];
 
   # ===============================
