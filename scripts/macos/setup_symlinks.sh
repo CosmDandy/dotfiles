@@ -17,12 +17,14 @@ dirs=(
   "$HOME/Library/Application Support/Cursor/User/"
   "$HOME/Library/Application Support/Code/User/"
   "$HOME/.zsh/completions"
+  "$HOME/.claude"
 )
 
 links=(
   "$PWD/tmux/.tmux.conf:$HOME/.tmux.conf"
   "$PWD/zsh/.zprofile:$HOME/.zprofile"
   "$PWD/zsh/.zshrc:$HOME/.zshrc"
+  "$PWD/zsh/.hushlogin:$HOME/.hushlogin"
   "$PWD/zsh/completions:$HOME/.zsh/completions"
   "$PWD/git/.gitignore_global:$HOME/.gitignore_global"
   "$PWD/git/.gitconfig:$HOME/.gitconfig"
@@ -40,6 +42,8 @@ links=(
   "$PWD/vscode/keybindings.json:$HOME/Library/Application Support/Code/User/keybindings.json"
   "$PWD/leader_key/config.json:$HOME/Library/Application Support/Leader Key/config.json"
   "$PWD/aerospace/.aerospace.toml:$HOME/.aerospace.toml"
+  "$PWD/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
+  "$PWD/claude/settings.json:$HOME/.claude/settings.json"
   "$HOME/.dotfiles-private/ssh/config:$HOME/.ssh/config"
 )
 
