@@ -49,24 +49,6 @@ return {
       mode = '',
       desc = 'Toggle [F]ormat on save',
     },
-    {
-      '<leader>fi',
-      function()
-        -- Быстрое форматирование только импортов для Python
-        local filetype = vim.bo.filetype
-        if filetype == 'python' then
-          require('conform').format {
-            formatters = { 'isort' },
-            async = true,
-          }
-          vim.notify('Python imports отформатированы', vim.log.levels.INFO)
-        else
-          vim.notify('Форматирование импортов доступно только для Python', vim.log.levels.WARN)
-        end
-      end,
-      mode = '',
-      desc = 'Format [I]mports (Python)',
-    },
   },
   opts = {
     notify_on_error = true, -- Уведомляем об ошибках форматирования
@@ -87,7 +69,7 @@ return {
 
       -- Проверяем размер файла - не форматируем очень большие файлы автоматически
       local max_filesize = 100 * 1024 -- 100KB
-      local ok, stats = pcall(vim.loop.fs_stat, bufname)
+      local ok, stats = pcall(vim.uv.fs_stat, bufname)
       if ok and stats and stats.size > max_filesize then
         vim.notify('Файл слишком большой для автоформатирования', vim.log.levels.WARN)
         return false
@@ -264,35 +246,6 @@ return {
 
     -- Создаем автокоманды для специфичных сценариев
     local conform_augroup = vim.api.nvim_create_augroup('python-devops-conform', { clear = true })
-
-    -- Автоматическое форматирование Python импортов при их добавлении
-    vim.api.nvim_create_autocmd('BufWritePost', {
-      group = conform_augroup,
-      pattern = '*.py',
-      callback = function()
-        -- Проверяем, были ли изменены импорты в начале файла
-        local lines = vim.api.nvim_buf_get_lines(0, 0, 20, false)
-        local has_import_changes = false
-
-        for _, line in ipairs(lines) do
-          if line:match '^import ' or line:match '^from .* import' then
-            has_import_changes = true
-            break
-          end
-        end
-
-        -- Если есть изменения в импортах, запускаем только isort
-        if has_import_changes then
-          vim.defer_fn(function()
-            require('conform').format {
-              formatters = { 'isort' },
-              async = true,
-              quiet = true,
-            }
-          end, 100) -- Небольшая задержка после сохранения
-        end
-      end,
-    })
 
     -- Специальная обработка для YAML файлов в .github директории
     vim.api.nvim_create_autocmd('BufWritePre', {
