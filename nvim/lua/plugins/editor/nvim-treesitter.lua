@@ -1,8 +1,9 @@
 return {
   {
     'nvim-treesitter/nvim-treesitter',
+    lazy = false,
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs',
+    main = 'nvim-treesitter',
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
       ensure_installed = {
@@ -24,6 +25,8 @@ return {
         'query',
         'dockerfile',
         'yaml',
+        'hcl',
+        'terraform',
         'toml',
         'xml',
         'graphql',

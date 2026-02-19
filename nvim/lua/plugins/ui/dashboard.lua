@@ -26,8 +26,6 @@ return {
     dashboard.section.header.val = get_centered_header()
     dashboard.section.header.opts = { position = 'center', hl = 'AlphaHeader', }
 
-    vim.cmd [[highlight AlphaHeader guifg=#ff6347 guibg=NONE gui=bold]]
-
     alpha.setup(dashboard.config)
   end,
 }

@@ -12,6 +12,6 @@ return {
     'nvim-lua/plenary.nvim',
   },
   keys = {
-    vim.keymap.set('n', '<leader>gg', '<cmd>LazyGit<cr>', { desc = 'Lazy[G]it' }),
+    { '<leader>gg', '<cmd>LazyGit<cr>', desc = 'Lazy[G]it' },
   },
 }

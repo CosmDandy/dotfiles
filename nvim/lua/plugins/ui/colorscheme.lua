@@ -5,7 +5,10 @@ return {
   opts = function()
     return {
       on_highlights = function(hl, c)
-        local is_dark = vim.o.background == 'dark'
+        -- Проверяем background динамически
+        local function is_dark()
+          return vim.o.background == 'dark'
+        end
 
         -- Telescope
         hl.TelescopeNormal = {
@@ -35,6 +38,14 @@ return {
         hl.TelescopeResultsTitle = {
           bg = c.bg_dark,
           fg = c.bg_dark,
+        }
+        hl.TelescopeSelection = {
+          bg = is_dark() and '#073642' or '#eee8d5', -- base02 для темной, base2 для светлой
+          fg = is_dark() and c.fg or '#002B36', -- стандартный fg для темной, base03 для светлой
+        }
+        hl.TelescopeSelectionCaret = {
+          fg = is_dark() and c.red or '#DC322F', -- accent цвет
+          bg = is_dark() and '#073642' or '#eee8d5',
         }
 
         -- WhichKey с прозрачным фоном
@@ -67,7 +78,7 @@ return {
         }
 
         hl.TreesitterContext = {
-          bg = is_dark and '#073642' or '#151003',
+          bg = is_dark() and '#073642' or '#eee8d5', -- base02 для темной, base2 для светлой
         }
 
         -- Barbecue (winbar) с прозрачным фоном
@@ -137,9 +148,9 @@ return {
           bg = 'NONE',
         }
 
-        -- Текущая строка с прозрачным фоном
+        -- Текущая строка
         hl.CursorLine = {
-          bg = is_dark and '#073642' or '#151003',
+          bg = is_dark() and '#073642' or '#eee8d5', -- base02 для темной, base2 для светлой
         }
         hl.LineNr = {
           fg = '#576d74',
@@ -151,17 +162,61 @@ return {
           fg = '#576d74',
         }
 
+        -- Курсор - cyan accent color
+        hl.Cursor = {
+          fg = is_dark() and '#002B36' or '#FDF6E3', -- base03 для темной, base3 для светлой
+          bg = '#2aa198', -- cyan для обеих тем
+        }
+        hl.lCursor = {
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#2aa198',
+        }
+        hl.CursorIM = {
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#2aa198',
+        }
+
+        -- Парные скобки - orange с инверсией для максимальной заметности
+        hl.MatchParen = {
+          fg = is_dark() and '#002B36' or '#FDF6E3', -- темный на светлом или светлый на темном
+          bg = '#cb4b16', -- orange фон
+          bold = true,
+        }
+
+        -- LSP подсветка одинаковых символов - cyan underline на легком фоне
+        hl.LspReferenceText = {
+          bg = is_dark() and '#073642' or '#eee8d5', -- base02/base2
+          underline = true,
+          sp = '#2aa198', -- cyan для underline
+        }
+        hl.LspReferenceRead = {
+          bg = is_dark() and '#073642' or '#eee8d5',
+          underline = true,
+          sp = '#268bd2', -- blue для read
+        }
+        hl.LspReferenceWrite = {
+          bg = is_dark() and '#073642' or '#eee8d5',
+          underline = true,
+          sp = '#cb4b16', -- orange для write (более заметно)
+        }
+
+        -- Alpha dashboard header - orange bold "GO BIG OR GO HOME"
+        hl.AlphaHeader = {
+          fg = '#cb4b16', -- orange
+          bold = true,
+        }
+
         -- Выделение
         hl.Visual = {
-          bg = is_dark and '#073642' or '#151003',
-          fg = is_dark and '#FDF6E3' or '#FDF6E3', -- base3 (светлый текст)
+          bg = is_dark() and '#073642' or '#93a1a1', -- base02 для темной, base1 для светлой
+          fg = is_dark() and '#FDF6E3' or '#002B36', -- base3 для темной, base03 для светлой
           bold = true, -- Делаем текст жирным для лучшей видимости
         }
 
         -- Поиск
         hl.Search = {
-          bg = is_dark and '#B58900' or '#CB4B16', -- Желтый для темной, Оранжевый для светлой
-          fg = is_dark and '#002B36' or '#FDF6E3', -- base03 для темной, base3 для светлой
+          bg = is_dark() and '#B58900' or '#CB4B16', -- Желтый для темной, Оранжевый для светлой
+          fg = is_dark() and '#002B36' or '#FDF6E3', -- base03 для темной, base3 для светлой
           bold = true,
         }
 
