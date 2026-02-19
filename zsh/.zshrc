@@ -58,6 +58,8 @@ alias t='tmux'
 alias lg='lazygit'
 alias lzd='lazydocker'
 
+alias cl='claude'
+
 alias ds='devpod ssh'
 alias dpd='devpod delete'
 alias dps='devpod stop'
@@ -184,8 +186,3 @@ zinit light-mode for \
     zdharma-continuum/zinit-annex-rust
 
 ### End of Zinit's installer chunk
-
-# Added by LM Studio CLI (lms)
-export PATH="$PATH:/Users/cosmdandy/.lmstudio/bin"
-# End of LM Studio CLI section
-
