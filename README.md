@@ -1,20 +1,27 @@
+# DFU Mode
+Control + Option + Shift + Power (MacBook Air M1)
+
+# Установка
+
+1. Заходим в Safari и логинимся в GitHub
+Входим в tailscale
+sudo rm /etc/zshenv добовляем удаление подобного говна
+3. Выполняем код ниже и закидываем ключ в поле
 ```bash
 xcode-select --install
 softwareupdate --install-rosetta --agree-to-license
-read "key_path?Enter path to SSH key: "
+read "key_path?Enter path to SSH private key: "
 GIT_SSH_COMMAND="ssh -i $key_path" git clone -b macos git@github.com:CosmDandy/dotfiles.git .dotfiles
 GIT_SSH_COMMAND="ssh -i $key_path" git clone git@github.com:CosmDandy/dotfiles-private.git .dotfiles-private
 cd ~/.dotfiles
 ./setup.sh
 ```
 
-# Шаблон для проектов с DevPod
-
-Этот репозиторий является отправной точкой для всех моих проектов при работе с которыми я использую [DevPod](https://devpod.sh/)
-
-Для создания проекта в DevPod я использую следующую команду:
-```bash
-devpod up . --id . --provider . --dotfiles https://github.com/CosmDandy/dotfiles-devpod.git
-```
-
-добавить сюда как входить в dfu mode
+balena etcher
+Office 2024
+wispr flow
+wakatime
+телемост
+remote desktop
+meta
+sound id reference
