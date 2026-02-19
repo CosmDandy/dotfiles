@@ -6,7 +6,8 @@ return { -- Fuzzy Finder (files, lsp, etc)
     { '<leader>/', desc = 'Search in buffer' },
     { '<leader><leader>', desc = 'Buffers' },
   },
-  branch = '0.1.x',
+  -- Используем latest версию для совместимости с новым treesitter
+  branch = 'master',
   dependencies = {
     'nvim-lua/plenary.nvim',
     {

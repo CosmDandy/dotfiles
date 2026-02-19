@@ -10,6 +10,7 @@ return {
   dependencies = {
     {
       'L3MON4D3/LuaSnip',
+      event = 'InsertEnter',
       build = (function()
         return 'make install_jsregexp'
       end)(),
@@ -153,7 +154,7 @@ return {
               local bufs = {}
               for _, win in ipairs(vim.api.nvim_list_wins()) do
                 local buf = vim.api.nvim_win_get_buf(win)
-                local buf_ft = vim.api.nvim_buf_get_option(buf, 'filetype')
+                local buf_ft = vim.bo[buf].filetype
                 -- Исключаем специальные буферы, которые могут засорять автодополнение
                 if buf_ft ~= 'help' and buf_ft ~= 'qf' and buf_ft ~= 'nofile' then
                   bufs[buf] = true
@@ -170,7 +171,6 @@ return {
           priority = 500,
           keyword_length = 1,
           max_item_count = 5,
-          m,
           -- Активируется автоматически в соответствующих контекстах
         },
       }),

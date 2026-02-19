@@ -32,14 +32,6 @@ return {
         end
       end,
     },
-    -- НОВОЕ: Продвинутая визуализация профилирования для Python
-    { 'lvimuser/lsp-inlayhints.nvim' }, -- для отображения подсказок типов
-
-    -- НОВОЕ: Улучшенное отображение ошибок и состояний отладки
-    {
-      'folke/trouble.nvim',
-      dependencies = { 'nvim-tree/nvim-web-devicons' },
-    },
   },
   keys = {
     {
@@ -148,47 +140,6 @@ return {
       end,
       desc = '[d]ebug [T]est class',
     },
-    {
-      '<leader>dpp',
-      function()
-        -- НОВОЕ: Запуск профилирования текущего файла
-        local Terminal = require('toggleterm.terminal').Terminal
-        local prof_term = Terminal:new({
-          cmd = string.format(
-            "python -m cProfile -o profile.prof %s && python -m pyprof2calltree -i profile.prof -o profile.calltree && kcachegrind profile.calltree",
-            vim.fn.expand("%:p")),
-          hidden = false,
-        })
-        prof_term:toggle()
-      end,
-      desc = '[d]ebug [p]rofile [p]ython',
-    },
-    {
-      '<leader>dpm',
-      function()
-        -- НОВОЕ: Запуск memory_profiler для текущего файла
-        local Terminal = require('toggleterm.terminal').Terminal
-        local memprof_term = Terminal:new({
-          cmd = string.format("python -m memory_profiler %s", vim.fn.expand("%:p")),
-          hidden = false,
-        })
-        memprof_term:toggle()
-      end,
-      desc = '[d]ebug [p]rofile [m]emory',
-    },
-    {
-      '<leader>dps',
-      function()
-        -- НОВОЕ: Запуск scalene профилировщика
-        local Terminal = require('toggleterm.terminal').Terminal
-        local scalene_term = Terminal:new({
-          cmd = string.format("python -m scalene %s", vim.fn.expand("%:p")),
-          hidden = false,
-        })
-        scalene_term:toggle()
-      end,
-      desc = '[d]ebug [p]rofile [s]calene',
-    },
   },
   config = function()
     local dap = require 'dap'
@@ -224,13 +175,6 @@ return {
     }
 
     require('telescope').load_extension('dap')
-
-    require('trouble').setup {
-      position = "bottom",
-      height = 10,
-      auto_preview = false,
-      auto_close = true,
-    }
 
     -- Настройка интерфейса отладчика
     -- dapui.setup({
@@ -468,28 +412,6 @@ return {
           },
         },
       },
-    }
-
-    -- НОВОЕ: Интеграция с inlayhints для отображения типов при отладке
-    require('lsp-inlayhints').setup {
-      inlay_hints = {
-        parameter_hints = {
-          show = true,
-          prefix = "<- ",
-          separator = ", ",
-          remove_colon_start = false,
-          remove_colon_end = false,
-        },
-        type_hints = {
-          show = true,
-          prefix = "=> ",
-          separator = ", ",
-          remove_colon_start = false,
-          remove_colon_end = false,
-        },
-        only_current_line = false,
-        highlight = "Comment",
-      }
     }
 
     -- Change breakpoint icons

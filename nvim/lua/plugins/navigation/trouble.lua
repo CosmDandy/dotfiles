@@ -6,7 +6,7 @@ return {
     {
       '<leader>xx',
       '<cmd>Trouble diagnostics toggle<cr>',
-      dnsc = 'Diagnostics (Trouble)',
+      desc = 'Diagnostics (Trouble)',
     },
     {
       '<leader>xX',
