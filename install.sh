@@ -74,6 +74,7 @@ dirs=(
   "$XDG_CONFIG_HOME/lazygit"
   "$XDG_CONFIG_HOME/superfile"
   "$HOME/.zsh/completions"
+  "$HOME/.claude"
   )
 
 links=(
@@ -89,6 +90,8 @@ links=(
   "$PWD/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
   "$PWD/superfile/config.toml:$XDG_CONFIG_HOME/superfile/config.toml"
   "$PWD/superfile/hotkeys.toml:$XDG_CONFIG_HOME/superfile/hotkeys.toml"
+  "$PWD/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
+  "$PWD/claude/settings.json:$HOME/.claude/settings.json"
   )
 
 print_section "Create directories for symbolic links"
