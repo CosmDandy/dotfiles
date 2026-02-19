@@ -52,7 +52,6 @@ alias dt='cd ~/Desktop'
 alias docs='cd ~/Documents'
 
 alias v='nvim'
-alias cr='cursor .'
 alias s='spf'
 alias b='btop'
 alias t='tmux'
@@ -63,31 +62,46 @@ alias cl='claude'
 
 alias ds='devpod ssh'
 alias dpd='devpod delete'
+alias dps='devpod stop'
 
 alias c='clear'
 alias e='exit'
 
 alias ls='eza'
-alias la='eza -laghm@ --all --icons --git --color=always'
+alias la='eza -laghm --all --icons --git --color=always'
 alias ll='eza -l --icons --git --color=always'             # Длинный формат без скрытых файлов
 alias lt='eza --tree --level=2 --icons'                    # Древовидный вид (2 уровня)
 alias lta='eza --tree --level=2 --icons --all'             # Древовидный вид с скрытыми файлами
 alias ltr='eza -l --sort=modified --reverse'               # Сортировка по времени изменения
+alias tree='eza --tree --level=2 --icons --color=always'
+alias treed='eza --tree --level=3 --icons --color=always -d'
 
-alias t='tmux'
+# Цветные алиасы для лучшего вывода
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
+alias diff='diff --color=auto'
+alias less='less -R'  # Показывать цвета в less
+
+# Читаемый вывод для различных команд
+alias df='df -h'
+alias du='du -h'
+alias free='free -h'
+alias ps='ps aux'
+
 alias ta='tmux attach'
 alias tl='tmux list-sessions'
 alias tk='tmux kill-session -t'
 alias tks='tmux kill-server'
 
 alias gc='git clone'
-
 alias gs='git status'
 alias gss='git status --short'
-
 alias gl='git pull'
-
 alias gd='git diff'
+alias gdiff='git diff --color-words'
+alias glog='git log --oneline --graph --decorate --color=always'
+alias gblame='git blame -w'
 
 alias ip="dig +short myip.opendns.com @resolver1.opendns.com"  # Внешний IP
 alias localip="ipconfig getifaddr en0"                         # Локальный IP (macOS)
@@ -95,7 +109,7 @@ alias localip="ipconfig getifaddr en0"                         # Локальн�
 alias pss='source .venv/bin/activate'
 alias psd='deactivate'
 
-alias upd='sudo apt update && sudo apt upgrade -y'
+alias update='sudo softwareupdate -i -a; brew update; brew upgrade; brew cleanup; npm install npm -g; npm update -g; zinit self-update; zinit update'
 
 alias ports='netstat -tulanp'
 
@@ -130,9 +144,11 @@ export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#586e75"  # Цвет предложе
 # PLUGIN LOADING
 # =============================================================================
 
+zinit light zsh-users/zsh-completions                   # Расширенные автодополнения
 zinit light zsh-users/zsh-autosuggestions               # Автопредложения на основе истории
 zinit light zsh-users/zsh-history-substring-search      # Поиск по подстроке в истории (стрелки вверх/вниз)
 zinit light zdharma-continuum/fast-syntax-highlighting  # Быстрая подсветка синтаксиса
+zinit light hlissner/zsh-autopair                       # Автоматическое закрытие скобок и кавычек
 
 # =============================================================================
 # KEY BINDINGS
@@ -161,3 +177,12 @@ eval "$(starship init zsh)"
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
 
+# Load a few important annexes, without Turbo
+# (this is currently required for annexes)
+zinit light-mode for \
+    zdharma-continuum/zinit-annex-as-monitor \
+    zdharma-continuum/zinit-annex-bin-gem-node \
+    zdharma-continuum/zinit-annex-patch-dl \
+    zdharma-continuum/zinit-annex-rust
+
+### End of Zinit's installer chunk
