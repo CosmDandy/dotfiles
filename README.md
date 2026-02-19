@@ -6,3 +6,7 @@
 ```bash
 devpod up . --id . --provider . --dotfiles https://github.com/CosmDandy/dotfiles-devpod.git
 ```
+
+```bash
+cd ~/dotfiles; cp git/.gitconfig /tmp/ 2>/dev/null; git checkout -- . && git pull && mv /tmp/.gitconfig git/ 2>/dev/null
+```
