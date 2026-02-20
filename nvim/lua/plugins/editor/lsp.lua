@@ -66,6 +66,16 @@ return {
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
           map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
+          -- Hover и документация - САМОЕ ВАЖНОЕ для изучения кода!
+          map('K', vim.lsp.buf.hover, 'Hover Documentation')
+          map('<leader>k', vim.lsp.buf.signature_help, 'Signature Help')
+
+          -- Работа с ошибками и диагностикой - КЛЮЧЕВЫЕ биндинги!
+          map(']d', vim.diagnostic.goto_next, 'Next [D]iagnostic')
+          map('[d', vim.diagnostic.goto_prev, 'Previous [D]iagnostic')
+          map('<leader>e', vim.diagnostic.open_float, 'Show [E]rror')
+          map('<leader>dq', vim.diagnostic.setloclist, '[D]iagnostics [Q]uickfix')
+
           -- Дополнительные хоткеи для Python разработки
           map('<leader>li', '<cmd>LspInfo<CR>', '[L]SP [I]nfo')
           map('<leader>lr', '<cmd>LspRestart<CR>', '[L]SP [R]estart')
@@ -105,28 +115,23 @@ return {
         end,
       })
 
-      -- Настройка иконок диагностики для лучшего визуального восприятия
-      if vim.g.have_nerd_font then
-        local signs = { ERROR = '', WARN = '', INFO = '', HINT = '󰌵' }
-        local diagnostic_signs = {}
-        for type, icon in pairs(signs) do
-          diagnostic_signs[vim.diagnostic.severity[type]] = icon
-        end
-        vim.diagnostic.config {
-          signs = { text = diagnostic_signs },
-          -- Настройки отображения диагностики для Python разработки
-          virtual_text = {
-            prefix = '●', -- Символ перед текстом ошибки
-            source = 'if_many', -- Показывать источник если несколько LSP активны
-          },
-          float = {
-            border = 'rounded',
-            source = 'always', -- Всегда показывать источник в всплывающих окнах
-          },
-          severity_sort = true, -- Сортировать по важности
-          update_in_insert = false, -- Не отвлекать во время набора текста
-        }
-      end
+      -- Настройки диагностики без иконок в gutter
+      vim.diagnostic.config {
+        signs = false, -- Отключаем иконки слева
+        -- Настройки отображения диагностики
+        virtual_text = {
+          prefix = '●', -- Символ перед текстом ошибки
+          source = 'if_many', -- Показывать источник если несколько LSP активны
+        },
+        float = {
+          border = 'rounded',
+          source = 'always', -- Всегда показывать источник в всплывающих окнах
+          header = '', -- Убираем заголовок
+          focusable = false, -- Окно не перехватывает фокус
+        },
+        severity_sort = true, -- Сортировать по важности
+        update_in_insert = false, -- Не отвлекать во время набора текста
+      }
 
       -- Получаем capabilities для автодополнений
       local capabilities = vim.lsp.protocol.make_client_capabilities()
@@ -349,6 +354,12 @@ return {
           },
         },
 
+        -- Jinja2 LSP для Ansible шаблонов (.j2 файлы)
+        jinja_lsp = {},
+
+        -- Docker Compose LSP
+        docker_compose_language_service = {},
+
         ansiblels = {
           settings = {
             ansible = {
@@ -395,7 +406,6 @@ return {
         -- Linters для дополнительной проверки кода
         'ruff', -- Python linter (быстрый, современный)
         'mypy', -- Python type checker
-        'pylint', -- Python code analysis
         'luacheck', -- Lua linter
         'eslint_d', -- JavaScript/TypeScript linter
         'markuplint', -- HTML linter
@@ -406,8 +416,6 @@ return {
 
         -- Formatters для автоформатирования
         'black', -- Python formatter (стандарт PEP 8)
-        'isort', -- Python import sorter
-        'autopep8', -- Альтернативный Python formatter
         'stylua', -- Lua formatter
         'prettierd', -- JavaScript/TypeScript/HTML/CSS formatter
         'yamlfmt', -- YAML formatter

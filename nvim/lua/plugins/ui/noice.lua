@@ -24,8 +24,16 @@ return {
         override = {
           ['vim.lsp.util.convert_input_to_markdown_lines'] = true,
           ['vim.lsp.util.stylize_markdown'] = true,
-          ['cmp.entry.get_documentation'] = true, -- requires hrsh7th/nvim-cmp
+          ['cmp.entry.get_documentation'] = true,
         },
+      },
+      -- Пресеты для удобства (без макро-рекординга)
+      presets = {
+        bottom_search = true, -- Поиск внизу
+        command_palette = false, -- Отключаем командную палитру
+        long_message_to_split = true, -- Длинные сообщения в сплите
+        inc_rename = false,
+        lsp_doc_border = true,
       },
     }
   end,

@@ -1,3 +1,17 @@
+-- Filetype detection
+vim.filetype.add {
+  extension = {
+    nomad = 'hcl',
+    j2 = 'jinja',
+    tfvars = 'terraform', -- Terraform variables
+    tftpl = 'terraform', -- Terraform templates
+  },
+  filename = {
+    ['.terraformrc'] = 'hcl',
+    ['.terraform.tfrc'] = 'hcl',
+  },
+}
+
 -- Autocommands
 
 vim.api.nvim_create_autocmd('TextYankPost', {

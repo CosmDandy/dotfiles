@@ -27,6 +27,7 @@ return {
         'yaml',
         'hcl',
         'terraform',
+        'jinja',
         'toml',
         'xml',
         'graphql',
