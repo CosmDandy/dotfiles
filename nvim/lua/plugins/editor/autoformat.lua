@@ -137,13 +137,9 @@ return {
       -- XML файлы (Maven, конфигурации)
       xml = { 'xmlformatter' },
 
-      -- SQL - специальная обработка
-      sql = function(bufnr)
-        -- Для SQL мы предпочитаем ручное форматирование, но предоставляем опцию
-        local choice =
-          vim.fn.confirm('Форматировать SQL файл? Это может изменить структуру запроса.', '&Да\n&Нет', 2)
-        return choice == 1 and { 'sqlformat' } or {}
-      end,
+      -- HCL (Terraform/Nomad) - форматирование через LSP (terraform fmt)
+      hcl = {},
+      terraform = {},
 
       -- Dockerfile
       dockerfile = {}, -- Используем только LSP форматирование для Dockerfile
@@ -213,18 +209,6 @@ return {
           '-bn', -- Бинарные операторы в начале строки
           '-ci', -- Отступ для case в switch
           '-sr', -- Перенаправления после команд
-        },
-      },
-
-      -- SQL форматер с осторожными настройками
-      sqlformat = {
-        prepend_args = {
-          '--reindent', -- Переделать отступы
-          '--keywords',
-          'upper', -- Ключевые слова в верхнем регистре
-          '--identifiers',
-          'lower', -- Идентификаторы в нижнем регистре
-          '--strip-comments', -- Убираем ненужные комментарии
         },
       },
 

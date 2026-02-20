@@ -117,6 +117,120 @@ return {
         hl.StatusLineNC = {
           bg = 'NONE',
         }
+
+        -- Индикатор записи макроса - очень заметный!
+        hl.MacroRecording = {
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#dc322f', -- red - яркий и заметный
+          bold = true,
+        }
+
+        -- Индикатор изменений - красная точка
+        hl.ModifiedIndicator = {
+          fg = '#dc322f', -- red
+          bg = 'NONE',
+          bold = true,
+        }
+
+        -- Readonly индикатор - оранжевый для предупреждения
+        hl.ReadonlyIndicator = {
+          fg = '#cb4b16', -- orange
+          bg = 'NONE',
+          bold = true,
+        }
+
+        -- LSP Диагностика - только цветной текст БЕЗ фона
+        -- Errors - red
+        hl.DiagnosticError = {
+          fg = '#dc322f', -- red
+          bg = 'NONE',
+        }
+        hl.DiagnosticVirtualTextError = {
+          fg = '#dc322f',
+          bg = 'NONE',
+        }
+        hl.DiagnosticUnderlineError = {
+          sp = '#dc322f',
+          underline = true,
+        }
+        hl.DiagnosticSignError = {
+          fg = '#dc322f',
+          bg = 'NONE',
+        }
+
+        -- Warnings - yellow/orange
+        hl.DiagnosticWarn = {
+          fg = '#b58900', -- yellow
+          bg = 'NONE',
+        }
+        hl.DiagnosticVirtualTextWarn = {
+          fg = '#b58900',
+          bg = 'NONE',
+        }
+        hl.DiagnosticUnderlineWarn = {
+          sp = '#b58900',
+          underline = true,
+        }
+        hl.DiagnosticSignWarn = {
+          fg = '#b58900',
+          bg = 'NONE',
+        }
+
+        -- Info - blue
+        hl.DiagnosticInfo = {
+          fg = '#268bd2', -- blue
+          bg = 'NONE',
+        }
+        hl.DiagnosticVirtualTextInfo = {
+          fg = '#268bd2',
+          bg = 'NONE',
+        }
+        hl.DiagnosticUnderlineInfo = {
+          sp = '#268bd2',
+          underline = true,
+        }
+        hl.DiagnosticSignInfo = {
+          fg = '#268bd2',
+          bg = 'NONE',
+        }
+
+        -- Hints - cyan
+        hl.DiagnosticHint = {
+          fg = '#2aa198', -- cyan
+          bg = 'NONE',
+        }
+        hl.DiagnosticVirtualTextHint = {
+          fg = '#2aa198',
+          bg = 'NONE',
+        }
+        hl.DiagnosticUnderlineHint = {
+          sp = '#2aa198',
+          underline = true,
+        }
+        hl.DiagnosticSignHint = {
+          fg = '#2aa198',
+          bg = 'NONE',
+        }
+
+        -- Noice (командная строка и уведомления)
+        hl.NoiceCmdlinePopup = {
+          bg = c.bg_dark,
+          fg = c.fg,
+        }
+        hl.NoiceCmdlinePopupBorder = {
+          bg = c.bg_dark,
+          fg = is_dark() and '#2aa198' or '#268bd2', -- cyan/blue
+        }
+        hl.NoiceCmdlineIcon = {
+          bg = c.bg_dark,
+          fg = is_dark() and '#b58900' or '#cb4b16', -- yellow/orange
+        }
+        -- Mini view для макро-рекординга - яркий и заметный
+        hl.NoiceMini = {
+          bg = is_dark() and '#dc322f' or '#cb4b16', -- red/orange - очень заметно
+          fg = is_dark() and '#FDF6E3' or '#002B36',
+          bold = true,
+        }
         hl.MiniStatuslineDevinfo = {
           bg = 'NONE',
         }
@@ -129,23 +243,36 @@ return {
         hl.MiniStatuslineInactive = {
           bg = 'NONE',
         }
+        -- Режимы statusline в классическом стиле Solarized
         hl.MiniStatuslineModeNormal = {
-          bg = 'NONE',
+          fg = is_dark() and '#002B36' or '#FDF6E3', -- инверсия для контраста
+          bg = '#2aa198', -- cyan - спокойный основной режим
+          bold = true,
         }
         hl.MiniStatuslineModeInsert = {
-          bg = 'NONE',
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#dc322f', -- red - внимание! редактирование
+          bold = true,
         }
         hl.MiniStatuslineModeVisual = {
-          bg = 'NONE',
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#d33682', -- magenta - выделение
+          bold = true,
         }
         hl.MiniStatuslineModeReplace = {
-          bg = 'NONE',
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#cb4b16', -- orange - замена (яркий акцент)
+          bold = true,
         }
         hl.MiniStatuslineModeCommand = {
-          bg = 'NONE',
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#b58900', -- yellow - команды
+          bold = true,
         }
         hl.MiniStatuslineMode = {
-          bg = 'NONE',
+          fg = is_dark() and '#002B36' or '#FDF6E3',
+          bg = '#268bd2', -- blue - остальные режимы
+          bold = true,
         }
 
         -- Текущая строка

@@ -16,11 +16,9 @@ return {
         typescript = { 'eslint_d' },
         html = { 'markuplint' },
         css = { 'stylelint' },
-        -- Текстовые файлы
         markdown = { 'vale' },
-        latex = { 'vale' },
-        text = { 'vale' },
         yaml = { 'yamllint' },
+        ['yaml.ansible'] = { 'ansible-lint' },
       }
 
       local lint_augroup = vim.api.nvim_create_augroup('lint', { clear = true })
