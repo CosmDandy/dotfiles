@@ -2,8 +2,9 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../common.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
+source "$PLATFORM_DIR/common.sh"
 
 print_section "Installing Nix"
 # curl -L https://nixos.org/nix/install | sh
@@ -17,8 +18,8 @@ fi
 print_section "Applying nix-darwin configuration"
 if command -v darwin-rebuild &> /dev/null; then
     echo "darwin-rebuild установлен"
-    darwin-rebuild switch --flake $SCRIPT_DIR/nix#macbook-cosmdandy
+    darwin-rebuild switch --flake "$DOTFILES_ROOT/platform/macos/nix#macbook-cosmdandy"
 else
     echo "darwin-rebuild не найден, используем nix run"
-    sudo nix --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake $SCRIPT_DIR/nix#macbook-cosmdandy
+    sudo nix --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake "$DOTFILES_ROOT/platform/macos/nix#macbook-cosmdandy"
 fi

@@ -3,18 +3,19 @@
 set -e
 START_TIME=$(date +%s)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../common.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
+source "$PLATFORM_DIR/common.sh"
 
-"$SCRIPT_DIR/install-nix.sh"
+"$DOTFILES_ROOT/platform/macos/install-nix.sh"
 
-"$SCRIPT_DIR/install-brew.sh"
+"$DOTFILES_ROOT/platform/macos/install-brew.sh"
 
-"$SCRIPT_DIR/install-extra.sh"
+"$DOTFILES_ROOT/platform/macos/install-extra.sh"
 
-"$SCRIPT_DIR/setup-devpod.sh"
+"$DOTFILES_ROOT/platform/macos/setup-devpod.sh"
 
-"$SCRIPT_DIR/setup-symlinks.sh"
+"$DOTFILES_ROOT/platform/macos/setup-symlinks.sh"
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))

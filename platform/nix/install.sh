@@ -14,44 +14,13 @@ if ! command -v nix &> /dev/null; then
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Устанавливаем пакеты через nix
-# Разрешаем unfree пакеты (например, claude-code)
-export NIXPKGS_ALLOW_UNFREE=1
+# Загружаем Nix окружение если еще не загружено
+if [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+  source "$HOME/.nix-profile/etc/profile.d/nix.sh"
+fi
 
-packages=(
-  python3
-  go
-  nodejs
-  uv
-  lua
-  luarocks
-  eza
-  fd
-  ripgrep
-  iperf3
-  wget
-  curl
-  jq
-  ansible
-  starship
-  neovim
-  tmux
-  claude-code
-  atuin
-  btop
-  git
-  gh   # GitHub CLI
-  glab # GitLab CLI
-  lazygit
-  lazydocker
-  dive
-  k9s
-)
-
-for package in "${packages[@]}"; do
-  print_section "Installing package ${package}"
-  nix-env -iA nixpkgs.$package
-done
+print_section "Verifying Nix installation"
+nix --version
 
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
@@ -91,12 +60,13 @@ create_directories "${dirs[@]}"
 print_section "Create symbolic links"
 create_symlinks "${links[@]}"
 
+print_section "Activating Nix development environment and installing nvim plugins"
+cd "$SCRIPT_DIR"
+nix develop "$SCRIPT_DIR#flake-linux" --impure --accept-flake-config --extra-experimental-features "nix-command flakes" --command bash -c "nvim --headless '+Lazy! sync' '+TSUpdate' +qa"
+
 print_section "Installing tmux plugins"
 mkdir -p ~/.tmux/plugins
-git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-
-print_section "Installing nvim plugins"
-nvim --headless "+Lazy! sync" +qa
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm 2>/dev/null || echo "TPM already installed"
 
 # TODO: Разобраться с автоматической установкой Mason tools
 # Проблема: команда зависает или не находит нужные команды в headless режиме
