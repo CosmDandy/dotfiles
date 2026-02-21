@@ -4,10 +4,10 @@ set -e
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
   echo "🍎 Detected macOS"
-  ./scripts/install_macos.sh
+  ./platform/macos/install.sh
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
   echo "🐧 Detected Linux"
-  ./scripts/install_linux.sh
+  ./platform/linux/install.sh
 else
   echo "❌ Unsupported OS: $OSTYPE"
   exit 1
