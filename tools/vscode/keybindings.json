@@ -1,0 +1,27 @@
+[
+  // ====== AI CURSOR FEATURES (work in all modes) ======
+  {
+    "key": "cmd+h",
+    "command": "editor.action.inlineDiffs.nextChange",
+    "when": "editorTextFocus && inlineDiffs.activeEditorWithDiffs"
+  },
+  {
+    "key": "cmd+a",
+    "command": "editor.action.inlineDiffs.previousChange",
+    "when": "editorTextFocus && inlineDiffs.activeEditorWithDiffs"
+  },
+  {
+    "key": "alt+cmd+i",
+    "command": "composerMode.chat"
+  },
+  {
+    "key": "cmd+i",
+    "command": "composerMode.agent"
+  },
+  // ====== GLOBAL NAVIGATION (work in all modes) ======
+  {
+    "key": "escape",
+    "command": "workbench.action.focusActiveEditorGroup",
+    "when": "!editorTextFocus && !suggestWidgetVisible && !renameInputVisible && !inSnippetMode && !findWidgetVisible"
+  }
+]

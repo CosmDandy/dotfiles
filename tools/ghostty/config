@@ -1,0 +1,10 @@
+font-size = 15
+theme = light:Builtin Solarized Light,dark:Builtin Solarized Dark
+cursor-color = 2aa198
+
+fullscreen = true
+
+mouse-hide-while-typing = true
+clipboard-paste-protection = false
+
+keybind = shift+enter=text:\x1b\r

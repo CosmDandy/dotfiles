@@ -1,12 +1,27 @@
-# Шаблон для проектов с DevPod
+# DFU Mode
+Control + Option + Shift + Power (MacBook Air M1)
 
-Этот репозиторий является отправной точкой для всех моих проектов при работе с которыми я использую [DevPod](https://devpod.sh/)
+# Установка
 
-Для создания проекта в DevPod я использую следующую команду:
+1. Заходим в Safari и логинимся в GitHub
+Входим в tailscale
+sudo rm /etc/zshenv добовляем удаление подобного говна
+3. Выполняем код ниже и закидываем ключ в поле
 ```bash
-devpod up . --id . --provider . --dotfiles https://github.com/CosmDandy/dotfiles-devpod.git
+xcode-select --install
+softwareupdate --install-rosetta --agree-to-license
+read "key_path?Enter path to SSH private key: "
+GIT_SSH_COMMAND="ssh -i $key_path" git clone -b macos git@github.com:CosmDandy/dotfiles.git .dotfiles
+GIT_SSH_COMMAND="ssh -i $key_path" git clone git@github.com:CosmDandy/dotfiles-private.git .dotfiles-private
+cd ~/.dotfiles
+./setup.sh
 ```
 
-```bash
-cd ~/dotfiles; cp git/.gitconfig /tmp/ 2>/dev/null; git checkout -- . && git pull && mv /tmp/.gitconfig git/ 2>/dev/null
-```
+balena etcher
+Office 2024
+wispr flow
+wakatime
+телемост
+remote desktop
+meta
+sound id reference

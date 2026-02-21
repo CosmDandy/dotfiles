@@ -1,6 +1,14 @@
 {
-  "image": "mcr.microsoft.com/devcontainers/base:debian",
-  "onCreateCommand": "echo 'en_US.UTF-8 UTF-8' | sudo tee /etc/locale.gen && sudo locale-gen && sudo update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && sudo chsh -s /usr/bin/zsh $USER",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "latest"
+    }
+  },
+  "onCreateCommand": "echo 'en_US.UTF-8 UTF-8' | sudo tee /etc/locale.gen && sudo locale-gen && sudo update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && sudo chsh -s /usr/bin/zsh $USER && sudo apt-get update && sudo apt-get upgrade -y",
   "settings": {
     "terminal.integrated.defaultProfile.linux": "zsh",
     "terminal.integrated.profiles.linux": {
@@ -12,5 +20,5 @@
   "remoteEnv": {
     "LANG": "en_US.UTF-8",
     "LC_ALL": "en_US.UTF-8"
-  },
+  }
 }
