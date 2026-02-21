@@ -4,17 +4,17 @@ set -e
 START_TIME=$(date +%s)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/scripts/common.sh"
+source "$SCRIPT_DIR/../common.sh"
 
-"$SCRIPT_DIR/scripts/macos/install_nix.sh"
+"$SCRIPT_DIR/install-nix.sh"
 
-"$SCRIPT_DIR/scripts/macos/install_brew.sh"
+"$SCRIPT_DIR/install-brew.sh"
 
-"$SCRIPT_DIR/scripts/macos/install_extra.sh"
+"$SCRIPT_DIR/install-extra.sh"
 
-"$SCRIPT_DIR/scripts/macos/setup_devpod.sh"
+"$SCRIPT_DIR/setup-devpod.sh"
 
-"$SCRIPT_DIR/scripts/macos/setup_symlinks.sh"
+"$SCRIPT_DIR/setup-symlinks.sh"
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
