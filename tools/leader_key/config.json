@@ -1,0 +1,561 @@
+{
+  "actions": [
+    {
+      "actions": [
+        {
+          "key": "a",
+          "label": "Open",
+          "type": "application",
+          "value": "/Applications/Arc.app"
+        },
+        {
+          "iconPath": "/Applications/Arc.app",
+          "key": "s",
+          "label": "Search",
+          "type": "url",
+          "value": "raycast://extensions/the-browser-company/arc/search"
+        }
+      ],
+      "iconPath": "/Applications/Arc.app",
+      "key": "a",
+      "label": "Arc",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "g",
+          "type": "application",
+          "value": "/Applications/Ghostty.app"
+        },
+        {
+          "actions": [
+            {
+              "key": "c",
+              "type": "application",
+              "value": "/Applications/Cursor.app"
+            },
+            {
+              "iconPath": "/Applications/Cursor.app",
+              "key": "r",
+              "label": "Recent Projects",
+              "type": "url",
+              "value": "raycast://extensions/degouville/cursor-recent-projects/index"
+            },
+            {
+              "iconPath": "/Applications/Cursor.app",
+              "key": "n",
+              "label": "New Window",
+              "type": "url",
+              "value": "raycast://extensions/degouville/cursor-recent-projects/open-new-window"
+            }
+          ],
+          "iconPath": "/Applications/Cursor.app",
+          "key": "c",
+          "label": "Cursor",
+          "type": "group"
+        },
+        {
+          "key": "v",
+          "type": "application",
+          "value": "/Applications/Visual Studio Code.app"
+        },
+        {
+          "key": "p",
+          "type": "application",
+          "value": "/Applications/DevPod.app"
+        },
+        {
+          "key": "o",
+          "type": "application",
+          "value": "/Applications/OrbStack.app"
+        },
+        {
+          "key": "t",
+          "type": "application",
+          "value": "/Applications/Transmit.app"
+        },
+        {
+          "key": "n",
+          "type": "application",
+          "value": "/Applications/Network Radar.app"
+        },
+        {
+          "key": "u",
+          "type": "application",
+          "value": "/Applications/UTM.app"
+        },
+        {
+          "key": "k",
+          "type": "application",
+          "value": "/Applications/Kaleidoscope.app"
+        }
+      ],
+      "iconPath": "apple.terminal",
+      "key": "d",
+      "label": "Development",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "o",
+          "type": "application",
+          "value": "/Applications/Obsidian.app"
+        },
+        {
+          "key": "t",
+          "type": "application",
+          "value": "/Applications/Texifier.app"
+        },
+        {
+          "iconPath": "pencil.line",
+          "key": "n",
+          "label": "Note",
+          "type": "url",
+          "value": "raycast://extensions/raycast/raycast-notes/raycast-notes"
+        },
+        {
+          "iconPath": "rectangle.and.pencil.and.ellipsis",
+          "key": "s",
+          "label": "Search",
+          "type": "url",
+          "value": "raycast://extensions/raycast/raycast-notes/search-notes"
+        },
+        {
+          "iconPath": "pencil",
+          "key": "c",
+          "label": "Create",
+          "type": "url",
+          "value": "raycast://extensions/raycast/raycast-notes/create-note"
+        }
+      ],
+      "iconPath": "scribble.variable",
+      "key": "w",
+      "label": "Writing",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "s",
+          "type": "application",
+          "value": "/Applications/Screen Studio.app"
+        },
+        {
+          "key": "f",
+          "type": "application",
+          "value": "/Applications/Final Cut Pro.app"
+        },
+        {
+          "key": "c",
+          "type": "application",
+          "value": "/Applications/Capture One.app"
+        }
+      ],
+      "iconPath": "camera",
+      "key": "c",
+      "label": "Creating",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "g",
+          "type": "application",
+          "value": "/Applications/ChatGPT.app"
+        },
+        {
+          "key": "c",
+          "type": "application",
+          "value": "/Applications/Claude.app"
+        },
+        {
+          "key": "s",
+          "type": "application",
+          "value": "/Applications/superwhisper.app"
+        }
+      ],
+      "iconPath": "brain",
+      "key": "i",
+      "label": "AI",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "t",
+          "type": "application",
+          "value": "/Applications/Telegram.app"
+        },
+        {
+          "key": "m",
+          "type": "application",
+          "value": "/System/Applications/Mail.app"
+        },
+        {
+          "key": "s",
+          "type": "application",
+          "value": "/Applications/Microsoft Teams.app"
+        },
+        {
+          "key": "w",
+          "type": "application",
+          "value": "/Applications/WhatsApp.app"
+        },
+        {
+          "key": "f",
+          "type": "application",
+          "value": "/System/Applications/FaceTime.app"
+        },
+        {
+          "key": "g",
+          "label": "Google Meet",
+          "type": "url",
+          "value": "raycast://extensions/vitoorgomes/google-meet/default-profile"
+        }
+      ],
+      "iconPath": "message.badge",
+      "key": "s",
+      "label": "Social",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "t",
+          "type": "application",
+          "value": "/Applications/Things3.app"
+        },
+        {
+          "key": "c",
+          "type": "application",
+          "value": "/System/Applications/Calendar.app"
+        },
+        {
+          "key": "s",
+          "type": "application",
+          "value": "/Applications/Timing.app"
+        },
+        {
+          "iconPath": "calendar",
+          "key": "n",
+          "label": "Schedule",
+          "type": "url",
+          "value": "raycast://extensions/raycast/calendar/my-schedule"
+        }
+      ],
+      "iconPath": "note.text",
+      "key": "p",
+      "label": "Planing",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "iconPath": "person",
+          "key": "e",
+          "label": "Emoji",
+          "type": "url",
+          "value": "raycast://extensions/raycast/emoji-symbols/search-emoji-symbols"
+        },
+        {
+          "iconPath": "camera",
+          "key": "c",
+          "label": "Camera",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/open-camera"
+        },
+        {
+          "key": "s",
+          "label": "Screen Saver",
+          "type": "url",
+          "value": "raycast://script-commands/screen-saver"
+        },
+        {
+          "key": "l",
+          "label": "Screen Lock",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/lock-screen"
+        },
+        {
+          "iconPath": "/Applications/AeroSpace.app",
+          "key": "t",
+          "label": "Aerospace Toggle",
+          "type": "url",
+          "value": "raycast://script-commands/aerospace-toggle"
+        },
+        {
+          "actions": [
+            {
+              "iconPath": "/Applications/AmneziaVPN.app",
+              "key": "w",
+              "label": "Work",
+              "type": "application",
+              "value": "/Applications/AmneziaVPN.app"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "t",
+              "label": "Toggle",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/toggle"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "h",
+              "label": "HeadPlane",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/admin"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "e",
+              "label": "Exit Nodes",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/exit"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "d",
+              "label": "All Devices",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/devices"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "m",
+              "label": "My Devices",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/my-devices"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "c",
+              "label": "Netcheck",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/netcheck"
+            },
+            {
+              "iconPath": "/Applications/Tailscale.app",
+              "key": "a",
+              "label": "Accounts",
+              "type": "url",
+              "value": "raycast://extensions/tailscale/tailscale/account-switcher"
+            }
+          ],
+          "iconPath": "network",
+          "key": "v",
+          "label": "Vpn",
+          "type": "group"
+        },
+        {
+          "key": "o",
+          "type": "application",
+          "value": "/Applications/OnyX.app"
+        },
+        {
+          "key": "i",
+          "type": "application",
+          "value": "/Applications/iStatistica Pro.app"
+        },
+        {
+          "key": "p",
+          "label": "Confetti",
+          "type": "url",
+          "value": "raycast://confetti"
+        },
+        {
+          "key": "b",
+          "label": "Bounce",
+          "type": "url",
+          "value": "raycast://extensions/raycast/raycast/toggle-bounce-animation"
+        }
+      ],
+      "iconPath": "lasso.badge.sparkles",
+      "key": "t",
+      "label": "Tools",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "iconPath": "homekit",
+          "key": "h",
+          "label": "Homepage",
+          "type": "url",
+          "value": "https://homepage.cosmdandy.ru"
+        },
+        {
+          "key": "g",
+          "label": "GitHub",
+          "type": "url",
+          "value": "https://github.com/CosmDandy?tab=repositories"
+        }
+      ],
+      "iconPath": "link",
+      "key": "l",
+      "label": "Links",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "m",
+          "type": "application",
+          "value": "/System/Applications/Music.app"
+        },
+        {
+          "key": "s",
+          "type": "application",
+          "value": "/Applications/SoundID Reference.app"
+        }
+      ],
+      "iconPath": "music.note",
+      "key": "m",
+      "label": "Music",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": ",",
+          "type": "application",
+          "value": "/System/Applications/System Settings.app"
+        },
+        {
+          "iconPath": "microphone",
+          "key": "s",
+          "label": "Sound",
+          "type": "url",
+          "value": "com.apple.Sound-Settings.extension"
+        },
+        {
+          "iconPath": "lock",
+          "key": "p",
+          "label": "Privacy",
+          "type": "url",
+          "value": "com.apple.settings.PrivacySecurity.extension"
+        },
+        {
+          "iconPath": "keyboard",
+          "key": "k",
+          "label": "Keyboard",
+          "type": "url",
+          "value": "com.apple.Keyboard-Settings.extension"
+        },
+        {
+          "iconPath": "trash",
+          "key": "t",
+          "label": "Empty Trash",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/empty-trash"
+        },
+        {
+          "iconPath": "externaldrive.badge.minus",
+          "key": "e",
+          "label": "Eject Disks",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/eject-all-disks"
+        },
+        {
+          "iconPath": "sun.min",
+          "key": "a",
+          "label": "Switch System Appearance",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/toggle-system-appearance"
+        },
+        {
+          "iconPath": "clear",
+          "key": "q",
+          "label": "Quit All Apps",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/quit-all-apps"
+        },
+        {
+          "iconPath": "power",
+          "key": "d",
+          "label": "Shut Down",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/shut-down"
+        },
+        {
+          "iconPath": "power.dotted",
+          "key": "r",
+          "label": "Restart",
+          "type": "url",
+          "value": "raycast://extensions/raycast/system/restart"
+        }
+      ],
+      "iconPath": "exclamationmark.triangle",
+      "key": ",",
+      "label": "Settings",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "key": "f",
+          "type": "application",
+          "value": "/System/Library/CoreServices/Finder.app"
+        },
+        {
+          "iconPath": "questionmark.folder",
+          "key": "s",
+          "label": "Search",
+          "type": "url",
+          "value": "raycast://extensions/raycast/file-search/search-files"
+        }
+      ],
+      "key": "f",
+      "label": "Files",
+      "type": "group"
+    },
+    {
+      "actions": [
+        {
+          "actions": [
+            {
+              "key": "e",
+              "label": "Enable",
+              "type": "url",
+              "value": "raycast://script-commands/enable-work-profile"
+            },
+            {
+              "key": "d",
+              "label": "Disable",
+              "type": "url",
+              "value": "raycast://script-commands/disable-work-profile"
+            }
+          ],
+          "key": "w",
+          "label": "Work",
+          "type": "group"
+        },
+        {
+          "actions": [
+            {
+              "key": "e",
+              "label": "Enable",
+              "type": "url",
+              "value": "raycast://script-commands/enable-development-profile"
+            },
+            {
+              "key": "d",
+              "label": "Disable",
+              "type": "url",
+              "value": "raycast://script-commands/disable-development-profile"
+            }
+          ],
+          "key": "d",
+          "label": "Development",
+          "type": "group"
+        }
+      ],
+      "key": ".",
+      "label": "Profiles",
+      "type": "group"
+    }
+  ],
+  "type": "group"
+}
