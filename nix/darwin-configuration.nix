@@ -89,6 +89,8 @@
     rustc
     cargo
     go
+    gh        # GitHub CLI
+    glab      # GitLab CLI
     fd
     ripgrep
     neovim
