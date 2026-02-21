@@ -11,6 +11,34 @@ return {
       },
     },
   },
+
+  -- Mason UI - загружается только по команде :Mason
+  {
+    'williamboman/mason.nvim',
+    cmd = 'Mason',
+    keys = { { '<leader>cm', '<cmd>Mason<cr>', desc = 'Mason' } },
+    opts = {
+      ui = {
+        border = 'rounded',
+        width = 0.8,
+        height = 0.8,
+      },
+    },
+  },
+
+  -- mason-lspconfig - нужен для автонастройки LSP серверов
+  {
+    'williamboman/mason-lspconfig.nvim',
+    lazy = false,
+    priority = 51,
+  },
+
+  -- mason-tool-installer - автоустановка инструментов
+  {
+    'WhoIsSethDaniel/mason-tool-installer.nvim',
+    event = 'VeryLazy',
+  },
+
   {
     'neovim/nvim-lspconfig',
     event = 'BufReadPre',
@@ -18,25 +46,14 @@ return {
       {
         'j-hui/fidget.nvim',
         opts = {
-          -- Настраиваем уведомления LSP для лучшего UX
           notification = {
             window = {
-              winblend = 0, -- Убираем прозрачность для четкости
+              winblend = 0,
             },
           },
         },
       },
-      {
-        'williamboman/mason.nvim',
-        opts = {
-          -- Настройки Mason для автоматической установки инструментов
-          ui = {
-            border = 'rounded',
-            width = 0.8,
-            height = 0.8,
-          },
-        },
-      },
+      'williamboman/mason.nvim',
       'williamboman/mason-lspconfig.nvim',
       'WhoIsSethDaniel/mason-tool-installer.nvim',
       'hrsh7th/cmp-nvim-lsp',
@@ -435,7 +452,7 @@ return {
       require('mason-tool-installer').setup {
         ensure_installed = ensure_installed,
         auto_update = false, -- Отключаем автообновление для быстрого запуска
-        run_on_start = false, -- Отключаем проверку при запуске (используйте :MasonToolsInstall вручную)
+        run_on_start = true, -- Включаем автоматическую установку при первом запуске
       }
 
       -- Настройка серверов через mason-lspconfig

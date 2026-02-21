@@ -2,8 +2,9 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../common.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
+source "$PLATFORM_DIR/common.sh"
 
 print_section "Setting up devpod"
 print_section "Setting up devpod options"

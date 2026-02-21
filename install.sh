@@ -2,6 +2,9 @@
 
 set -e
 
+# Определяем корень репозитория и экспортируем для всех дочерних скриптов
+export DOTFILES_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
 if [[ "$OSTYPE" == "darwin"* ]]; then
   echo "🍎 Detected macOS"
   ./platform/macos/install.sh

@@ -1,5 +1,11 @@
 #!/usr/bin/env zsh
 
+# Если DOTFILES_ROOT не определена (скрипт запущен напрямую, а не через setup.sh)
+if [ -z "$DOTFILES_ROOT" ]; then
+  PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  export DOTFILES_ROOT="$(dirname "$PLATFORM_DIR")"
+fi
+
 RED='\033[0;31m'
 NC='\033[0m'
 

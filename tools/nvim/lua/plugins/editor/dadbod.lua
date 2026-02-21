@@ -2,13 +2,12 @@ return {
   {
     'tpope/vim-dadbod',
     lazy = true,
-    event = 'VeryLazy',
+    cmd = 'DB', -- Загружается только по команде :DB
   },
   {
     'kristijanhusak/vim-dadbod-ui',
-    event = 'VeryLazy',
     dependencies = { 'tpope/vim-dadbod' },
-    cmd = { 'DBUI', 'DBUIToggle', 'DBUIAddConnection', 'DBUIFindBuffer' },
+    cmd = { 'DBUI', 'DBUIToggle', 'DBUIAddConnection', 'DBUIFindBuffer' }, -- Только по команде
     init = function()
       -- Не открывать help-таб при запуске
       vim.g.db_ui_use_nerd_fonts = 1
@@ -17,8 +16,7 @@ return {
   },
   {
     'kristijanhusak/vim-dadbod-completion',
-    event = 'VeryLazy',
-    ft = { 'sql', 'mysql', 'plsql' },
+    ft = { 'sql', 'mysql', 'plsql' }, -- Загружается только для SQL файлов
     dependencies = { 'hrsh7th/nvim-cmp' },
     config = function()
       -- Включаем cmp-dadbod

@@ -18,7 +18,23 @@ return {
         {
           'rafamadriz/friendly-snippets',
           config = function()
-            require('luasnip.loaders.from_vscode').lazy_load()
+            -- Загружаем только DevOps языки
+            require('luasnip.loaders.from_vscode').lazy_load {
+              include = {
+                'python',     -- Основной язык
+                'lua',        -- Neovim конфигурация
+                'yaml',       -- Kubernetes, Ansible, Docker Compose, GitLab CI
+                'json',       -- Конфигурационные файлы
+                'bash',       -- Shell скрипты
+                'sh',         -- Shell скрипты
+                'dockerfile', -- Docker
+                'terraform',  -- Terraform/HCL
+                'hcl',        -- HashiCorp Configuration Language
+                'markdown',   -- Документация
+                'toml',       -- pyproject.toml, конфиги
+                'go',         -- DevOps инструменты на Go
+              },
+            }
           end,
         },
       },

@@ -2,8 +2,9 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../common.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
+source "$PLATFORM_DIR/common.sh"
 
 print_section "Installing apps"
 links=(
@@ -101,7 +102,7 @@ setup_app "Timing" \
 setup_app "Arc" \
     "Login to account"
 
-$SCRIPT_DIR/scripts/macos/install_arc_extension.sh
+"$DOTFILES_ROOT/platform/macos/install-arc-extension.sh"
 
 setup_app "Cursor" \
     "Login to account" \
@@ -111,7 +112,7 @@ setup_app "Cursor" \
 setup_app "Visual Studio Code" \
     "Cmd + Shift + P → Shell Command: Install 'code' command in PATH"
 
-$SCRIPT_DIR/vscode/install_common.sh
+"$DOTFILES_ROOT/tools/vscode/install_common.sh"
 
 setup_app "ChatGPT" \
     "Login to account"

@@ -74,35 +74,38 @@
   # CLI Tools & Development Environment
   # ===============================
   environment.systemPackages = with pkgs; [
-    starship
-    eza
-    tmux
-    btop
-    lazygit
-    lazydocker
-    k9s
     nodejs
     python3
+    go
     uv
     lua
     luarocks
     rustc
     cargo
-    go
-    gh        # GitHub CLI
-    glab      # GitLab CLI
+    eza
     fd
     ripgrep
-    neovim
-    atuin
     iperf3
-    git
     unzip
     wget
     curl
     ffmpeg
+    jq
+    terraform
+    ansible
+    starship
     claude-code
+    neovim
+    tmux
+    atuin
+    btop
+    git
+    gh        # GitHub CLI
+    glab      # GitLab CLI
+    lazygit
+    lazydocker
     dive
+    k9s
   ];
 
   # ===============================
