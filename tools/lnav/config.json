@@ -1,0 +1,28 @@
+{
+  "$schema": "https://lnav.org/schemas/config-v1.schema.json",
+  "ui": {
+    "theme": "monokai",
+    "keymap": "default",
+    "clock-format": "%Y-%m-%d %H:%M:%S"
+  },
+  "global": {
+    "config": {
+      "/ui/movement/mode": "cursor"
+    }
+  },
+  "tuning": {
+    "archive-manager": {
+      "min-free-space": 33554432,
+      "cache-ttl": "2d"
+    },
+    "remote": {
+      "ssh": {
+        "command": "ssh",
+        "transfer-command": "scp -S ${ssh_cmd} ${host}:${remote_path} ${local_path}"
+      }
+    },
+    "logfile": {
+      "max-unrecognized-lines": 1000
+    }
+  }
+}
