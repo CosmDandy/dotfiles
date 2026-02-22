@@ -58,6 +58,8 @@ alias lg='lazygit'
 alias lzd='lazydocker'
 
 alias cl='claude'
+alias cly="claude --dangerously-skip-permissions"
+alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKEN=lmstudio CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 claude --model qwen/qwen3-coder-next'
 
 alias ds='devpod ssh'
 alias dpd='devpod delete'
