@@ -46,6 +46,10 @@ links=(
   "$DOTFILES_ROOT/tools/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
   "$DOTFILES_ROOT/tools/claude/settings.json:$HOME/.claude/settings.json"
   "$DOTFILES_ROOT/tools/claude/statusline.sh:$HOME/.claude/statusline.sh"
+  "$DOTFILES_ROOT/tools/claude/agents:$HOME/.claude/agents"
+  "$DOTFILES_ROOT/tools/claude/commands:$HOME/.claude/commands"
+  "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
+  "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
   "$HOME/.dotfiles-private/ssh/config:$HOME/.ssh/config"
   "$DOTFILES_ROOT/private/git/.gitconfig.local:$HOME/.gitconfig.local"
 )
