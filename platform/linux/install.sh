@@ -42,6 +42,7 @@ packages=(
   git
   gh   # GitHub CLI
   glab # GitLab CLI
+  lnav # Log file navigator
   lazygit
   lazydocker
   dive
@@ -64,6 +65,7 @@ dirs=(
   "$XDG_CONFIG_HOME/superfile"
   "$HOME/.zsh/completions"
   "$HOME/.claude"
+  "$HOME/.lnav/configs/default"
 )
 
 links=(
@@ -86,6 +88,7 @@ links=(
   "$DOTFILES_ROOT/tools/claude/commands:$HOME/.claude/commands"
   "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
   "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
+  "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
   "$DOTFILES_ROOT/private/git/.gitconfig.local:$HOME/.gitconfig.local"
 )
 

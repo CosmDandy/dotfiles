@@ -34,6 +34,7 @@ with pkgs; [
   git
   gh        # GitHub CLI
   glab      # GitLab CLI
+  lnav      # Log file navigator
   lazygit
   lazydocker
   dive

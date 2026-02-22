@@ -19,6 +19,7 @@ dirs=(
   "$HOME/Library/Application Support/Code/User/"
   "$HOME/.zsh/completions"
   "$HOME/.claude"
+  "$HOME/.lnav/configs/default"
 )
 
 links=(
@@ -50,6 +51,7 @@ links=(
   "$DOTFILES_ROOT/tools/claude/commands:$HOME/.claude/commands"
   "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
   "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
+  "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
   "$HOME/.dotfiles-private/ssh/config:$HOME/.ssh/config"
   "$DOTFILES_ROOT/private/git/.gitconfig.local:$HOME/.gitconfig.local"
 )
