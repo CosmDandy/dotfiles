@@ -105,6 +105,7 @@ alias gd='git diff'
 alias gdiff='git diff --color-words'
 alias glog='git log --oneline --graph --decorate --color=always'
 alias gblame='git blame -w'
+alias dfu='(cd "$HOME/dotfiles" && git fetch origin && git reset --hard @{u}) && echo "✓ Dotfiles updated" || echo "✗ Failed to update dotfiles"'  # Обновление дот-файлов (принудительно из облака)
 
 alias ip="dig +short myip.opendns.com @resolver1.opendns.com"  # Внешний IP
 alias localip="ipconfig getifaddr en0"                         # Локальный IP (macOS)
