@@ -3,12 +3,25 @@ vim.filetype.add {
   extension = {
     nomad = 'hcl',
     j2 = 'jinja',
-    tfvars = 'terraform', -- Terraform variables
-    tftpl = 'terraform', -- Terraform templates
+    tfvars = 'terraform',
+    tftpl = 'terraform',
   },
   filename = {
     ['.terraformrc'] = 'hcl',
     ['.terraform.tfrc'] = 'hcl',
+    ['docker-compose.yml'] = 'yaml.docker-compose',
+    ['docker-compose.yaml'] = 'yaml.docker-compose',
+    ['compose.yml'] = 'yaml.docker-compose',
+    ['compose.yaml'] = 'yaml.docker-compose',
+    ['.gitlab-ci.yml'] = 'yaml.gitlab',
+  },
+  pattern = {
+    ['.*playbook.*%.ya?ml'] = 'yaml.ansible',
+    ['.*requirements.*%.ya?ml'] = 'yaml.ansible',
+    ['.*roles/.*/tasks/.*%.ya?ml'] = 'yaml.ansible',
+    ['.*roles/.*/handlers/.*%.ya?ml'] = 'yaml.ansible',
+    ['docker%-compose%..*%.ya?ml'] = 'yaml.docker-compose',
+    ['%.gitlab%-ci%..*%.ya?ml'] = 'yaml.gitlab',
   },
 }
 
@@ -33,10 +46,42 @@ vim.api.nvim_create_autocmd('OptionSet', {
   end,
 })
 
--- Команда для переключения темы
 vim.api.nvim_create_user_command('ToggleBackground', function()
   vim.o.background = vim.o.background == 'dark' and 'light' or 'dark'
 end, {})
+
+vim.api.nvim_create_user_command('SetDockerCompose', function()
+  vim.bo.filetype = 'yaml.docker-compose'
+end, { desc = 'Set filetype to Docker Compose' })
+
+vim.api.nvim_create_user_command('SetGitLabCI', function()
+  vim.bo.filetype = 'yaml.gitlab'
+end, { desc = 'Set filetype to GitLab CI' })
+
+vim.api.nvim_create_user_command('SetAnsible', function()
+  vim.bo.filetype = 'yaml.ansible'
+end, { desc = 'Set filetype to Ansible' })
+
+vim.api.nvim_create_user_command('SetYamlSchema', function()
+  local schemas = {
+    { name = 'Docker Compose', ft = 'yaml.docker-compose' },
+    { name = 'GitLab CI', ft = 'yaml.gitlab' },
+    { name = 'Ansible', ft = 'yaml.ansible' },
+    { name = 'Plain YAML', ft = 'yaml' },
+  }
+
+  vim.ui.select(schemas, {
+    prompt = 'Select YAML schema:',
+    format_item = function(item)
+      return item.name
+    end,
+  }, function(choice)
+    if choice then
+      vim.bo.filetype = choice.ft
+      print('Filetype set to: ' .. choice.ft)
+    end
+  end)
+end, { desc = 'Select YAML schema' })
 
 -- Автоматическое определение темы при старте и возврате фокуса
 local function detect_terminal_background()

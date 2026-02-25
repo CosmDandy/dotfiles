@@ -28,3 +28,5 @@ end, { desc = '[S]earch' })
 
 map("n", "<leader>du", ":DBUIToggle<CR>", { desc = "Toggle Dadbod UI" })
 map("n", "<leader>da", ":DBUIAddConnection<CR>", { desc = "Add DB Connection" })
+
+map('n', '<leader>cy', ':SetYamlSchema<CR>', { desc = 'Set [Y]AML schema', noremap = true, silent = true })
