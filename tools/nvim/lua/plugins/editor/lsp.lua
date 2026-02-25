@@ -59,49 +59,41 @@ return {
       'hrsh7th/cmp-nvim-lsp',
     },
     config = function()
-      -- Настройка хоткеев при подключении LSP к буферу
       vim.api.nvim_create_autocmd('LspAttach', {
-        group = vim.api.nvim_create_augroup('python-devops-lsp-attach', { clear = true }),
+        group = vim.api.nvim_create_augroup('lsp-attach', { clear = true }),
         callback = function(event)
           local map = function(keys, func, desc, mode)
             mode = mode or 'n'
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
-          -- Основные навигационные хоткеи - оптимизированы для частого использования
           map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
           map('gI', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
           map('<leader>D', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
 
-          -- Символы и навигация по проекту - критично для больших Python проектов
           map('<leader>ds', require('telescope.builtin').lsp_document_symbols, '[D]ocument [S]ymbols')
           map('<leader>ws', require('telescope.builtin').lsp_dynamic_workspace_symbols, '[W]orkspace [S]ymbols')
 
-          -- Рефакторинг и действия с кодом
           map('<leader>rn', vim.lsp.buf.rename, '[R]e[n]ame')
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
           map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
-          -- Hover и документация - САМОЕ ВАЖНОЕ для изучения кода!
           map('K', vim.lsp.buf.hover, 'Hover Documentation')
           map('<leader>k', vim.lsp.buf.signature_help, 'Signature Help')
 
-          -- Работа с ошибками и диагностикой - КЛЮЧЕВЫЕ биндинги!
           map(']d', vim.diagnostic.goto_next, 'Next [D]iagnostic')
           map('[d', vim.diagnostic.goto_prev, 'Previous [D]iagnostic')
           map('<leader>e', vim.diagnostic.open_float, 'Show [E]rror')
           map('<leader>dq', vim.diagnostic.setloclist, '[D]iagnostics [Q]uickfix')
 
-          -- Дополнительные хоткеи для Python разработки
           map('<leader>li', '<cmd>LspInfo<CR>', '[L]SP [I]nfo')
           map('<leader>lr', '<cmd>LspRestart<CR>', '[L]SP [R]estart')
 
           local client = vim.lsp.get_client_by_id(event.data.client_id)
 
-          -- Подсветка символов под курсором - помогает в навигации по коду
           if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
-            local highlight_augroup = vim.api.nvim_create_augroup('python-devops-lsp-highlight', { clear = false })
+            local highlight_augroup = vim.api.nvim_create_augroup('lsp-highlight', { clear = false })
             vim.api.nvim_create_autocmd({ 'CursorHold', 'CursorHoldI' }, {
               buffer = event.buf,
               group = highlight_augroup,
@@ -115,15 +107,14 @@ return {
             })
 
             vim.api.nvim_create_autocmd('LspDetach', {
-              group = vim.api.nvim_create_augroup('python-devops-lsp-detach', { clear = true }),
+              group = vim.api.nvim_create_augroup('lsp-detach', { clear = true }),
               callback = function(event2)
                 vim.lsp.buf.clear_references()
-                vim.api.nvim_clear_autocmds { group = 'python-devops-lsp-highlight', buffer = event2.buf }
+                vim.api.nvim_clear_autocmds { group = 'lsp-highlight', buffer = event2.buf }
               end,
             })
           end
 
-          -- Inlay hints для Python - показывают типы переменных прямо в коде
           if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
             map('<leader>th', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
@@ -132,62 +123,50 @@ return {
         end,
       })
 
-      -- Настройки диагностики без иконок в gutter
       vim.diagnostic.config {
-        signs = false, -- Отключаем иконки слева
-        -- Настройки отображения диагностики
+        signs = false,
         virtual_text = {
-          prefix = '●', -- Символ перед текстом ошибки
-          source = 'if_many', -- Показывать источник если несколько LSP активны
+          prefix = '●',
+          source = 'if_many',
         },
         float = {
           border = 'rounded',
-          source = 'always', -- Всегда показывать источник в всплывающих окнах
-          header = '', -- Убираем заголовок
-          focusable = false, -- Окно не перехватывает фокус
+          source = 'always',
+          header = '',
+          focusable = false,
         },
-        severity_sort = true, -- Сортировать по важности
-        update_in_insert = false, -- Не отвлекать во время набора текста
+        severity_sort = true,
+        update_in_insert = false,
       }
 
-      -- Получаем capabilities для автодополнений
       local capabilities = vim.lsp.protocol.make_client_capabilities()
       capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
 
-      -- Оптимизируем capabilities для работы с большими Python проектами
       capabilities.textDocument.completion.completionItem.snippetSupport = true
       capabilities.textDocument.completion.completionItem.resolveSupport = {
         properties = { 'documentation', 'detail', 'additionalTextEdits' },
       }
 
-      -- Конфигурация серверов с детальными настройками для каждого языка
       local servers = {
-        -- Python LSP - самый важный для вашей работы
         pyright = {
           settings = {
             python = {
               analysis = {
-                -- Уровень анализа - strict для максимальной проверки типов
-                typeCheckingMode = 'strict',
-                -- Автоимпорт - критично для Python разработки
+                typeCheckingMode = 'basic',
                 autoImportCompletions = true,
                 autoSearchPaths = true,
                 useLibraryCodeForTypes = true,
-                -- Диагностика специфично для Python проектов
-                diagnosticMode = 'workspace', -- Анализ всего workspace, не только открытых файлов
-                -- Включаем дополнительные проверки
+                diagnosticMode = 'openFilesOnly', -- Для больших проектов
                 reportMissingImports = true,
-                reportMissingTypeStubs = false, -- Отключаем для сторонних библиотек
+                reportMissingTypeStubs = false,
                 reportGeneralTypeIssues = true,
                 reportOptionalMemberAccess = true,
                 reportOptionalSubscript = true,
-                reportPrivateImportUsage = false, -- Иногда нужно для тестов
+                reportPrivateImportUsage = false,
               },
-              -- Пути для поиска модулей
-              pythonPath = './venv/bin/python', -- Автоматически ищет виртуальное окружение
+              pythonPath = './venv/bin/python',
             },
           },
-          -- Дополнительные настройки для pyright
           root_dir = function(fname)
             local util = require 'lspconfig.util'
             return util.root_pattern('pyproject.toml', 'setup.py', 'setup.cfg', 'requirements.txt', '.git')(fname)
@@ -232,26 +211,29 @@ return {
           settings = {
             yaml = {
               schemaStore = {
-                enable = false,
-                url = '',
+                enable = true,
+                url = 'https://www.schemastore.org/api/json/catalog.json',
               },
-              schemas = require('schemastore').yaml.schemas {
-                extra = {
-                  {
-                    name = 'Kubernetes',
-                    url = 'https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.28.0-standalone-strict/all.json',
-                  },
-                  {
-                    name = 'Ansible',
-                    url = 'https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook',
-                  },
+              schemas = {
+                ['https://json.schemastore.org/github-workflow.json'] = '/.github/workflows/*.{yml,yaml}',
+                ['https://gitlab.com/gitlab-org/gitlab/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
+                  '**/.gitlab-ci.yml',
+                  '**/.gitlab-ci.yaml',
                 },
-                select = {
-                  'docker-compose.yml',
-                  'GitHub Workflow',
-                  'gitlab-ci',
-                  'kustomization.yaml',
-                  'Helm Chart.yaml',
+                ['https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json'] = {
+                  '**/docker-compose*.yml',
+                  '**/docker-compose*.yaml',
+                  '**/compose.yml',
+                  '**/compose.yaml',
+                },
+                ['https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook'] = {
+                  '**/*playbook*.yml',
+                  '**/*playbook*.yaml',
+                },
+                kubernetes = {
+                  '**/*.k8s.yaml',
+                  '**/k8s/**/*.yaml',
+                  '**/kubernetes/**/*.yaml',
                 },
               },
               validate = true,
@@ -262,7 +244,6 @@ return {
                 singleQuote = false,
                 bracketSpacing = true,
               },
-              -- Важно для Kubernetes multi-document YAML
               customTags = {
                 '!vault',
                 '!encrypted/pkcs1-oaep',
@@ -270,17 +251,19 @@ return {
               },
             },
           },
-          on_attach = function(client, bufnr)
-            -- Автоопределение схемы по имени файла
-            if vim.fn.expand('%:t'):match 'kustomization%.yaml' then
-              vim.b.yaml_schema = 'Kustomization'
-            elseif vim.fn.expand('%:t'):match 'Chart%.yaml' then
-              vim.b.yaml_schema = 'Helm Chart'
-            end
-          end,
+          filetypes = { 'yaml', 'yaml.docker-compose', 'yaml.gitlab', 'yaml.ansible' },
+          capabilities = {
+            textDocument = {
+              completion = {
+                completionItem = {
+                  documentationFormat = { 'markdown', 'plaintext' },
+                  snippetSupport = true,
+                },
+              },
+            },
+          },
         },
 
-        -- Bash LSP для shell скриптов и DevOps автоматизации
         bashls = {
           filetypes = { 'sh', 'bash', 'zsh' },
           settings = {

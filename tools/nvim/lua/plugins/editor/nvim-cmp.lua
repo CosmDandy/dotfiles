@@ -18,21 +18,20 @@ return {
         {
           'rafamadriz/friendly-snippets',
           config = function()
-            -- Загружаем только DevOps языки
             require('luasnip.loaders.from_vscode').lazy_load {
               include = {
-                'python',     -- Основной язык
-                'lua',        -- Neovim конфигурация
-                'yaml',       -- Kubernetes, Ansible, Docker Compose, GitLab CI
-                'json',       -- Конфигурационные файлы
-                'bash',       -- Shell скрипты
-                'sh',         -- Shell скрипты
-                'dockerfile', -- Docker
-                'terraform',  -- Terraform/HCL
-                'hcl',        -- HashiCorp Configuration Language
-                'markdown',   -- Документация
-                'toml',       -- pyproject.toml, конфиги
-                'go',         -- DevOps инструменты на Go
+                'python',
+                'lua',
+                'yaml',
+                'json',
+                'bash',
+                'sh',
+                'dockerfile',
+                'terraform',
+                'hcl',
+                'markdown',
+                'toml',
+                'go',
               },
             }
           end,
@@ -45,6 +44,7 @@ return {
     'hrsh7th/cmp-buffer',
     'hrsh7th/cmp-cmdline',
     'hrsh7th/cmp-nvim-lsp-signature-help',
+    'lukas-reineke/cmp-under-comparator', -- Лучшая сортировка _ в конец
     -- 'windwp/nvim-ts-autotag',
     -- 'davidsierradz/cmp-conventionalcommits',
   },
@@ -59,7 +59,17 @@ return {
           luasnip.lsp_expand(args.body)
         end,
       },
-      completion = { completeopt = 'menu,menuone,preview' },
+      completion = {
+        completeopt = 'menu,menuone,noselect',
+        keyword_pattern = [[\k\+]],
+      },
+
+      view = {
+        entries = { name = 'custom', selection_order = 'near_cursor' },
+        docs = {
+          auto_open = true,
+        },
+      },
 
       mapping = cmp.mapping.preset.insert {
         -- Select the [n]ext item
@@ -106,72 +116,65 @@ return {
       },
 
       sources = cmp.config.sources({
-        -- Группа 0: Высший приоритет для специализированных инструментов
         {
-          name = 'lazydev', -- Для разработки Neovim конфигурации
+          name = 'lazydev',
           group_index = 0,
           priority = 1000,
-          -- Активируется только в Lua файлах автоматически
+          keyword_length = 2,
         },
 
-        -- Группа 1: Основные источники для программирования
         {
-          name = 'nvim_lsp', -- Python LSP (pyright), SQL LSP, YAML LSP и др.
+          name = 'nvim_lsp',
           group_index = 1,
           priority = 1000,
-          keyword_length = 1, -- Быстрая активация для точной работы с Python API
-          max_item_count = 50, -- Достаточно для детального выбора, но не перегружает
+          keyword_length = 2,
+          max_item_count = 30,
         },
 
         {
-          name = 'vim-dadbod-completion', -- SQL автодополнение для работы с БД
+          name = 'vim-dadbod-completion',
           group_index = 1,
           priority = 950,
-          keyword_length = 1, -- Важно для SQL - часто нужны предложения сразу
-          -- Этот источник активируется только в SQL файлах благодаря конфигурации плагина
+          keyword_length = 2,
         },
 
         {
-          name = 'nvim_lsp_signature_help', -- Подсказки сигнатур функций
+          name = 'nvim_lsp_signature_help',
           group_index = 1,
           priority = 900,
-          -- Критично для Python - показывает параметры функций во время ввода
+          keyword_length = 2,
         },
 
         {
-          name = 'luasnip', -- Сниппеты для быстрого написания кода
+          name = 'luasnip',
           group_index = 1,
           priority = 850,
-          keyword_length = 2, -- Избегаем слишком раннего показа сниппетов
-          max_item_count = 10, -- Ограничиваем для фокуса на наиболее релевантных
+          keyword_length = 2,
+          max_item_count = 10,
         },
       }, {
-        -- Группа 2: Вспомогательные источники (показываются когда в первой группе недостаточно результатов)
         {
-          name = 'path', -- Пути к файлам - критично для DevOps и Python импортов
+          name = 'path',
           priority = 700,
-          keyword_length = 2, -- Активируется при вводе ./ ../ / или названий директорий
-          max_item_count = 15, -- Достаточно для навигации, но не загромождает
+          keyword_length = 2,
+          max_item_count = 15,
           option = {
-            -- Оптимизируем для типичных DevOps путей
-            trailing_slash = true, -- Добавляем слэш к директориям
-            label_trailing_slash = true, -- Показываем слэш в метке
+            trailing_slash = true,
+            label_trailing_slash = true,
           },
         },
 
         {
-          name = 'buffer', -- Содержимое открытых буферов
+          name = 'buffer',
           priority = 600,
-          keyword_length = 4, -- Повышенная длина - избегаем мусора из больших файлов
-          max_item_count = 8, -- Небольшое количество для фокуса на релевантности
+          keyword_length = 2,
+          max_item_count = 15,
           option = {
             get_bufnrs = function()
-              -- Только из видимых буферов для повышения релевантности
               local bufs = {}
               for _, win in ipairs(vim.api.nvim_list_wins()) do
                 local buf = vim.api.nvim_win_get_buf(win)
                 local buf_ft = vim.bo[buf].filetype
-                -- Исключаем специальные буферы, которые могут засорять автодополнение
                 if buf_ft ~= 'help' and buf_ft ~= 'qf' and buf_ft ~= 'nofile' then
                   bufs[buf] = true
                 end
@@ -181,36 +184,32 @@ return {
           },
         },
       }, {
-        -- Группа 3: Специализированные источники для определенных типов файлов
         {
-          name = 'cmdline', -- Командная строка Vim - полезно для DevOps автоматизации
+          name = 'cmdline',
           priority = 500,
           keyword_length = 1,
           max_item_count = 5,
-          -- Активируется автоматически в соответствующих контекстах
         },
       }),
 
       window = {
         completion = cmp.config.window.bordered {
-          border = 'rounded', -- Округлые края
+          border = 'rounded',
           scrollbar = false,
-          col_offset = -3, -- Небольшой отступ слева
-          side_padding = 1, -- Внутренние отступы
+          col_offset = -3,
+          side_padding = 1,
         },
 
         documentation = cmp.config.window.bordered {
           border = 'rounded',
-          max_width = 80, -- Максимальная ширина документации
-          max_height = 20, -- Максимальная высота
+          max_width = 80,
+          max_height = 20,
         },
       },
 
-      -- Настройки форматирования элементов меню
       formatting = {
-        fields = { 'kind', 'abbr', 'menu' }, -- Порядок отображения элементов
+        fields = { 'kind', 'abbr', 'menu' },
         format = function(entry, vim_item)
-          -- Добавляем иконки для лучшего визуального восприятия
           local kind_icons = {
             Text = '󰉿',
             Method = '󰆧',
@@ -239,10 +238,8 @@ return {
             TypeParameter = '',
           }
 
-          -- Устанавливаем иконку
           vim_item.kind = string.format('%s %s', kind_icons[vim_item.kind] or '', vim_item.kind)
 
-          -- Показываем источник предложения
           vim_item.menu = ({
             nvim_lsp = '[LSP]',
             luasnip = '[Snippet]',
@@ -256,17 +253,31 @@ return {
       },
 
       experimental = {
-        ghost_text = true, -- Показывать предварительный текст
+        ghost_text = true,
       },
 
-      -- Производительность
+      sorting = {
+        comparators = {
+          cmp.config.compare.offset,
+          cmp.config.compare.exact,
+          cmp.config.compare.score,
+          require('cmp-under-comparator').under,
+          cmp.config.compare.recently_used,
+          cmp.config.compare.locality,
+          cmp.config.compare.kind,
+          cmp.config.compare.sort_text,
+          cmp.config.compare.length,
+          cmp.config.compare.order,
+        },
+      },
+
       performance = {
-        debounce = 60, -- Задержка перед показом меню (мс)
-        throttle = 30, -- Задержка между обновлениями
-        fetching_timeout = 500, -- Таймаут получения предложений
-        confirm_resolve_timeout = 80, -- Таймаут разрешения при подтверждении
-        async_budget = 1, -- Бюджет асинхронных операций (мс)
-        max_view_entries = 200, -- Максимум видимых предложений
+        debounce = 80,
+        throttle = 30,
+        fetching_timeout = 400,
+        confirm_resolve_timeout = 80,
+        async_budget = 1,
+        max_view_entries = 50,
       },
     }
   end,
