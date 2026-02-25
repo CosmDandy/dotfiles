@@ -82,7 +82,7 @@ return {
         warnings = get_severity(vim.diagnostic.severity.WARN),
       }
 
-      return string.format(' %%#Normal#%s %%#Normal#%s ', result.errors or 0, result.warnings or 0)
+      return string.format(' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ', result.errors or 0, result.warnings or 0)
     end
 
     local function get_fileinfo()
@@ -167,15 +167,28 @@ return {
       return table.concat(parts, ' ') .. '%#Normal# '
     end
 
-    -- Python окружение
+    -- Python окружение (с кешированием версии)
+    local python_version_cache = {}
     local function get_python_env()
       local venv = vim.env.VIRTUAL_ENV
       if not venv then
         return ''
       end
 
+      -- Получаем родительскую папку и название окружения
+      local parent_dir = vim.fn.fnamemodify(venv, ':h:t')
       local venv_name = vim.fn.fnamemodify(venv, ':t')
-      return '%#Normal# ' .. venv_name .. ' '
+
+      -- Кешируем версию Python для окружения
+      if not python_version_cache[venv] then
+        local python_bin = venv .. '/bin/python'
+        local version_output = vim.fn.system(python_bin .. ' --version 2>&1')
+        local version = version_output:match 'Python (%d+%.%d+%.%d+)' or version_output:match 'Python (%d+%.%d+)'
+        python_version_cache[venv] = version or '?'
+      end
+
+      local version = python_version_cache[venv]
+      return '%#NormalNC#' .. venv_name .. ' (' .. version .. ')'
     end
 
     -- Переопределение функции content_provider для mini.statusline
@@ -194,10 +207,10 @@ return {
             '%=', -- Разделитель, центрирует то, что после него
             get_macro_recording(), -- САМОЕ ВАЖНОЕ!
             get_readonly(), -- READONLY если readonly
+            get_python_env(), -- Python окружение
             get_lsp_diagnostic(),
             get_filetype(),
             get_searchcount(),
-            get_python_env(), -- Python окружение
           }
 
           return table.concat(items)
