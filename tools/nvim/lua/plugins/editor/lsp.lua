@@ -428,7 +428,6 @@ return {
 
         'ansible-language-server',
         'ansible-lint',
-        'jinja-lsp',
       })
 
       -- Автоматическая установка инструментов
