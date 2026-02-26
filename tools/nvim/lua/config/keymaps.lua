@@ -22,10 +22,6 @@ map('n', '<C-a>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
 
 map('n', '<leader>wd', '<cmd>delmarks!<CR>', { desc = '[D]elete marks', noremap = true, silent = true })
 
-map({ 'n', 'x' }, '<leader>ss', function()
-  require('grug-far').open { transient = true }
-end, { desc = '[S]earch' })
-
 map("n", "<leader>du", ":DBUIToggle<CR>", { desc = "Toggle Dadbod UI" })
 map("n", "<leader>da", ":DBUIAddConnection<CR>", { desc = "Add DB Connection" })
 
