@@ -57,8 +57,8 @@ alias b='btop'
 alias lg='lazygit'
 alias lzd='lazydocker'
 
-alias cl='claude'
-alias cly="claude --dangerously-skip-permissions"
+alias cl='claude --permission-mode bypassPermissions'
+alias cly='claude --dangerously-skip-permissions'
 alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKEN=lmstudio CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 claude --model qwen/qwen3-coder-next'
 
 alias ds='devpod ssh'
@@ -100,22 +100,41 @@ alias tks='tmux kill-server'
 alias gc='git clone'
 alias gs='git status'
 alias gss='git status --short'
-alias gl='git pull'
+alias gp='git pull'
 alias gd='git diff'
 alias gdiff='git diff --color-words'
 alias glog='git log --oneline --graph --decorate --color=always'
 alias gblame='git blame -w'
 alias dfu='(cd "$HOME/dotfiles" && git fetch origin && git reset --hard @{u}) && echo "✓ Dotfiles updated" || echo "✗ Failed to update dotfiles"'  # Обновление дот-файлов (принудительно из облака)
 
-alias ip="dig +short myip.opendns.com @resolver1.opendns.com"  # Внешний IP
-alias localip="ipconfig getifaddr en0"                         # Локальный IP (macOS)
+# GitHub CLI - Actions / Workflows
+alias gha='gh run list'                          # Список последних runs
+alias ghaw='gh run watch'                        # Watch текущего run в реальном времени
+alias ghav='gh run view'                         # Детали run (+ ID)
+alias ghal='gh run view --log-failed'            # Логи только упавших jobs (+ ID)
+alias ghar='gh run rerun'                        # Перезапуск run (+ ID)
+alias gharf='gh run rerun --failed'              # Перезапуск только упавших jobs (+ ID)
 
-alias pss='source .venv/bin/activate'
+# GitHub CLI - Repo
+alias ghrv='gh repo view --web'                  # Открыть репо в браузере
+alias ghrc='gh repo clone'
+
+# GitLab CLI - CI/CD Pipelines
+alias glci='glab ci status'                       # Статус текущего pipeline
+alias glciv='glab ci view'                        # Интерактивный просмотр pipeline
+alias glcit='glab ci trace'                       # Логи job в реальном времени (+ job ID)
+alias glcir='glab ci retry'                       # Перезапуск pipeline
+alias glcil='glab ci list'                        # Список pipelines
+
+# GitLab CLI - Repo
+alias glrv='glab repo view --web'                 # Открыть репо в браузере
+alias glrc='glab repo clone'
+
+alias psa='source .venv/bin/activate'
 alias psd='deactivate'
 
-alias update='sudo softwareupdate -i -a; brew update; brew upgrade; brew cleanup; npm install npm -g; npm update -g; zinit self-update; zinit update'
-
-alias ports='netstat -tulanp'
+alias updm='nix flake update --flake ~/.dotfiles/platform/nix && darwin-rebuild switch --flake ~/dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update'
+alias updl='nix flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update'
 
 # =============================================================================
 # PLUGIN MANAGER SETUP
