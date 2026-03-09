@@ -1,2 +1,23 @@
+disableStartupPopups: true
+notARepository: skip
+gui:
+  skipDiscardChangeWarning: true
+  skipStashWarning: true
+  skipNoStagedFilesWarning: true
+  skipRewordInEditorWarning: true
+  showFileTree: true
+  border: rounded
+  showBottomLine: false
+  showCommandLog: false
 git:
   overrideGpg: True
+  autoFetch: true
+  mainBranches:
+    - master
+    - stage
+    - develop
+  log:
+    showGraph: always
+os:
+  editCommand: nvim
+  editCommandTemplate: "{{editor}} {{filename}}"
