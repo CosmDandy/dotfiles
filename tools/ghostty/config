@@ -1,5 +1,5 @@
 font-size = 15
-theme = light:Builtin Solarized Light,dark:Builtin Solarized Dark
+theme = light:iTerm2 Solarized Light,dark:iTerm2 Solarized Dark
 cursor-color = 2aa198
 
 fullscreen = true
