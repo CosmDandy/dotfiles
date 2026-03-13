@@ -386,6 +386,12 @@ run = 'move-node-to-workspace 7'
 [[on-window-detected]]
 if.app-id = 'org.m0k.transmission'
 run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'io.nekohasekai.sfavt.standalone'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'com.meetily.ai'
+run = 'move-node-to-workspace 7'
 
 # 8
 [[on-window-detected]]
@@ -403,11 +409,11 @@ run = 'move-node-to-workspace 9'
 if.app-id = 'com.microsoft.teams2'
 run = 'move-node-to-workspace 9'
 [[on-window-detected]]
-if.app-id = 'net.whatsapp.WhatsApp'
+if.app-id = 'ru.yandex.desktop.telemost'
 run = 'move-node-to-workspace 9'
 [[on-window-detected]]
 if.app-id = 'com.apple.mail'
 run = 'move-node-to-workspace 9'
 [[on-window-detected]]
-if.app-id = 'app.legcord.Legcord'
+if.app-id = 'com.ranchero.NetNewsWire-Evergreen'
 run = 'move-node-to-workspace 9'
