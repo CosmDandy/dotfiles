@@ -133,9 +133,10 @@ alias glrc='glab repo clone'
 alias psa='source .venv/bin/activate'
 alias psd='deactivate'
 
-alias updm='nix flake update --flake ~/.dotfiles/platform/nix && darwin-rebuild switch --flake ~/dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update'
+alias updm='nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update'
 alias updl='nix flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update'
 
+alias ttyh='ghostty +list-keybinds --default'
 # =============================================================================
 # PLUGIN MANAGER SETUP
 # =============================================================================
