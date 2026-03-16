@@ -45,30 +45,6 @@
 - Do actions silently, show only results
 - After batch: brief summary of what's done and what's verified
 
-**Examples:**
-
-❌ **Bad (verbose):**
-```
-Reading file src/main.py...
-Found function process_data()
-Editing file...
-Added error handling
-Running ruff linter...
-Found 3 errors
-Fixing errors...
-Re-running ruff...
-No errors
-Running tests...
-Tests passed
-Done!
-```
-
-✅ **Good (minimal):**
-```
-Added error handling to process_data().
-Tests passed. DONE.
-```
-
 **Auto-fix errors:**
 - If tests/linters fail - fix and re-run automatically
 - Show only final status, not intermediate attempts
@@ -78,198 +54,78 @@ Tests passed. DONE.
 - DON'T add docstrings automatically
 - DON'T add comments "for clarity"
 - Add documentation ONLY when user explicitly asks
-- Exception: complex logic where comment is necessary to understand
 
 **Language:**
 - Communication in Russian (when user writes in Russian)
 - Code and comments (if needed) - in English
-- Brief and clear
 
 ## Workflow - Small Batches
 
-**Work principle:**
 1. Make 2-3 related changes (one logical block)
 2. Run tests/linters to verify
 3. Show result: what changed, what verified
 4. STOP - wait for next instruction
 
-**DON'T:**
-- ❌ One micro-change at a time (too slow)
-- ❌ Entire task without stops (lose control)
-- ❌ Many unrelated changes (hard to track)
+**DON'T:** one micro-change (too slow), entire task without stops (lose control), many unrelated changes (hard to track)
 
-**Batch examples:**
-- ✅ Add function + tests (documentation only on request)
-- ✅ Fix bug + update related tests + re-run
-- ✅ Refactor module + format + type check
-
-**Error handling:**
-- If tests/linters fail - auto-fix and re-run
-- Show only final result (not intermediate attempts)
-- If can't fix - show error and ask for help
+**Error handling:** auto-fix and re-run, show only final result, ask for help if stuck
 
 ## Git Workflow
 
-**CRITICAL: NEVER do git commit/push/add yourself!**
+**You CAN:** `git status`, `git diff`, `git log`, `git blame`, `git add`, `git commit`
+**NEVER:** `git push` — user pushes himself
 
-User uses lazygit and makes commits himself.
-
-**Your role:**
-1. Make code changes
-2. Run tests/linters
-3. Show `git diff` or `git status`
-4. Suggest commit message in conventional commits format:
-   - `feat: add function X`
-   - `fix: fix bug in Y`
-   - `refactor: rework module Z`
-5. STOP - wait for user to make commit himself
-
-**You CAN use:**
-- ✅ `git status` - check status
-- ✅ `git diff` - check changes
-- ✅ `git log` - check history
-- ✅ `git blame` - check authorship
-
-**NEVER:**
-- ❌ `git commit` - user does it himself
-- ❌ `git push` - user does it himself
-- ❌ `git add` - user does it himself via lazygit
+**Commits:** ONLY when user explicitly asks (e.g., "commit", "make a commit", "prepare commit").
+Never commit on your own initiative. Use conventional commits format.
+After commit — show `git status` to confirm.
 
 ## GitLab & GitHub CLI
 
 **Priority: GitLab (work) > GitHub (personal)**
+Use CLI (`glab`, `gh`) instead of MCP servers - faster, doesn't load context.
 
-**GitLab (work - PRIORITY):**
-```bash
-# Merge Requests
-glab mr list
-glab mr view <number>
-glab mr diff <number>
-
-# CI/CD
-glab ci status
-glab ci view <job-id>
-glab ci trace <job-id>
-
-# Issues
-glab issue list
-glab issue view <number>
-
-# API
-glab api /projects/:id/merge_requests
-```
-
-**GitHub (personal):**
-```bash
-# Pull Requests
-gh pr list
-gh pr view <number>
-gh pr diff <number>
-
-# Issues
-gh issue list
-gh issue view <number>
-
-# API
-gh api /repos/:owner/:repo/pulls
-```
-
-**IMPORTANT**: Use CLI instead of MCP servers - faster and doesn't load context.
+Key commands: `glab mr list/view/diff`, `glab ci status/view/trace`, `glab issue list/view`
+GitHub: `gh pr list/view/diff`, `gh issue list/view`
 
 ## Python Development
 
 **Package manager: uv (PRIORITY) > pip**
 
 ```bash
-# Use uv first
-uv pip install <package>
-uv run pytest
-uv sync
-
-# pip as fallback
-pip install <package>
+uv pip install <package>    # uv first
+uv run pytest               # run via uv
+uv sync                     # sync deps
 ```
 
-**Tools:**
-- Linter: `ruff check .`
-- Type checker: `mypy src/`
-- Formatter: `black .`
+**Tools:** ruff (lint), mypy (types), black (format)
 
-**Code Quality (critical):**
-- Type hints mandatory - use mypy strict mode
+**Code Quality:**
+- Type hints mandatory - mypy strict mode
 - `pathlib` instead of `os.path`
-- Use `structlog` or `logging` - NEVER `print()` for logging
+- `structlog`/`logging` - NEVER `print()` for logging
 - Specific exceptions - avoid bare `except:`
-
-**Auto-fix errors:**
-- If ruff/mypy/black find errors - fix automatically
-- Re-run check after fixing
-- Show only final status: "Fixed X errors. Check passed."
+- Auto-fix errors, re-run, show only final status
 
 ## DevOps & Infrastructure
 
-### Ansible
-- Idempotency is mandatory
-- ALWAYS `ansible-playbook --check --diff` before real run
-- Run `ansible-lint` before commit
-- Secrets via ansible-vault only
-
-### Kubernetes
-- Resource limits/requests mandatory
-- Liveness/readiness probes required
-- RBAC with minimal privileges
-- **Claude:** show diff before changing manifests
-
-### Docker
-- Multi-stage builds for smaller images
-- NOT root user (use USER directive)
-- Pin versions explicitly (never :latest in production)
-
-### Terraform
-- Remote state with locking
-- **ALWAYS** `terraform plan` before apply
-- **Claude:** show plan output before modifying .tf files
-- Use modules for reusability
-
-### Nomad
-- Validate job files: `nomad job validate job.hcl`
-- Strict HCL syntax
-- Update strategies for zero-downtime deployments
-- Resource constraints (CPU/memory) mandatory
-- **Claude:** show plan before deploy
-
-### CI/CD (GitLab)
-- Pipeline stages: lint → test → build → deploy
-- Secrets only via CI/CD variables (never hardcoded)
-- Fail fast principle
-- **Claude:** CI/CD errors are expensive - validate locally first
+Domain-specific conventions are in `rules/` (auto-loaded per file type):
+- `rules/terraform.md` — Terraform (.tf, .tfvars)
+- `rules/ansible.md` — Ansible (playbooks, roles, inventory)
+- `rules/kubernetes.md` — Kubernetes (manifests, charts, helm)
+- `rules/nomad.md` — Nomad (.nomad, .nomad.hcl)
+- `rules/docker.md` — Docker (Dockerfile, compose)
+- `rules/security.md` — Security (always active)
 
 ## Context Management
 
 **Auto-compact: 75% (setting: 85%, effective ~75% with headroom buffer)**
 
-Model degradation:
-- 0-75%: peak efficiency, excellent reasoning
-- 75-85%: degradation starts, but still good
-- 85-100%: noticeable reasoning degradation
-
-Strategy:
-- At 60% in statusline - user knows it's time to think about finishing task
-- At ~75% - auto-compact triggers automatically
-- Balance between context preservation and performance
-
-When approaching limit:
-- Use Task agents for research
-- Move heavy operations to Skills
-- Delegate to specialized agents
+- 0-75%: peak efficiency | 75-85%: degradation starts | 85-100%: noticeable degradation
+- At 60%: think about finishing task
+- At ~75%: auto-compact triggers
+- Use Task agents for research, Skills for heavy operations
 
 ## Languages & Stack
 
-**Primary:**
-- Python (main language) - uv > pip
-- Shell/Bash/Nix
-- Infrastructure: Docker/Kubernetes/Nomad, Terraform/Ansible, GitLab CI/CD
-
-**Learning:**
-- Go, Rust (will have LSP servers configured)
-- Help with learning via examples and explanations
+**Primary:** Python (uv > pip), Shell/Bash/Nix, IaC (Docker/K8s/Nomad, Terraform/Ansible, GitLab CI/CD)
+**Learning:** Go, Rust (help with examples and explanations)
