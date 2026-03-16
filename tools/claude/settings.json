@@ -1,13 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "includeCoAuthoredBy": false,
   "env": {
     "CLAUDE_CODE_DISABLE_ATTRIBUTION": "1",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "70",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "0",
     "EDITOR": "nvim",
     "VISUAL": "nvim"
   },
+  "includeCoAuthoredBy": false,
   "permissions": {
     "allow": [
       "Read(**)",
@@ -547,9 +547,10 @@
       "Bash(:*monero:*)"
     ]
   },
-  "model": "sonnet",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/statusline.sh"
-  }
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "effortLevel": "high"
 }

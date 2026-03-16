@@ -246,16 +246,16 @@ pip install <package>
 
 ## Context Management
 
-**Auto-compact: 70%**
+**Auto-compact: 75% (setting: 85%, effective ~75% with headroom buffer)**
 
 Model degradation:
-- 0-70%: peak efficiency, excellent reasoning
-- 70-85%: degradation starts, but still good
+- 0-75%: peak efficiency, excellent reasoning
+- 75-85%: degradation starts, but still good
 - 85-100%: noticeable reasoning degradation
 
 Strategy:
-- At 50% in statusline - user knows it's time to think about finishing task
-- At 70% - auto-compact triggers automatically
+- At 60% in statusline - user knows it's time to think about finishing task
+- At ~75% - auto-compact triggers automatically
 - Balance between context preservation and performance
 
 When approaching limit:
