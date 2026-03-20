@@ -143,6 +143,9 @@ return {
 
       -- Dockerfile
       dockerfile = {}, -- Используем только LSP форматирование для Dockerfile
+
+      -- Jsonnet
+      jsonnet = { 'jsonnetfmt' },
     },
 
     -- Детальная конфигурация каждого форматера

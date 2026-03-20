@@ -5,6 +5,7 @@ vim.filetype.add {
     j2 = 'jinja',
     tfvars = 'terraform',
     tftpl = 'terraform',
+    tpl = 'yaml',
   },
   filename = {
     ['.terraformrc'] = 'hcl',
@@ -22,6 +23,19 @@ vim.filetype.add {
     ['.*roles/.*/handlers/.*%.ya?ml'] = 'yaml.ansible',
     ['docker%-compose%..*%.ya?ml'] = 'yaml.docker-compose',
     ['%.gitlab%-ci%..*%.ya?ml'] = 'yaml.gitlab',
+    -- Helm (templates/ dir in charts)
+    ['.*/templates/.*%.ya?ml'] = 'helm',
+    ['.*/templates/.*%.tpl'] = 'helm',
+    -- GitHub Actions .tpl
+    ['.*%.github/workflows/.*%.tpl'] = 'yaml',
+    -- Docker Compose .tpl
+    ['docker%-compose.*%.tpl'] = 'yaml.docker-compose',
+    ['compose.*%.tpl'] = 'yaml.docker-compose',
+    -- Ansible .tpl
+    ['.*playbook.*%.tpl'] = 'yaml.ansible',
+    ['.*requirements.*%.tpl'] = 'yaml.ansible',
+    ['.*roles/.*/tasks/.*%.tpl'] = 'yaml.ansible',
+    ['.*roles/.*/handlers/.*%.tpl'] = 'yaml.ansible',
   },
 }
 

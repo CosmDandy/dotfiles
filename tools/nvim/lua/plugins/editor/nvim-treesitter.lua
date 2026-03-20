@@ -34,6 +34,9 @@ return {
         'regex',
         'vim',
         'vimdoc',
+        'gotmpl',
+        'helm',
+        'jsonnet',
       },
       auto_install = true,
       highlight = {

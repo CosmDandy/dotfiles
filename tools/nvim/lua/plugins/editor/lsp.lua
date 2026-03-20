@@ -215,7 +215,7 @@ return {
                 url = 'https://www.schemastore.org/api/json/catalog.json',
               },
               schemas = {
-                ['https://json.schemastore.org/github-workflow.json'] = '/.github/workflows/*.{yml,yaml}',
+                ['https://json.schemastore.org/github-workflow.json'] = { '/.github/workflows/*.{yml,yaml}', '/.github/workflows/*.tpl' },
                 ['https://gitlab.com/gitlab-org/gitlab/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
                   '**/.gitlab-ci.yml',
                   '**/.gitlab-ci.yaml',
@@ -359,6 +359,9 @@ return {
 
         -- Docker Compose LSP
         docker_compose_language_service = {},
+
+        -- Jsonnet LSP
+        jsonnet_ls = {},
 
         ansiblels = {
           settings = {
