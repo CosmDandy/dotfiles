@@ -36,7 +36,11 @@ setopt INC_APPEND_HISTORY    # Добавлять команды в истори
 fpath=("$HOME/.zsh/completions" $fpath)
 
 autoload -Uz compinit
-compinit
+if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
+  compinit
+else
+  compinit -C
+fi
 
 # =============================================================================
 # ALIASES - NAVIGATION
@@ -130,8 +134,25 @@ alias glcil='glab ci list'                        # Список pipelines
 alias glrv='glab repo view --web'                 # Открыть репо в браузере
 alias glrc='glab repo clone'
 
+alias dc='docker compose'
+alias dcl='docker compose logs -f'
+alias dcu='docker compose up -d'
+alias dcd='docker compose down'
+
+alias k='kubectl'
+alias kgp='kubectl get pods'
+alias kgs='kubectl get svc'
+alias kl='kubectl logs -f'
+alias kctx='kubectl config use-context'
+alias kns='kubectl config set-context --current --namespace'
+
 alias psa='source .venv/bin/activate'
 alias psd='deactivate'
+
+alias jn='jupyter notebook'
+alias jl='jupyter lab'
+alias uvr='uv run'
+alias uvs='uv sync'
 
 alias updm='nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update'
 alias updl='nix flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update'
@@ -168,11 +189,20 @@ export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#586e75"  # Цвет предложе
 # PLUGIN LOADING
 # =============================================================================
 
-zinit light zsh-users/zsh-completions                   # Расширенные автодополнения
-zinit light zsh-users/zsh-autosuggestions               # Автопредложения на основе истории
-zinit light zsh-users/zsh-history-substring-search      # Поиск по подстроке в истории (стрелки вверх/вниз)
-zinit light zdharma-continuum/fast-syntax-highlighting  # Быстрая подсветка синтаксиса
-zinit light hlissner/zsh-autopair                       # Автоматическое закрытие скобок и кавычек
+zinit ice wait lucid
+zinit light zsh-users/zsh-completions
+
+zinit ice wait lucid atload'_zsh_autosuggest_start'
+zinit light zsh-users/zsh-autosuggestions
+
+zinit ice wait lucid
+zinit light zsh-users/zsh-history-substring-search
+
+zinit ice wait lucid
+zinit light zdharma-continuum/fast-syntax-highlighting
+
+zinit ice wait lucid
+zinit light hlissner/zsh-autopair
 
 # =============================================================================
 # KEY BINDINGS
@@ -200,3 +230,6 @@ eval "$(starship init zsh)"
 
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
+
+# Zoxide - умная навигация по директориям
+eval "$(zoxide init zsh --cmd cd)"
