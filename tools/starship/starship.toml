@@ -1,4 +1,3 @@
-# Inserts a blank line between shell prompts
 add_newline = false
 
 [git_branch]
@@ -7,8 +6,56 @@ format = 'on [$branch(:$remote_branch)]($style) '
 [git_status]
 format = ''
 
+[git_state]
+format = '\([$state( $progress_current/$progress_total)]($style)\) '
+
+[status]
+disabled = false
+format = '[$status]($style) '
+
+[hostname]
+ssh_only = true
+format = '[$hostname]($style) in '
+
+[jobs]
+symbol = '✦'
+threshold = 1
+format = '[$symbol$number]($style) '
+
 [container]
 format = '[$symbol ]($style) '
+
+[python]
+format = '[${symbol}(${version} )(\($virtualenv\))]($style) '
+symbol = ' '
+
+[kubernetes]
+disabled = false
+format = '[$symbol$context( \($namespace\))]($style) '
+symbol = '☸ '
+
+[terraform]
+format = '[$symbol$workspace]($style) '
+symbol = '󱁢 '
+
+[docker_context]
+format = '[$symbol$context]($style) '
+only_with_files = true
+
+[nix_shell]
+format = '[$symbol$state]($style) '
+symbol = ' '
+
+[helm]
+format = '[$symbol($version )]($style)'
+
+[aws]
+format = '[$symbol($profile )(\($region\))]($style) '
+symbol = ' '
+
+[gcloud]
+format = '[$symbol$project(\($region\))]($style) '
+symbol = '󱇶 '
 
 [battery]
 full_symbol = '󰁹 '
@@ -20,3 +67,8 @@ empty_symbol = '󰂎 '
 [[battery.display]]
 threshold = 20
 style = 'bold red'
+
+[cmd_duration]
+min_time = 3_000
+format = '[$duration]($style) '
+style = 'yellow'
