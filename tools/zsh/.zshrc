@@ -68,6 +68,8 @@ alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKE
 alias ds='devpod ssh'
 alias dpd='devpod delete'
 alias dps='devpod stop'
+alias dpl='devpod up --dotfiles-script-env PROFILE=base'
+alias dpf='devpod up --dotfiles-script-env PROFILE=full'
 
 alias c='clear'
 alias e='exit'

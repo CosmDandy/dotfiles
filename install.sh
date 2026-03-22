@@ -2,6 +2,9 @@
 
 set -e
 
+# Suppress debconf warnings in non-interactive containers
+export DEBIAN_FRONTEND=noninteractive
+
 # Определяем корень репозитория и экспортируем для всех дочерних скриптов
 export DOTFILES_ROOT="$(cd "$(dirname "$0")" && pwd)"
 

@@ -2,3 +2,4 @@
 lazy-lock.json
 nix/flake.lock
 .claude
+/platform/nix/flake.lock

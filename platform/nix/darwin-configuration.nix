@@ -30,6 +30,8 @@
       "karabiner-elements"
       "microsoft-teams"
       "openvpn-connect"
+      "amneziavpn"
+      "sfm"
       # ----------
       # "secretive"
       "orbstack"
@@ -37,7 +39,7 @@
       # Браузеры
       "arc"
       "netnewswire"
-      "yattee"
+      # "yattee"
       # Разработка
       "ghostty"
       "cursor"
@@ -45,8 +47,8 @@
       "devpod"
       "utm"
       # AI инструменты
-      "chatgpt"
-      "claude"
+      # "chatgpt"
+      # "claude"
       "lm-studio"
       # Продуктивность
       "obsidian"
@@ -58,10 +60,10 @@
       "onyx"
       "ukelele"
       "betterdisplay"
-      "jordanbaird-ice"
+      # "jordanbaird-ice"
       "syncthing-app"
       # Дополнительные утилиты
-      "flux"
+      "flux-app"
       # Оконный менеджер
       "nikitabobko/tap/aerospace"
     ];
@@ -80,8 +82,6 @@
     uv
     lua
     luarocks
-    rustc
-    cargo
     eza
     fd
     ripgrep
@@ -91,8 +91,6 @@
     curl
     ffmpeg
     jq
-    terraform
-    ansible
     starship
     claude-code
     neovim
@@ -102,11 +100,12 @@
     git
     gh        # GitHub CLI
     glab      # GitLab CLI
-    lnav      # Log file navigator
     lazygit
     lazydocker
-    dive
-    k9s
+    gdu
+    zoxide
+    yq-go
+    bat
   ];
 
   # ===============================
@@ -125,11 +124,13 @@
     nerd-fonts.fira-code
   ];
 
-#  nix.gc = {
-#    automatic = true;
-#    interval = { Weekday = 0; Hour = 2; Minute = 0; };
-#    options = "--delete-older-than 30d";
-#  };
+  # nix.gc requires nix.enable = true
+  # Run manually: nix-collect-garbage --delete-older-than 30d
+  # nix.gc = {
+  #   automatic = true;
+  #   interval = { Weekday = 0; Hour = 2; Minute = 0; };
+  #   options = "--delete-older-than 30d";
+  # };
 
   programs = {
     zsh = {

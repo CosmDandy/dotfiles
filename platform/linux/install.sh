@@ -7,6 +7,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PLATFORM_DIR/common.sh"
 
+# ===============================
+# Profiles: base | full (default)
+#   base — core editor, shell, git
+#   full — base + IaC/K8s/container/DevOps tools
+#
+# Usage: PROFILE=base ./install.sh
+#    or: devpod up --dotfiles-script-env PROFILE=base
+# ===============================
+PROFILE="${PROFILE:-full}"
+print_section "Profile: ${PROFILE}"
+
 # Установка Nix
 if ! command -v nix &> /dev/null; then
   print_section "Installing Nix"
@@ -14,43 +25,52 @@ if ! command -v nix &> /dev/null; then
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Устанавливаем пакеты через nix
 # Разрешаем unfree пакеты (например, claude-code)
 export NIXPKGS_ALLOW_UNFREE=1
 
+# --- Base: core editing and shell environment ---
 packages=(
+  # Neovim deps
   python3
-  go
   nodejs
-  uv
   lua
   luarocks
+  # CLI
   eza
   fd
   ripgrep
-  iperf3
-  wget
-  curl
-  jq
-  ansible
+  yq-go
   starship
   neovim
   tmux
   claude-code
   atuin
   btop
-  git
-  gh   # GitHub CLI
-  glab # GitLab CLI
-  lnav # Log file navigator
   lazygit
-  lazydocker
-  dive
-  k9s
 )
 
+# --- Full: IaC, K8s, DevOps tools ---
+if [[ "$PROFILE" == "full" ]]; then
+  packages+=(
+    go
+    uv
+    gh
+    glab
+    gdu
+    terraform
+    ansible
+    kubectl
+    kubernetes-helm
+    k9s
+    dive
+    lazydocker
+    lnav
+    iperf3
+  )
+fi
+
 for package in "${packages[@]}"; do
-  print_section "Installing package ${package}"
+  print_section "Installing ${package}"
   nix-env -iA nixpkgs.$package
 done
 
