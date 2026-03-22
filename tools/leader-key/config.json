@@ -145,7 +145,7 @@
         {
           "key": "f",
           "type": "application",
-          "value": "/Applications/Final Cut Pro.app"
+          "value": "/Applications/Final Cut Pro Creator Studio.app"
         },
         {
           "key": "c",
@@ -173,7 +173,7 @@
         {
           "key": "s",
           "type": "application",
-          "value": "/Applications/superwhisper.app"
+          "value": "/Applications/Spokenly.app"
         }
       ],
       "iconPath": "brain",
@@ -199,11 +199,6 @@
           "value": "/Applications/Microsoft Teams.app"
         },
         {
-          "key": "w",
-          "type": "application",
-          "value": "/Applications/WhatsApp.app"
-        },
-        {
           "key": "f",
           "type": "application",
           "value": "/System/Applications/FaceTime.app"
@@ -213,6 +208,11 @@
           "label": "Google Meet",
           "type": "url",
           "value": "raycast://extensions/vitoorgomes/google-meet/default-profile"
+        },
+        {
+          "key": "y",
+          "type": "application",
+          "value": "/Applications/Yandex.Telemost.app"
         }
       ],
       "iconPath": "message.badge",
@@ -292,7 +292,7 @@
               "key": "w",
               "label": "Work",
               "type": "application",
-              "value": "/Applications/AmneziaVPN.app"
+              "value": "/Applications/OpenVPN Connect/OpenVPN Connect.app"
             },
             {
               "iconPath": "/Applications/Tailscale.app",
@@ -342,6 +342,12 @@
               "label": "Accounts",
               "type": "url",
               "value": "raycast://extensions/tailscale/tailscale/account-switcher"
+            },
+            {
+              "key": "s",
+              "label": "Sing Box",
+              "type": "application",
+              "value": "/Applications/SFM.app"
             }
           ],
           "iconPath": "network",
@@ -384,7 +390,7 @@
           "key": "h",
           "label": "Homepage",
           "type": "url",
-          "value": "https://homepage.cosmdandy.ru"
+          "value": "https://homepage.cosmdandy.dev"
         },
         {
           "key": "g",
