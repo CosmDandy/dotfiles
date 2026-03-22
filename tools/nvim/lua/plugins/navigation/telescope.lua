@@ -33,9 +33,6 @@ return { -- Fuzzy Finder (files, lsp, etc)
       'nvim-telescope/telescope-ui-select.nvim',
     },
     {
-      'nvim-telescope/telescope-file-browser.nvim',
-    },
-    {
       'nvim-telescope/telescope-live-grep-args.nvim',
     },
   },
@@ -66,14 +63,6 @@ return { -- Fuzzy Finder (files, lsp, etc)
       extensions = {
         ['ui-select'] = {
           require('telescope.themes').get_dropdown(),
-        },
-        file_browser = {
-          theme = 'ivy',
-          hijack_netrw = true,
-          mappings = {
-            ['i'] = {},
-            ['n'] = {},
-          },
         },
         live_grep_args = {
           auto_quoting = true,

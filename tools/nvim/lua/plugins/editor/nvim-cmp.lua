@@ -31,7 +31,7 @@ return {
                 'hcl',
                 'markdown',
                 'toml',
-                'go',
+                'jinja2',
               },
             }
           end,
@@ -107,10 +107,6 @@ return {
           end
         end, { 'i', 's' }),
 
-        -- Copilot accept
-        ['<C-g>'] = cmp.mapping(function(fallback)
-          vim.api.nvim_feedkeys(vim.fn['copilot#Accept'](vim.api.nvim_replace_termcodes('<Tab>', true, true, true)), 'n', true)
-        end),
         -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
         --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
       },
@@ -129,13 +125,6 @@ return {
           priority = 1000,
           keyword_length = 2,
           max_item_count = 30,
-        },
-
-        {
-          name = 'vim-dadbod-completion',
-          group_index = 1,
-          priority = 950,
-          keyword_length = 2,
         },
 
         {

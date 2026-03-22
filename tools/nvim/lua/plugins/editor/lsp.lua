@@ -287,62 +287,6 @@ return {
           },
         },
 
-        -- HTML/CSS для веб части проектов
-        html = {
-          configurationSection = { 'html', 'css', 'javascript' },
-          embeddedLanguages = {
-            css = true,
-            javascript = true,
-          },
-          provideFormatter = true,
-        },
-
-        cssls = {
-          settings = {
-            css = {
-              validate = true,
-              lint = {
-                unknownAtRules = 'ignore', -- Игнорируем неизвестные CSS правила
-              },
-            },
-            scss = {
-              validate = true,
-            },
-            less = {
-              validate = true,
-            },
-          },
-        },
-
-        -- TypeScript для современных веб проектов
-        ts_ls = {
-          settings = {
-            typescript = {
-              inlayHints = {
-                includeInlayParameterNameHints = 'all',
-                includeInlayParameterNameHintsWhenArgumentMatchesName = false,
-                includeInlayFunctionParameterTypeHints = true,
-                includeInlayVariableTypeHints = true,
-                includeInlayPropertyDeclarationTypeHints = true,
-                includeInlayFunctionLikeReturnTypeHints = true,
-                includeInlayEnumMemberValueHints = true,
-              },
-            },
-            javascript = {
-              inlayHints = {
-                includeInlayParameterNameHints = 'all',
-                includeInlayParameterNameHintsWhenArgumentMatchesName = false,
-                includeInlayFunctionParameterTypeHints = true,
-                includeInlayVariableTypeHints = true,
-                includeInlayPropertyDeclarationTypeHints = true,
-                includeInlayFunctionLikeReturnTypeHints = true,
-                includeInlayEnumMemberValueHints = true,
-              },
-            },
-          },
-        },
-
-        -- В lsp.lua, добавить в servers:
         terraformls = {
           filetypes = { 'terraform', 'hcl', 'tf' },
           settings = {
@@ -392,45 +336,30 @@ return {
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         -- LSP серверы
-        'pyright', -- Python LSP
-        'lua-language-server', -- Lua LSP
-        'json-lsp', -- JSON LSP
-        'yaml-language-server', -- YAML LSP
-        'bash-language-server', -- Bash LSP
-        'dockerfile-language-server', -- Docker LSP
-        'docker-compose-language-service', -- Docker Compose LSP
-        'html-lsp', -- HTML LSP
-        'css-lsp', -- CSS LSP
-        'typescript-language-server', -- TypeScript/JavaScript LSP
-
-        -- DAP для отладки
-        'debugpy', -- Python debugger
-
-        -- Linters для дополнительной проверки кода
-        'ruff', -- Python linter (быстрый, современный)
-        'mypy', -- Python type checker
-        'luacheck', -- Lua linter
-        'eslint_d', -- JavaScript/TypeScript linter
-        'markuplint', -- HTML linter
-        'stylelint', -- CSS linter
-        'hadolint', -- Dockerfile linter
-        'yamllint', -- YAML linter
-        'shellcheck', -- Shell script linter
-
-        -- Formatters для автоформатирования
-        'black', -- Python formatter (стандарт PEP 8)
-        'stylua', -- Lua formatter
-        'prettierd', -- JavaScript/TypeScript/HTML/CSS formatter
-        'yamlfmt', -- YAML formatter
-        'xmlformatter', -- XML formatter
-        'beautysh', -- Bash formatter
-        'shfmt', -- Shell script formatter
-
+        'pyright',
+        'lua-language-server',
+        'json-lsp',
+        'yaml-language-server',
+        'bash-language-server',
+        'dockerfile-language-server',
+        'docker-compose-language-service',
         'terraform-ls',
-        'tflint',
-
         'ansible-language-server',
+        -- DAP
+        'debugpy',
+        -- Linters
+        'ruff',
+        'mypy',
+        'luacheck',
+        'hadolint',
+        'yamllint',
+        'shellcheck',
+        'tflint',
         'ansible-lint',
+        -- Formatters
+        'stylua',
+        'yamlfmt',
+        'shfmt',
       })
 
       -- Автоматическая установка инструментов

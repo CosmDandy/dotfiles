@@ -107,35 +107,20 @@ return {
 
     -- Конфигурация форматеров для каждого языка вашего стека
     formatters_by_ft = {
-      -- Python - многоуровневая система форматирования
-      python = function(bufnr)
-        return { 'ruff_fix', 'black' }
-      end,
+      -- Python: ruff fix (imports, lint fixes) → ruff format
+      python = { 'ruff_fix', 'ruff_format' },
 
       -- Lua - для конфигурации Neovim и скриптов
       lua = { 'stylua' },
 
-      -- Web технологии - единый форматер для консистентности
-      javascript = { 'prettierd' },
-      typescript = { 'prettierd' },
-      javascriptreact = { 'prettierd' },
-      typescriptreact = { 'prettierd' },
-      html = { 'prettierd' },
-      css = { 'prettierd' },
-      scss = { 'prettierd' },
-
       -- DevOps конфигурации - критично для правильной работы инфраструктуры
       yaml = { 'yamlfmt' },
       yml = { 'yamlfmt' },
-      json = { 'prettierd' }, -- prettier лучше понимает JSON схемы
 
       -- Shell скрипты для автоматизации
       bash = { 'shfmt' },
       zsh = { 'shfmt' },
       sh = { 'shfmt' },
-
-      -- XML файлы (Maven, конфигурации)
-      xml = { 'xmlformatter' },
 
       -- HCL (Terraform/Nomad) - форматирование через LSP (terraform fmt)
       hcl = {},
@@ -153,46 +138,21 @@ return {
       -- Python форматеры с оптимизированными настройками
       -- Конфигурация ruff для комплексного форматирования Python кода
       ruff_fix = {
-        -- Применяем автоматические исправления и организацию импортов
-        prepend_args = {
-          'check', -- Режим проверки и исправления
-          '--fix', -- Автоматически исправляем то, что можно исправить
-          '--select',
-          'I,F,E,W,UP,B', -- Выбираем правила: импорты, синтаксис, стиль, обновления, багфиксы
-          '--ignore',
-          'E501', -- Игнорируем длину строки (это сделает black)
-          '--force-exclude', -- Принудительно исключаем файлы согласно конфигурации
-        },
-      },
-
-      ruff_format = {
-        -- Альтернативный подход: используем встроенное форматирование ruff
-        prepend_args = {
-          'format', -- Режим форматирования
-          '--respect-gitignore', -- Уважаем .gitignore
-        },
-      },
-
-      ruff_organize_imports = {
-        -- Специализированная организация импортов
         prepend_args = {
           'check',
           '--fix',
           '--select',
-          'I', -- Только правила импортов
+          'I,F,E,W,UP,B',
           '--force-exclude',
         },
       },
 
-      -- Обновленная конфигурация black для совместимости с ruff
-      black = {
+      ruff_format = {
         prepend_args = {
+          'format',
           '--line-length',
-          '88', -- Стандартная длина строки
-          '--target-version',
-          'py39', -- Поддержка современного Python
-          '--fast', -- Быстрое форматирование
-          '--quiet', -- Меньше вывода для чистоты
+          '88',
+          '--respect-gitignore',
         },
       },
 
@@ -215,15 +175,6 @@ return {
         },
       },
 
-      -- XML форматер
-      xmlformatter = {
-        prepend_args = {
-          '--indent',
-          '2',
-          '--indent-char',
-          ' ',
-        },
-      },
     },
   },
 

@@ -10,10 +10,6 @@ return {
         lua = { 'luacheck' },
         python = { 'ruff', 'mypy' },
         dockerfile = { 'hadolint' },
-        javascript = { 'eslint_d' },
-        typescript = { 'eslint_d' },
-        html = { 'markuplint' },
-        css = { 'stylelint' },
         yaml = { 'yamllint' },
         ['yaml.ansible'] = { 'ansible-lint' },
       }
