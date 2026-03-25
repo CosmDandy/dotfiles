@@ -69,10 +69,12 @@ if [[ "$PROFILE" == "full" ]]; then
   )
 fi
 
+nix_args=()
 for package in "${packages[@]}"; do
-  print_section "Installing ${package}"
-  nix-env -iA nixpkgs.$package
+  nix_args+=("nixpkgs.$package")
 done
+print_section "Installing packages: ${packages[*]}"
+nix-env -iA "${nix_args[@]}"
 
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
