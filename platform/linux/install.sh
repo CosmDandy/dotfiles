@@ -133,7 +133,8 @@ nvim --headless "+Lazy! sync" +qa
 # print_section "Installing Mason tools (LSP, linters, formatters)"
 # nvim --headless "+lua require('mason-tool-installer').check_install(true)" +qa
 
-"$DOTFILES_ROOT/platform/common/setup-claude-prompts.sh"
+print_section "Initializing claude submodule"
+git -C "$DOTFILES_ROOT" submodule update --init tools/claude/custom
 
 print_section "Setup global gitignore"
 git config --global core.excludesfile ~/.gitignore_global

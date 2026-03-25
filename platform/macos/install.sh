@@ -17,7 +17,8 @@ source "$PLATFORM_DIR/common.sh"
 
 "$DOTFILES_ROOT/platform/macos/setup-symlinks.sh"
 
-"$DOTFILES_ROOT/platform/common/setup-claude-prompts.sh"
+print_section "Initializing submodules"
+git -C "$DOTFILES_ROOT" submodule update --init --recursive
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
