@@ -103,7 +103,6 @@
     lazygit
     lazydocker
     gdu
-    zoxide
     yq-go
     bat
   ];

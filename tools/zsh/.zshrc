@@ -232,6 +232,3 @@ eval "$(starship init zsh)"
 
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
-
-# Zoxide - умная навигация по директориям
-eval "$(zoxide init zsh --cmd cd)"
