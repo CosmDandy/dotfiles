@@ -4,3 +4,6 @@
 [submodule "private"]
 	path = private
 	url = git@github.com:CosmDandy/dotfiles-private.git
+[submodule "tools/claude/custom"]
+	path = tools/claude/custom
+	url = git@github.com:CosmDandy/dotfiles-claude.git

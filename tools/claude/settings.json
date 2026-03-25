@@ -189,7 +189,12 @@
       "Bash(tmux:*)",
       "Bash(nvim:*)",
       "Bash(lazygit:*)",
-      "Bash(zsh:*)"
+      "Bash(zsh:*)",
+      "Bash(chmod:*)",
+      "Bash(defaults read:*)",
+      "Bash(go:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(devpod:*)"
     ],
     "deny": [
       "Read(.env)",
@@ -306,14 +311,15 @@
       "Bash(:*monero:*)"
     ]
   },
-  "model": "claude-opus-4-6",
+  "model": "sonnet",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/statusline.sh"
   },
   "language": "Russian",
-  "effortLevel": "high",
+  "effortLevel": "medium",
   "voiceEnabled": true,
+  "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "preferredNotifChannel": "terminal_bell",
   "theme": "auto"
