@@ -2,6 +2,8 @@
 
 ## General Rules
 
+In agent mode: use best judgment within delegated scope, report findings in final response.
+
 - Do NOT make unrequested changes — only change what was explicitly asked for
 - If first approach doesn't work within 2 attempts — STOP and ask user
 - Before starting non-trivial tasks: state the approach and wait for confirmation
@@ -19,6 +21,8 @@
 
 ## Workflow
 
+These rules apply to interactive (main session) work. Delegated agents should complete their full task autonomously.
+
 1. Make 2-3 related changes (one logical block)
 2. Run tests/linters to verify
 3. Show result: what changed, what verified
@@ -26,6 +30,7 @@
 
 - If tests/linters fail — auto-fix and re-run, show only final status
 - If can't fix — show error and ask for help
+- For tasks affecting 5+ files — start with plan mode
 
 ## Git
 
@@ -34,18 +39,9 @@
 - Commit ONLY when explicitly asked. Conventional commits. Show status after.
 - Use CLI (`glab`, `gh`) over MCP servers
 
-## Python
+## Agents
 
-- Package manager: uv > pip
-- Tools: ruff (lint), mypy strict (types), black (format)
-- `pathlib` over `os.path`, `logging` over `print()`, no bare `except:`
+- Use parallel agents for multi-file review and broad codebase research
+- Use background agents for tasks independent of current work
+- Do NOT use agents for single-file edits, simple searches, or sequential tasks
 
-## Tools & Stack
-
-- Neovim, Zsh, tmux, lazygit, Nix/Homebrew
-- Primary: Python, Shell/Nix, IaC (Docker/K8s/Nomad, Terraform/Ansible)
-- Learning: Go, Rust
-
-## DevOps
-
-Domain-specific rules in `rules/` (auto-loaded per file type).
