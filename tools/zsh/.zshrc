@@ -11,6 +11,15 @@ if [[ -r "$HOME/.atuin/bin/env" ]]; then
 fi
 
 # =============================================================================
+# SSH AGENT FORWARDING FIX (for tmux reattach)
+# =============================================================================
+
+if [[ -n "$SSH_AUTH_SOCK" && "$SSH_AUTH_SOCK" != "$HOME/.ssh/ssh_auth_sock" ]]; then
+    ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/ssh_auth_sock"
+fi
+export SSH_AUTH_SOCK="$HOME/.ssh/ssh_auth_sock"
+
+# =============================================================================
 # ZSH OPTIONS
 # =============================================================================
 
@@ -50,6 +59,7 @@ alias ..='cd ..'
 alias ...='cd ../..'
 alias ....='cd ../../..'
 alias .....='cd ../../../..'
+alias sz='source ~/.zshrc'
 
 alias dl='cd ~/Downloads'
 alias dt='cd ~/Desktop'
