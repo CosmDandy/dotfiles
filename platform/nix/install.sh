@@ -33,6 +33,7 @@ dirs=(
   "$XDG_CONFIG_HOME/superfile"
   "$HOME/.zsh/completions"
   "$HOME/.claude"
+  "$HOME/.lnav/configs/default"
 )
 
 links=(
@@ -42,6 +43,7 @@ links=(
   "$DOTFILES_ROOT/tools/zsh/completions:$HOME/.zsh/completions"
   "$DOTFILES_ROOT/tools/git/.gitignore_global:$HOME/.gitignore_global"
   "$DOTFILES_ROOT/tools/git/.gitconfig:$HOME/.gitconfig"
+  "$DOTFILES_ROOT/tools/lazygit/config.yml:$XDG_CONFIG_HOME/lazygit/config.yml"
   "$DOTFILES_ROOT/tools/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
   "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
@@ -55,6 +57,7 @@ links=(
   "$DOTFILES_ROOT/tools/claude/commands:$HOME/.claude/commands"
   "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
   "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
+  "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
   "$DOTFILES_ROOT/private/git/.gitconfig.local:$HOME/.gitconfig.local"
 )
 

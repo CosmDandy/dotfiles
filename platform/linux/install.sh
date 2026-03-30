@@ -97,6 +97,7 @@ links=(
   "$DOTFILES_ROOT/tools/zsh/completions:$HOME/.zsh/completions"
   "$DOTFILES_ROOT/tools/git/.gitignore_global:$HOME/.gitignore_global"
   "$DOTFILES_ROOT/tools/git/.gitconfig:$HOME/.gitconfig"
+  "$DOTFILES_ROOT/tools/lazygit/config.yml:$XDG_CONFIG_HOME/lazygit/config.yml"
   "$DOTFILES_ROOT/tools/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
   "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
