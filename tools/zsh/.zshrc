@@ -2,9 +2,11 @@
 # EXTERNAL ENVIRONMENT SETUP
 # =============================================================================
 
-# if [[ -r "$HOME/.local/bin/env" ]]; then
-#     source "$HOME/.local/bin/env"
-# fi
+if [[ -f "$HOME/.dotfiles/.env" ]]; then
+    set -a
+    source "$HOME/.dotfiles/.env"
+    set +a
+fi
 
 if [[ -r "$HOME/.atuin/bin/env" ]]; then
     source "$HOME/.atuin/bin/env"
@@ -78,8 +80,8 @@ alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKE
 alias ds='devpod ssh'
 alias dpd='devpod delete'
 alias dps='devpod stop'
-alias dpl='devpod up --dotfiles-script-env PROFILE=base'
-alias dpf='devpod up --dotfiles-script-env PROFILE=full'
+alias dpl='devpod up --dotfiles-script-env PROFILE=base --workspace-env-file ~/.dotfiles/.env'
+alias dpf='devpod up --dotfiles-script-env PROFILE=full --workspace-env-file ~/.dotfiles/.env'
 
 alias c='clear'
 alias e='exit'
