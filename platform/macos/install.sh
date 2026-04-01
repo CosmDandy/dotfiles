@@ -20,6 +20,9 @@ source "$PLATFORM_DIR/common.sh"
 print_section "Initializing submodules"
 git -C "$DOTFILES_ROOT" submodule update --init --recursive
 
+print_section "Installing Claude Code MCP servers"
+"$DOTFILES_ROOT/tools/claude/custom/install.sh"
+
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 MINUTES=$((ELAPSED / 60))

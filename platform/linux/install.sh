@@ -137,6 +137,9 @@ nvim --headless "+Lazy! sync" +qa
 print_section "Initializing claude submodule"
 git -C "$DOTFILES_ROOT" submodule update --init tools/claude/custom
 
+print_section "Installing Claude Code MCP servers"
+"$DOTFILES_ROOT/tools/claude/custom/install.sh"
+
 print_section "Setup global gitignore"
 git config --global core.excludesfile ~/.gitignore_global
 
