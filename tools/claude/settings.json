@@ -31,6 +31,7 @@
       "Skill(**)",
       "EnterPlanMode(**)",
       "ExitPlanMode(**)",
+      "Update(**)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
