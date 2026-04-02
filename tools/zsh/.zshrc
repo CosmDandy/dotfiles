@@ -83,10 +83,22 @@ claude-memory-init() {
 }
 
 claude-memory-push() {
-    local project="${1:-$(basename "$PWD" | sed 's/^\.//')}"
     local dotfiles_dir="${HOME}/.dotfiles"
     [[ ! -d "$dotfiles_dir" ]] && dotfiles_dir="${HOME}/dotfiles"
     local submodule_dir="${dotfiles_dir}/tools/claude/custom"
+
+    local project="$1"
+    if [[ -z "$project" ]]; then
+        local encoded_path
+        encoded_path="$(pwd | sed 's|[/.]|-|g')"
+        local memory_link="$HOME/.claude/projects/${encoded_path}/memory"
+        if [[ -L "$memory_link" ]]; then
+            project="$(basename "$(dirname "$(readlink "$memory_link")")")"
+        else
+            project="$(basename "$PWD" | sed 's/^\.//')"
+        fi
+    fi
+
     local memory_path="knowledge/${project}/memory"
 
     if [[ ! -d "${submodule_dir}/${memory_path}" ]]; then
