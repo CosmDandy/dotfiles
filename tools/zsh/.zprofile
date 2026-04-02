@@ -21,5 +21,8 @@ export XDG_CONFIG_HOME="$HOME/.config"
 
 export VISUAL='nvim'
 export EDITOR='nvim'
+if ! infocmp "$TERM" &>/dev/null 2>&1; then
+  export TERM='xterm-256color'
+fi
 export COLORTERM='truecolor'
 
