@@ -5,14 +5,7 @@
   # macOS Configuration with nix-darwin
   # ===============================
 
-  nix = {
-    package = pkgs.nix;
-    settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      trusted-users = [ "@admin" ];
-    };
-  };
-
+  # Nix daemon managed by Determinate Nix installer
   nix.enable = false;
 
   # ===============================
@@ -48,8 +41,8 @@
       "utm"
       # AI инструменты
       # "chatgpt"
-      # "claude"
-      "lm-studio"
+      "claude"
+      # "lm-studio"
       # Продуктивность
       "obsidian"
       "timing"
@@ -60,12 +53,13 @@
       "onyx"
       "ukelele"
       "betterdisplay"
-      # "jordanbaird-ice"
+      "jordanbaird-ice"
       "syncthing-app"
       # Дополнительные утилиты
       "flux-app"
       # Оконный менеджер
       "nikitabobko/tap/aerospace"
+      "spokenly"
     ];
     taps = [
       "nikitabobko/tap"
@@ -103,8 +97,6 @@
     lazygit
     lazydocker
     gdu
-    yq-go
-    bat
   ];
 
   # ===============================
