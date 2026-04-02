@@ -84,7 +84,6 @@ dirs=(
   "$XDG_CONFIG_HOME/atuin"
   "$XDG_CONFIG_HOME/btop"
   "$XDG_CONFIG_HOME/lazygit"
-  "$XDG_CONFIG_HOME/superfile"
   "$HOME/.zsh/completions"
   "$HOME/.claude"
   "$HOME/.lnav/configs/default"
@@ -102,8 +101,6 @@ links=(
   "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
   "$DOTFILES_ROOT/tools/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  "$DOTFILES_ROOT/tools/superfile/config.toml:$XDG_CONFIG_HOME/superfile/config.toml"
-  "$DOTFILES_ROOT/tools/superfile/hotkeys.toml:$XDG_CONFIG_HOME/superfile/hotkeys.toml"
   "$DOTFILES_ROOT/tools/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
   "$DOTFILES_ROOT/tools/claude/settings.json:$HOME/.claude/settings.json"
   "$DOTFILES_ROOT/tools/claude/statusline.sh:$HOME/.claude/statusline.sh"
@@ -123,7 +120,9 @@ create_symlinks "${links[@]}"
 
 print_section "Installing tmux plugins"
 mkdir -p ~/.tmux/plugins
-git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+if [[ ! -d ~/.tmux/plugins/tpm ]]; then
+  git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+fi
 
 print_section "Installing nvim plugins"
 nvim --headless "+Lazy! sync" +qa
@@ -144,13 +143,15 @@ print_section "Setup global gitignore"
 git config --global core.excludesfile ~/.gitignore_global
 
 print_section "Installing zinit"
-bash -c "$(curl --fail --show-error --silent --location https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh)"
+if [[ ! -d "$HOME/.local/share/zinit" ]]; then
+  bash -c "$(curl --fail --show-error --silent --location https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh)"
+fi
 
 # Плагины zinit будут установлены автоматически при первом запуске zsh
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 MINUTES=$((ELAPSED / 60))
-SECONDS=$((ELAPSED % 60))
+SECS=$((ELAPSED % 60))
 
-print_section "Setup complete. Script execution time: ${MINUTES}m ${SECONDS}s"
+print_section "Setup complete. Script execution time: ${MINUTES}m ${SECS}s"
