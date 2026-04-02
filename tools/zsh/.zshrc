@@ -79,7 +79,7 @@ alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKE
 claude-memory-init() {
     local dotfiles_dir="${HOME}/.dotfiles"
     [[ ! -d "$dotfiles_dir" ]] && dotfiles_dir="${HOME}/dotfiles"
-    "${dotfiles_dir}/tools/claude/custom/setup.sh" "$(basename "$PWD")" "$PWD"
+    "${dotfiles_dir}/tools/claude/custom/setup.sh" "${1:-$(basename "$PWD")}" "$PWD"
 }
 
 claude-memory-push() {
