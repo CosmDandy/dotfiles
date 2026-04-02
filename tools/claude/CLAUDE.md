@@ -19,6 +19,10 @@ In agent mode: use best judgment within delegated scope, report findings in fina
 - Do actions silently, show only results. After batch: brief summary.
 - DON'T add docstrings, comments, or documentation unless explicitly asked
 
+## Commands
+
+- **Always execute commands yourself** via Bash when you have permission. Never suggest `! command` for the user to run if you can run it yourself.
+
 ## Workflow
 
 These rules apply to interactive (main session) work. Delegated agents should complete their full task autonomously.

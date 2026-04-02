@@ -1,9 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "fallbackModel": "sonnet",
   "env": {
     "CLAUDE_CODE_DISABLE_ATTRIBUTION": "1",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
     "EDITOR": "nvim",
     "VISUAL": "nvim"
   },
@@ -194,7 +196,15 @@
       "Bash(defaults read:*)",
       "Bash(go:*)",
       "Bash(git ls-tree:*)",
-      "Bash(devpod:*)"
+      "Bash(devpod:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(sftp:*)",
+      "Bash(rsync:*)",
+      "Bash(ssh-keygen:*)",
+      "Bash(ssh-copy-id:*)",
+      "Bash(ssh-add:*)",
+      "Bash(ssh-agent:*)"
     ],
     "deny": [
       "Read(.env)",
@@ -271,7 +281,7 @@
       "Bash(ansible-vault decrypt:*)",
       "Bash(ansible-vault edit:*)",
       "Bash(ansible-vault rekey:*)",
-      "Bash(rm -rf /:*)",
+      "Bash(rm -rf:*)",
       "Bash(sudo:*)",
       "Bash(shutdown:*)",
       "Bash(reboot:*)",
@@ -311,7 +321,6 @@
       "Bash(:*monero:*)"
     ]
   },
-  "model": "sonnet",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/statusline.sh"
@@ -322,5 +331,6 @@
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "preferredNotifChannel": "terminal_bell",
-  "theme": "auto"
+  "theme": "auto",
+  "model": "Opus"
 }
