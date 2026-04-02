@@ -198,6 +198,7 @@ alias updm='nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-reb
 alias updl='nix flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update'
 
 alias ttyh='ghostty +list-keybinds --default'
+
 # =============================================================================
 # PLUGIN MANAGER SETUP
 # =============================================================================
@@ -243,6 +244,12 @@ zinit light zdharma-continuum/fast-syntax-highlighting
 
 zinit ice wait lucid
 zinit light hlissner/zsh-autopair
+
+# =============================================================================
+# PRIVATE EXTENSIONS
+# =============================================================================
+
+for f in "$HOME/.dotfiles/private/zsh/"*.sh(N); do source "$f"; done
 
 # =============================================================================
 # KEY BINDINGS
