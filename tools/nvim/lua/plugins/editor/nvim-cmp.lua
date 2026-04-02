@@ -93,15 +93,13 @@ return {
         -- Manually trigger a completion from nvim-cmp.
         ['<C-Space>'] = cmp.mapping.complete {},
 
-        -- <c-e> will move you to the right of each of the expansion locations.
-        ['<C-e>'] = cmp.mapping(function()
+        ['<C-l>'] = cmp.mapping(function()
           if luasnip.expand_or_locally_jumpable() then
             luasnip.expand_or_jump()
           end
         end, { 'i', 's' }),
 
-        -- <c-y> is similar, except moving you backwards.
-        ['<C-y>'] = cmp.mapping(function()
+        ['<C-j>'] = cmp.mapping(function()
           if luasnip.locally_jumpable(-1) then
             luasnip.jump(-1)
           end

@@ -67,21 +67,14 @@ return {
       function()
         require('dap').terminate()
       end,
-      desc = 'Step Out',
+      desc = 'Terminate',
     },
     {
       '<F4>',
       function()
         require('dap').restart()
       end,
-      desc = 'Step Out',
-    },
-    {
-      '<F2>',
-      function()
-        require('dap').restart()
-      end,
-      desc = 'Step Out',
+      desc = 'Restart',
     },
     {
       '<leader>b',
@@ -154,9 +147,7 @@ return {
       -- You'll need to check that you have the required things installed
       -- online, please don't ask me how to install them :)
       ensure_installed = {
-        -- Update this to ensure that you have the debuggers for the langs you want
-        'delve',
-        'pyright',
+        'debugpy',
       },
     }
 
@@ -176,30 +167,6 @@ return {
 
     require('telescope').load_extension('dap')
 
-    -- Настройка интерфейса отладчика
-    -- dapui.setup({
-    --   layouts = {
-    --     {
-    --       elements = {
-    --         { id = "scopes",      size = 0.25 },
-    --         { id = "breakpoints", size = 0.25 },
-    --         { id = "stacks",      size = 0.25 },
-    --         { id = "watches",     size = 0.25 },
-    --       },
-    --       size = 40,
-    --       position = "left",
-    --     },
-    --     {
-    --       elements = {
-    --         { id = "repl",    size = 0.5 },
-    --         { id = "console", size = 0.5 },
-    --       },
-    --       size = 10,
-    --       position = "bottom",
-    --     },
-    --   },
-    -- })
-    -- ИЗМЕНЕНО: Улучшенная настройка дизайна dapui
     dapui.setup {
       controls = {
         element = "repl",
