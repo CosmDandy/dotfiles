@@ -77,6 +77,33 @@ alias cl='claude --permission-mode bypassPermissions'
 alias cly='claude --dangerously-skip-permissions'
 alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKEN=lmstudio CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 claude --model qwen/qwen3-coder-next'
 
+claude-memory-init() {
+    local dotfiles_dir="${HOME}/.dotfiles"
+    [[ ! -d "$dotfiles_dir" ]] && dotfiles_dir="${HOME}/dotfiles"
+    "${dotfiles_dir}/tools/claude/custom/setup.sh" "$(basename "$PWD")" "$PWD"
+}
+
+claude-memory-push() {
+    local project="${1:-$(basename "$PWD" | sed 's/^\.//')}"
+    local dotfiles_dir="${HOME}/.dotfiles"
+    [[ ! -d "$dotfiles_dir" ]] && dotfiles_dir="${HOME}/dotfiles"
+    local submodule_dir="${dotfiles_dir}/tools/claude/custom"
+    local memory_path="knowledge/${project}/memory"
+
+    if [[ ! -d "${submodule_dir}/${memory_path}" ]]; then
+        echo "Memory not found: ${memory_path}" >&2
+        return 1
+    fi
+
+    git -C "$submodule_dir" add "knowledge/${project}"
+    git -C "$submodule_dir" diff --cached --quiet && {
+        echo "No changes for ${project}"
+        return 0
+    }
+    git -C "$submodule_dir" commit -m "docs(${project}): update knowledge"
+    git -C "$submodule_dir" push
+}
+
 alias ds='devpod ssh'
 alias dpd='devpod delete'
 alias dps='devpod stop'

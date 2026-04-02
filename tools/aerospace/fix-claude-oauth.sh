@@ -9,11 +9,11 @@
 # @raycast.icon 🔐
 # @raycast.description Берёт OAuth ссылку Claude Code из буфера, исправляет scope и копирует обратно
 
-# Читаем из буфера
-URL=$(pbpaste)
+# Читаем из буфера и убираем переносы строк
+URL=$(pbpaste | tr -d '\n\r')
 
 # Проверяем что это вообще claude oauth ссылка
-if [[ "$URL" != *"claude.ai/oauth/authorize"* ]]; then
+if [[ "$URL" != *"claude.ai/oauth/authorize"* ]] && [[ "$URL" != *"claude.com/"*"oauth/authorize"* ]]; then
   osascript -e 'display notification "В буфере нет Claude OAuth ссылки" with title "Fix Claude OAuth" sound name "Basso"'
   exit 1
 fi
