@@ -68,7 +68,6 @@ alias dt='cd ~/Desktop'
 alias docs='cd ~/Documents'
 
 alias v='nvim'
-alias s='spf'
 alias b='btop'
 alias lg='lazygit'
 alias lzd='lazydocker'
