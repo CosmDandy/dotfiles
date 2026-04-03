@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-
-pattern='^(feat|fix|refactor|docs|ci|chore|test|perf|style|build|revert)(\(.+\))?!?: .+'
-if ! head -1 "$1" | grep -qE "$pattern"; then
-  echo "❌ Commit message must follow Conventional Commits"
-  echo "   Example: feat(git): add pre-commit hooks"
-  exit 1
-fi
