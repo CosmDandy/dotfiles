@@ -97,6 +97,9 @@
     lazygit
     lazydocker
     gdu
+    gitleaks
+    yamllint
+    shellcheck
   ];
 
   # ===============================

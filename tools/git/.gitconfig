@@ -1,16 +1,35 @@
 [user]
 	name = Timofey Kondrashin
 	email = tkondrashin@icloud.com
-
+	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
 [core]
 	editor = nvim
+	autocrlf = input
+	hooksPath = ~/.git-hooks
 	excludesfile = ~/.gitignore_global
-
+[transfer]
+	fsckObjects = true
+[fetch]
+	fsckObjects = true
+[receive]
+	fsckObjects = true
 [commit]
 	gpgsign = true
 [tag]
 	gpgSign = true
 [gpg]
 	format = ssh
-[include]
-	path = ~/.gitconfig.local
+[gpg "ssh"]
+	allowedSignersFile = ~/.allowed_signers
+[init]
+	defaultBranch = main
+[pull]
+	rebase = true
+[push]
+	autoSetupRemote = true
+[rerere]
+	enabled = true
+[diff]
+	algorithm = histogram
+[includeIf "gitdir:/workspaces/"]
+	path = ~/.gitconfig-work

@@ -47,6 +47,9 @@ packages=(
   atuin
   btop
   lazygit
+  gitleaks
+  yamllint
+  shellcheck
 )
 
 # --- Full: IaC, K8s, DevOps tools ---
@@ -109,7 +112,9 @@ links=(
   "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
   "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
   "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
-  "$DOTFILES_ROOT/private/git/.gitconfig.local:$HOME/.gitconfig.local"
+  "$DOTFILES_ROOT/tools/git/.gitconfig-work:$HOME/.gitconfig-work"
+  "$DOTFILES_ROOT/tools/git/.allowed_signers:$HOME/.allowed_signers"
+  "$DOTFILES_ROOT/tools/git/hooks:$HOME/.git-hooks"
 )
 
 print_section "Create directories for symbolic links"

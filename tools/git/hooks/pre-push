@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+protected_branches="main master"
+current_branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+while read -r _ _ remote_ref _; do
+  remote_branch="${remote_ref##refs/heads/}"
+  for branch in $protected_branches; do
+    if [[ "$remote_branch" == "$branch" && "$current_branch" != "$branch" ]]; then
+      echo "❌ Pushing to '$branch' from '$current_branch' is not allowed"
+      exit 1
+    fi
+  done
+done

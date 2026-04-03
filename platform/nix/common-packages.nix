@@ -39,4 +39,9 @@ with pkgs; [
   lazydocker
   dive
   k9s
+
+  # Git hooks
+  gitleaks
+  yamllint
+  shellcheck
 ]

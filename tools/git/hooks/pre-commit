@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+staged_files() {
+  git diff --cached --name-only --diff-filter=ACM -- "$@"
+}
+
+# Secret detection
+if command -v gitleaks &>/dev/null; then
+  gitleaks protect --staged --no-banner || exit 1
+fi
+
+# YAML lint
+if command -v yamllint &>/dev/null; then
+  yaml_files=$(staged_files '*.yml' '*.yaml')
+  if [[ -n "$yaml_files" ]]; then
+    echo "$yaml_files" | xargs yamllint -d relaxed || exit 1
+  fi
+fi
+
+# Shell lint
+if command -v shellcheck &>/dev/null; then
+  sh_files=$(staged_files '*.sh' '*.bash')
+  if [[ -n "$sh_files" ]]; then
+    echo "$sh_files" | xargs shellcheck -S warning || exit 1
+  fi
+fi
