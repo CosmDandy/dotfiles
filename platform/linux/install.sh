@@ -115,6 +115,7 @@ links=(
   "$DOTFILES_ROOT/tools/git/.gitconfig-work:$HOME/.gitconfig-work"
   "$DOTFILES_ROOT/tools/git/.allowed_signers:$HOME/.allowed_signers"
   "$DOTFILES_ROOT/tools/git/hooks:$HOME/.git-hooks"
+  "$DOTFILES_ROOT/tools/git/known_hosts:$HOME/.ssh/known_hosts"
 )
 
 print_section "Create directories for symbolic links"
