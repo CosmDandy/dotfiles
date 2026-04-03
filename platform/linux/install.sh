@@ -47,6 +47,7 @@ packages=(
   atuin
   btop
   lazygit
+  uv
   gitleaks
   yamllint
   shellcheck
@@ -56,7 +57,6 @@ packages=(
 if [[ "$PROFILE" == "full" ]]; then
   packages+=(
     go
-    uv
     gh
     glab
     gdu

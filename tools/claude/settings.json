@@ -333,5 +333,5 @@
   "skipDangerousModePermissionPrompt": true,
   "preferredNotifChannel": "terminal_bell",
   "theme": "auto",
-  "model": "Opus"
+  "model": "Sonnet"
 }
