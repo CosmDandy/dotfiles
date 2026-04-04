@@ -147,11 +147,35 @@ alias free='free -h'
 alias ps='ps aux'
 
 alias t='tmux'
-alias tn='tmux new -s'
 alias ta='tmux attach'
 alias tl='tmux list-sessions'
-alias tk='tmux kill-session -t'
 alias tks='tmux kill-server'
+
+# Tmux layouts
+tw() {
+    local count="${1:-3}"
+    local name="${2:-$(basename "$PWD")}"
+    tmux new-session -d -s "$name" -c "$PWD"
+    for i in $(seq 2 "$count"); do
+        tmux new-window -t "${name}:" -c "$PWD"
+    done
+    tmux select-window -t "${name}:1"
+    if [[ -n "$TMUX" ]]; then
+        tmux switch-client -t "$name"
+    else
+        tmux attach -t "$name"
+    fi
+}
+
+t3() { tw 3 "$1"; }
+t6() { tw 6 "$1"; }
+
+tn() {
+    local name="${1:-$(basename "$PWD")}"
+    tw 3 "$name"
+    tmux send-keys -t "${name}:1" 'nvim' C-m
+    tmux send-keys -t "${name}:2" 'cl' C-m
+}
 
 alias gc='git clone'
 alias gs='git status'
