@@ -172,9 +172,17 @@ t6() { tw 6 "$1"; }
 
 tn() {
     local name="${1:-$(basename "$PWD")}"
-    tw 3 "$name"
+    tmux new-session -d -s "$name" -c "$PWD"
+    tmux new-window -t "${name}:" -c "$PWD"
+    tmux new-window -t "${name}:" -c "$PWD"
     tmux send-keys -t "${name}:1" 'nvim' C-m
     tmux send-keys -t "${name}:2" 'cl' C-m
+    tmux select-window -t "${name}:1"
+    if [[ -n "$TMUX" ]]; then
+        tmux switch-client -t "$name"
+    else
+        tmux attach -t "$name"
+    fi
 }
 
 alias gc='git clone'
