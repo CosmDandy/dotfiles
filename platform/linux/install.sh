@@ -39,7 +39,6 @@ packages=(
   eza
   fd
   ripgrep
-  yq-go
   starship
   neovim
   tmux
@@ -47,18 +46,20 @@ packages=(
   atuin
   btop
   lazygit
+  lazydocker
   uv
   gitleaks
   yamllint
   shellcheck
+  gh
+  glab
+  iperf3
 )
 
 # --- Full: IaC, K8s, DevOps tools ---
 if [[ "$PROFILE" == "full" ]]; then
   packages+=(
     go
-    gh
-    glab
     gdu
     terraform
     ansible
@@ -66,9 +67,8 @@ if [[ "$PROFILE" == "full" ]]; then
     kubernetes-helm
     k9s
     dive
-    lazydocker
     lnav
-    iperf3
+    yq-go
   )
 fi
 
