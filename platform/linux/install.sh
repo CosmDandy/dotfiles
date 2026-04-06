@@ -79,6 +79,10 @@ done
 print_section "Installing packages: ${packages[*]}"
 nix-env -iA "${nix_args[@]}"
 
+# FIXME: dotfiles клонируются в ~/dotfiles, а конфиги (tmux, etc.) ссылаются на ~/.dotfiles
+# Нужно унифицировать путь клонирования или сделать конфиги платформо-независимыми
+[[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
+
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
 
