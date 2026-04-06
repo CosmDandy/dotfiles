@@ -33,3 +33,5 @@
 	algorithm = histogram
 [includeIf "gitdir:/workspaces/"]
 	path = ~/.gitconfig-work
+[includeIf "gitdir:~/Work/"]
+	path = ~/.gitconfig-work

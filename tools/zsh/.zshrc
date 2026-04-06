@@ -180,6 +180,7 @@ tn() {
     tmux select-window -t "${name}:1"
     if [[ -n "$TMUX" ]]; then
         tmux switch-client -t "$name"
+        tmux refresh-client -S
     else
         tmux attach -t "$name"
     fi
