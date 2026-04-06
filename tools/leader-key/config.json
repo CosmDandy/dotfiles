@@ -337,13 +337,6 @@
               "value": "raycast://extensions/tailscale/tailscale/netcheck"
             },
             {
-              "iconPath": "/Applications/Tailscale.app",
-              "key": "a",
-              "label": "Accounts",
-              "type": "url",
-              "value": "raycast://extensions/tailscale/tailscale/account-switcher"
-            },
-            {
               "key": "s",
               "label": "Sing Box",
               "type": "application",
@@ -376,6 +369,11 @@
           "label": "Bounce",
           "type": "url",
           "value": "raycast://extensions/raycast/raycast/toggle-bounce-animation"
+        },
+        {
+          "key": "m",
+          "type": "application",
+          "value": "/System/Applications/iPhone Mirroring.app"
         }
       ],
       "iconPath": "lasso.badge.sparkles",
