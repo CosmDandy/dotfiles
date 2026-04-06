@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "fallbackModel": "sonnet",
   "env": {
     "CLAUDE_CODE_DISABLE_ATTRIBUTION": "1",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
@@ -205,7 +204,16 @@
       "Bash(ssh-keygen:*)",
       "Bash(ssh-copy-id:*)",
       "Bash(ssh-add:*)",
-      "Bash(ssh-agent:*)"
+      "Bash(ssh-agent:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(tmux list-sessions:*)",
+      "Bash(tmux show-options:*)",
+      "Bash(go version:*)",
+      "Bash(gh:*)",
+      "Bash(glab:*)",
+      "Bash(devpod context options:*)"
     ],
     "deny": [
       "Read(.env)",
@@ -322,16 +330,18 @@
       "Bash(:*monero:*)"
     ]
   },
+  "model": "Opus",
   "statusLine": {
     "type": "command",
     "command": "~/.claude/statusline.sh"
   },
+  "outputStyle": "learning",
   "language": "Russian",
   "effortLevel": "medium",
   "voiceEnabled": true,
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
+  "fallbackModel": "sonnet",
   "preferredNotifChannel": "terminal_bell",
-  "theme": "auto",
-  "model": "Sonnet"
+  "theme": "auto"
 }

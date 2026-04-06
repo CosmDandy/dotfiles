@@ -5,7 +5,8 @@
 In agent mode: use best judgment within delegated scope, report findings in final response.
 
 - Do NOT make unrequested changes — only change what was explicitly asked for
-- If first approach doesn't work within 2 attempts — STOP and ask user
+- If first approach to a code change doesn't work within 2 attempts — STOP and ask user
+- For diagnostics (logs, status, ssh, network) — keep investigating autonomously, don't stop after 2 attempts
 - Before starting non-trivial tasks: state the approach and wait for confirmation
 - Don't try multiple alternatives silently — propose options, let user choose
 - Keep suggestions minimal and practical — no extras unless explicitly requested
@@ -22,6 +23,8 @@ In agent mode: use best judgment within delegated scope, report findings in fina
 ## Commands
 
 - **Always execute commands yourself** via Bash when you have permission. Never suggest `! command` for the user to run if you can run it yourself.
+- Execute ALL diagnostic commands yourself: ssh, logs, status checks, network tests — never ask the user to run them
+- If a command fails — read the error, adjust, retry. Don't dump the error and ask user what to do.
 
 ## Workflow
 
@@ -41,7 +44,9 @@ These rules apply to interactive (main session) work. Delegated agents should co
 - You CAN: status, diff, log, blame, add, commit
 - NEVER: `git push`
 - Commit ONLY when explicitly asked. Conventional commits. Show status after.
-- Use CLI (`glab`, `gh`) over MCP servers
+- For GitLab operations: always use `glab`, never `curl` or raw API calls
+- For GitHub operations: always use `gh`, never `curl` or raw API calls
+- Use `glab`/`gh` over MCP servers
 
 ## Agents
 

@@ -5,6 +5,12 @@ return {
       provider = 'none',
     },
     track_selection = true,
+    diff_opts = {
+      auto_close_on_accept = true,
+      vertical_split = true,
+      open_in_current_tab = true,
+      keep_terminal_focus = false,
+    },
   },
   keys = {
     { '<leader>a', nil, desc = 'AI/Claude Code' },
