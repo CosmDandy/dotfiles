@@ -83,6 +83,17 @@ nix-env -iA "${nix_args[@]}"
 # Нужно унифицировать путь клонирования или сделать конфиги платформо-независимыми
 [[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
 
+print_section "Setting default shell to zsh"
+ZSH_PATH="$(which zsh)"
+if [[ "$SHELL" != "$ZSH_PATH" ]]; then
+  if grep -q "$ZSH_PATH" /etc/shells 2>/dev/null; then
+    chsh -s "$ZSH_PATH" 2>/dev/null || sudo chsh -s "$ZSH_PATH" "$(whoami)" 2>/dev/null || true
+  else
+    echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
+    chsh -s "$ZSH_PATH" 2>/dev/null || sudo chsh -s "$ZSH_PATH" "$(whoami)" 2>/dev/null || true
+  fi
+fi
+
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
 
@@ -119,8 +130,11 @@ links=(
   "$DOTFILES_ROOT/tools/git/.gitconfig-work:$HOME/.gitconfig-work"
   "$DOTFILES_ROOT/tools/git/.allowed_signers:$HOME/.allowed_signers"
   "$DOTFILES_ROOT/tools/git/hooks:$HOME/.git-hooks"
-  "$DOTFILES_ROOT/tools/git/known_hosts:$HOME/.ssh/known_hosts"
 )
+
+mkdir -p "$HOME/.ssh"
+cp "$DOTFILES_ROOT/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
+chmod 644 "$HOME/.ssh/known_hosts"
 
 print_section "Create directories for symbolic links"
 create_directories "${dirs[@]}"
