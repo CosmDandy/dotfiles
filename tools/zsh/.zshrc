@@ -163,6 +163,7 @@ alias tks='tmux kill-server'
 tw() {
     local count="${1:-3}"
     local name="${2:-$(basename "$PWD")}"
+    name="${name#.}"
     tmux new-session -d -s "$name" -c "$PWD"
     for i in $(seq 2 "$count"); do
         tmux new-window -t "${name}:" -c "$PWD"
@@ -180,6 +181,7 @@ t6() { tw 6 "$1"; }
 
 tn() {
     local name="${1:-$(basename "$PWD")}"
+    name="${name#.}"  # strip leading dot (e.g. .dotfiles → dotfiles)
     tmux new-session -d -s "$name" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
