@@ -49,6 +49,7 @@
       "raycast"
       # Коммуникации
       "telegram"
+      "element"
       # Системные утилиты
       "onyx"
       "ukelele"
