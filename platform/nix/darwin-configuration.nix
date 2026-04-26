@@ -54,7 +54,7 @@
       "onyx"
       "ukelele"
       "betterdisplay"
-      "jordanbaird-ice"
+      # "jordanbaird-ice"
       "syncthing-app"
       # Дополнительные утилиты
       "flux-app"
@@ -101,6 +101,7 @@
     gitleaks
     yamllint
     shellcheck
+    blueutil
   ];
 
   # ===============================

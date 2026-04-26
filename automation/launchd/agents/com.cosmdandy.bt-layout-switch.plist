@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cosmdandy.bt-layout-switch</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/cosmdandy/.dotfiles/automation/launchd/scripts/bt-layout-switch.app/Contents/MacOS/bt-layout-switch</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>BT_LAYOUT_CONF</key>
+        <string>/Users/cosmdandy/.dotfiles/automation/launchd/config/bt-layout.conf</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/bt-layout-switch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/bt-layout-switch.log</string>
+</dict>
+</plist>
