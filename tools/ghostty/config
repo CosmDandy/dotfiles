@@ -8,4 +8,6 @@ mouse-hide-while-typing = true
 clipboard-paste-protection = false
 
 macos-option-as-alt = true
+desktop-notifications = true
+bell-features = system,attention,title
 keybind = shift+enter=text:\x1b\r

@@ -164,6 +164,7 @@ tw() {
     local count="${1:-3}"
     local name="${2:-$(basename "$PWD")}"
     name="${name#.}"
+    name="${name//./-}"
     tmux new-session -d -s "$name" -c "$PWD"
     for i in $(seq 2 "$count"); do
         tmux new-window -t "${name}:" -c "$PWD"
@@ -181,12 +182,15 @@ t6() { tw 6 "$1"; }
 
 tn() {
     local name="${1:-$(basename "$PWD")}"
-    name="${name#.}"  # strip leading dot (e.g. .dotfiles → dotfiles)
+    name="${name#.}"
+    name="${name//./-}"
     tmux new-session -d -s "$name" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
+    local lock_count
+    lock_count=$(ls ~/.claude/ide/*.lock 2>/dev/null | wc -l)
     tmux send-keys -t "${name}:1" 'nvim' C-m
-    tmux send-keys -t "${name}:2" 'cl' C-m
+    tmux send-keys -t "${name}:2" "while [ \$(ls ~/.claude/ide/*.lock 2>/dev/null | wc -l) -le $lock_count ]; do sleep 0.3; done && cl" C-m
     tmux select-window -t "${name}:1"
     if [[ -n "$TMUX" ]]; then
         tmux switch-client -t "$name"
