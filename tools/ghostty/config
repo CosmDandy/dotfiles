@@ -9,5 +9,5 @@ clipboard-paste-protection = false
 
 macos-option-as-alt = true
 desktop-notifications = true
-bell-features = system,attention,title
+bell-features = system,attention,title,border
 keybind = shift+enter=text:\x1b\r
