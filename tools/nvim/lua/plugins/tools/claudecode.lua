@@ -1,5 +1,6 @@
 return {
   'coder/claudecode.nvim',
+  lazy = false,
   opts = {
     terminal = {
       provider = 'none',
