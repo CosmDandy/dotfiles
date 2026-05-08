@@ -5,10 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 CRON_ENTRIES="
 # --- dotfiles automation ---
-0 2 * * 0 $SCRIPT_DIR/apt-upgrade.sh >> logger -t apt-upgrade 2>&1
-30 2 * * 0 $SCRIPT_DIR/devpod-nix-gc.sh >> logger -t devpod-nix-gc 2>&1
-40 2 * * * $SCRIPT_DIR/docker-cleanup.sh >> logger -t docker-cleanup 2>&1
-50 2 * * * $SCRIPT_DIR/devpod-update.sh >> logger -t devpod-update 2>&1
+0 2 * * 0 $SCRIPT_DIR/apt-upgrade.sh 2>&1 | logger -t apt-upgrade
+30 2 * * 0 $SCRIPT_DIR/devpod-nix-gc.sh 2>&1 | logger -t devpod-nix-gc
+40 2 * * * $SCRIPT_DIR/docker-cleanup.sh 2>&1 | logger -t docker-cleanup
+50 2 * * * $SCRIPT_DIR/devpod-update.sh 2>&1 | logger -t devpod-update
 # --- end dotfiles automation ---
 "
 
