@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# ANSI color codes
-GREEN='\033[32m'
-YELLOW='\033[33m'
-RED='\033[31m'
-GRAY='\033[90m'
-BLUE='\033[34m'
-RESET='\033[0m'
+# ANSI color codes (actual ESC bytes via $'...' quoting)
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
+RED=$'\033[31m'
+GRAY=$'\033[90m'
+BLUE=$'\033[34m'
+RESET=$'\033[0m'
 
 # Generate colored progress bar
 # Args: $1=used_pct, $2=bar_length
@@ -130,6 +130,31 @@ cache_color="$RED"
 # Generate progress bar
 bar=$(generate_progress_bar $used_pct 10)
 
-# Output statusline
-printf "${BLUE}%s${RESET} | %s ${ctx_color}%s%%${RESET} | ${cache_color}◎ %s%%${RESET} | ↑%s ${GREEN}↓%s${RESET}" \
-  "$model" "$bar" "$used_pct" "$cache_hit" "$input_str" "$output_str"
+# ccusage: current 5h block cost + time progress bar
+NPXBIN=$(command -v npx 2>/dev/null || echo "/run/current-system/sw/bin/npx")
+cost_str=""
+ccusage_json=$("$NPXBIN" --prefer-offline ccusage blocks --json 2>/dev/null)
+if [ -n "$ccusage_json" ]; then
+  active=$(echo "$ccusage_json" | jq -c '[.blocks[] | select(.isActive==true)] | last // empty')
+  if [ -n "$active" ]; then
+    # Cost + burn rate
+    cost=$(echo "$active" | jq -r '.costUSD')
+    burn=$(echo "$active" | jq -r '.burnRate.costPerHour // 0')
+    cost_fmt=$(printf "%.2f" "$cost")
+    burn_fmt=$(printf "%.2f" "$burn")
+
+    # Burn rate color: green <$2/h, yellow $2-5/h, red >$5/h
+    burn_color="$GREEN"
+    burn_int=$(echo "$burn" | cut -d'.' -f1)
+    [ "${burn_int:-0}" -ge 2 ] 2>/dev/null && burn_color="$YELLOW"
+    [ "${burn_int:-0}" -ge 5 ] 2>/dev/null && burn_color="$RED"
+
+    cost_str="\$${cost_fmt} ${burn_color}\$${burn_fmt}/h${RESET}"
+
+  fi
+fi
+
+# Assemble statusline
+out="${BLUE}${model}${RESET} | ${bar} ${ctx_color}${used_pct}%${RESET} | ${cache_color}◎ ${cache_hit}%${RESET} | ↑${input_str} ${GREEN}↓${output_str}${RESET}"
+[ -n "$cost_str" ] && out="${out} | ${cost_str}"
+printf "%s" "$out"

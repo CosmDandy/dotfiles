@@ -41,7 +41,7 @@
       "utm"
       # AI инструменты
       # "chatgpt"
-      "claude"
+      # "claude"
       # "lm-studio"
       # Продуктивность
       "obsidian"

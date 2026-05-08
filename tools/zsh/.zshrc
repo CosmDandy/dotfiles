@@ -336,3 +336,4 @@ eval "$(starship init zsh)"
 
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
+export PATH="/Users/cosmdandy/.npm-global/bin:$PATH"

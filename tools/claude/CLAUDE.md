@@ -41,8 +41,8 @@ These rules apply to interactive (main session) work. Delegated agents should co
 
 ## Git
 
-- You CAN: status, diff, log, blame, add, commit
-- NEVER: `git push`
+- You CAN: status, diff, log, blame, add, commit, push, amend
+- By default: NOT push, NOT create PRs/MRs — only when explicitly asked or as part of requested full cycle
 - Commit ONLY when explicitly asked. Conventional commits. Show status after.
 - For GitLab operations: always use `glab`, never `curl` or raw API calls
 - For GitHub operations: always use `gh`, never `curl` or raw API calls

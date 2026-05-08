@@ -5,6 +5,12 @@
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
+    "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
+    "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": "1",
+    "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "10",
+    "CLAUDE_CODE_FORK_SUBAGENT": "1",
+    "DISABLE_TELEMETRY": "1",
+    "DISABLE_ERROR_REPORTING": "1",
     "EDITOR": "nvim",
     "VISUAL": "nvim"
   },
@@ -211,6 +217,7 @@
       "Bash(tmux list-sessions:*)",
       "Bash(tmux show-options:*)",
       "Bash(go version:*)",
+      "Bash(git push:*)",
       "Bash(gh:*)",
       "Bash(glab:*)",
       "Bash(devpod context options:*)"
@@ -236,18 +243,13 @@
       "Read(~/.kube/configs/**)",
       "Read(~/.azure/**)",
       "Read(~/.config/doctl/**)",
-      "Bash(git push:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(glab mr merge:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean:*)",
       "Bash(git branch -D:*)",
       "Bash(git checkout -- .:*)",
       "Bash(git restore .:*)",
-      "Bash(gh pr create:*)",
-      "Bash(gh pr merge:*)",
-      "Bash(gh issue create:*)",
-      "Bash(glab mr create:*)",
-      "Bash(glab mr merge:*)",
-      "Bash(glab issue create:*)",
       "Bash(terraform apply:*)",
       "Bash(terraform destroy:*)",
       "Bash(terraform state rm:*)",
@@ -263,19 +265,7 @@
       "Bash(kubectl drain:*)",
       "Bash(kubectl cordon:*)",
       "Bash(kubectl taint:*)",
-      "Bash(docker run:*)",
-      "Bash(docker exec:*)",
-      "Bash(docker rm:*)",
-      "Bash(docker rmi:*)",
-      "Bash(docker stop:*)",
-      "Bash(docker kill:*)",
       "Bash(docker system prune:*)",
-      "Bash(docker compose up:*)",
-      "Bash(docker compose down:*)",
-      "Bash(docker compose restart:*)",
-      "Bash(docker-compose up:*)",
-      "Bash(docker-compose down:*)",
-      "Bash(docker-compose restart:*)",
       "Bash(nomad job run:*)",
       "Bash(nomad job stop:*)",
       "Bash(nomad alloc stop:*)",
@@ -328,20 +318,48 @@
       "Bash(:*xmrig:*)",
       "Bash(:*miner:*)",
       "Bash(:*monero:*)"
+    ],
+    "ask": [
+      "Bash(docker run:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker kill:*)",
+      "Bash(docker compose up:*)",
+      "Bash(docker compose down:*)",
+      "Bash(docker compose restart:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose restart:*)"
     ]
   },
-  "model": "sonnet",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\a'"
+          }
+        ]
+      }
+    ]
+  },
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/statusline.sh"
+    "command": "~/.claude/statusline.sh",
+    "refreshInterval": 15
   },
   "outputStyle": "learning",
   "language": "Russian",
+  "feedbackSurveyRate": 0,
   "effortLevel": "medium",
-  "voiceEnabled": true,
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
-  "fallbackModel": "sonnet",
+  "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
-  "theme": "auto"
+  "voiceEnabled": true,
+  "fallbackModel": "sonnet"
 }
