@@ -2,7 +2,8 @@
 
 # Если DOTFILES_ROOT не определена (скрипт запущен напрямую, а не через setup.sh)
 if [ -z "$DOTFILES_ROOT" ]; then
-  PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # ${(%):-%x} — zsh-нативный путь текущего sourced-файла (BASH_SOURCE в zsh пустой)
+  PLATFORM_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
   export DOTFILES_ROOT="$(dirname "$PLATFORM_DIR")"
 fi
 
