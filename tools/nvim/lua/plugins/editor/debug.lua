@@ -239,12 +239,6 @@ return {
     }
 
 
-    dap.adapters.python = {
-      type = 'server',
-      host = 'localhost',
-      port = 5678,
-    }
-
     dap.configurations.python = {
       {
         type = 'python',
@@ -252,132 +246,8 @@ return {
         name = 'Local Python',
         program = '${file}',
         pythonPath = function()
-          return vim.fn.expand '.venv/bin/python' -- Измените путь на путь к вашему виртуальному окружению
+          return vim.fn.expand '.venv/bin/python'
         end,
-      },
-      {
-        name = 'Odoo Local',
-        type = 'python',
-        request = 'attach',
-        connect = {
-          host = 'localhost',
-          port = 5678,
-        },
-        justMyCode = false,
-        pathMappings = {
-          {
-            localRoot = '${workspaceFolder}/addons/main',
-            remoteRoot = '/mnt/extra-addons/main',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/third-party',
-            remoteRoot = '/mnt/extra-addons/third-party',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/icode',
-            remoteRoot = '/mnt/extra-addons/icode',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/oca',
-            remoteRoot = '/mnt/extra-addons/oca',
-          },
-          {
-            localRoot = '${workspaceFolder}/odoo/addons',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/addons',
-          },
-          {
-            localRoot = '${workspaceFolder}/odoo/api.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/api.py',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/src_volumes/models.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/models.py',
-          },
-          {
-            localRoot = '${workspaceFolder}/odoo/service',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/service',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/src_volumes/fields.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/fields.py',
-          },
-          {
-            localRoot = '${workspaceFolder}/odoo',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo',
-          },
-        },
-      },
-      {
-        name = 'Stage Server',
-        type = 'python',
-        request = 'attach',
-        connect = {
-          host = '192.168.82.50',
-          port = 7013,
-        },
-        justMyCode = false,
-        pathMappings = {
-          {
-            localRoot = '${workspaceFolder}/addons/main',
-            remoteRoot = '/mnt/extra-addons/main',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/third-party',
-            remoteRoot = '/mnt/extra-addons/third-party',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/icode',
-            remoteRoot = '/mnt/extra-addons/icode',
-          },
-          {
-            localRoot = '${workspaceFolder}/src/odoo-13.0.post20200131/odoo/addons',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/addons',
-          },
-          {
-            localRoot = '${workspaceFolder}/src/odoo-13.0.post20200131/odoo/addons/base/models/ir_model.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/addons/base/models/ir_model.py',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/src_volumes/fields.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/fields.py',
-          },
-        },
-      },
-      {
-        name = 'Develop Server',
-        type = 'python',
-        request = 'attach',
-        connect = {
-          host = '192.168.82.50',
-          port = 9013,
-        },
-        justMyCode = false,
-        pathMappings = {
-          {
-            localRoot = '${workspaceFolder}/addons/main',
-            remoteRoot = '/mnt/extra-addons/main',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/third-party',
-            remoteRoot = '/mnt/extra-addons/third-party',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/icode',
-            remoteRoot = '/mnt/extra-addons/icode',
-          },
-          {
-            localRoot = '${workspaceFolder}/src/odoo-13.0.post20200131/odoo/addons',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/addons',
-          },
-          {
-            localRoot = '${workspaceFolder}/src/odoo-13.0.post20200131/odoo/addons/base/models/ir_model.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/addons/base/models/ir_model.py',
-          },
-          {
-            localRoot = '${workspaceFolder}/addons/src_volumes/fields.py',
-            remoteRoot = '/usr/lib/python3/dist-packages/odoo/fields.py',
-          },
-        },
       },
     }
 

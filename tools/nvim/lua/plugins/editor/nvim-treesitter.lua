@@ -17,12 +17,10 @@ return {
         'javascript',
         'diff',
         'lua',
-        'luadoc',
         'markdown',
         'markdown_inline',
         'gitignore',
         'rust',
-        'query',
         'dockerfile',
         'yaml',
         'hcl',
@@ -30,10 +28,8 @@ return {
         'jinja',
         'toml',
         'xml',
-        'graphql',
         'regex',
         'vim',
-        'vimdoc',
         'gotmpl',
         'helm',
         'jsonnet',
@@ -58,20 +54,18 @@ return {
   },
   {
     'nvim-treesitter/nvim-treesitter-context',
-    config = function()
-      local context = require 'treesitter-context'
-      context.setup {
-        enable = false,
-        -- max_lines = 8,
-      }
-
-      -- Хоткей для включения/выключения
-      vim.keymap.set('n', '<leader>tc', function()
-        context.toggle()
-      end, { desc = 'Toggle Treesitter Context' })
-    end,
-
-    -- TODO: Добавить включение и выключение и хоткеи
-    -- https://github.com/nvim-treesitter/nvim-treesitter-context?tab=readme-ov-file
+    cmd = { 'TSContextEnable', 'TSContextDisable', 'TSContextToggle' },
+    keys = {
+      {
+        '<leader>tc',
+        function()
+          require('treesitter-context').toggle()
+        end,
+        desc = 'Toggle Treesitter Context',
+      },
+    },
+    opts = {
+      enable = false,
+    },
   },
 }
