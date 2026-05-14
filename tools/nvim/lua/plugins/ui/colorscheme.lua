@@ -368,6 +368,31 @@ return {
           bg = c.bg_dark,
           fg = c.red,
         }
+
+        -- snacks.dashboard: красный header (текст + волны), серый футер со временем
+        hl.SnacksDashboardHeader = { fg = '#dc322f', bold = true }
+        hl.SnacksDashboardFooter = { fg = is_dark() and '#586e75' or '#93a1a1' }
+
+        -- snacks.indent: явные цвета (по дефолту линкуется на NonText, почти невидим)
+        hl.SnacksIndent = { fg = is_dark() and '#3a4d52' or '#93a1a1' } -- тусклые гайды на всех уровнях
+        hl.SnacksIndentScope = { fg = is_dark() and '#2aa198' or '#268bd2' } -- cyan/blue для активного
+        hl.SnacksIndent1 = { fg = '#268bd2' } -- blue
+        hl.SnacksIndent2 = { fg = '#2aa198' } -- cyan
+        hl.SnacksIndent3 = { fg = '#859900' } -- green
+        hl.SnacksIndent4 = { fg = '#b58900' } -- yellow
+        hl.SnacksIndent5 = { fg = '#cb4b16' } -- orange
+        hl.SnacksIndent6 = { fg = '#d33682' } -- magenta
+
+        -- blink.cmp: фон такой же, как основной редактор (прозрачный)
+        hl.BlinkCmpMenu = { bg = 'NONE', fg = c.fg }
+        hl.BlinkCmpMenuBorder = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpMenuSelection = { bg = is_dark() and '#073642' or '#eee8d5', bold = true }
+        hl.BlinkCmpDoc = { bg = 'NONE', fg = c.fg }
+        hl.BlinkCmpDocBorder = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpDocSeparator = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpSignatureHelp = { bg = 'NONE', fg = c.fg }
+        hl.BlinkCmpSignatureHelpBorder = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
     }
   end,
