@@ -86,7 +86,7 @@ return {
     end
 
     local function get_fileinfo()
-      local filename = vim.fn.expand '%' == '' and 'GO BIG OR GO HOME' or vim.fn.expand '%:t'
+      local filename = vim.fn.expand '%' == '' and 'GO BIG OR GO HOME' or vim.fn.expand '%:~:.'
 
       if filename ~= ' nyoom-nvim ' then
         filename = ' ' .. filename .. ' '
@@ -167,7 +167,7 @@ return {
       return table.concat(parts, ' ') .. '%#Normal# '
     end
 
-    -- Python окружение (с кешированием версии)
+    -- Python окружение (async-запрос версии, кеш по venv)
     local python_version_cache = {}
     local function get_python_env()
       local venv = vim.env.VIRTUAL_ENV
@@ -175,19 +175,24 @@ return {
         return ''
       end
 
-      -- Получаем родительскую папку и название окружения
-      local parent_dir = vim.fn.fnamemodify(venv, ':h:t')
       local venv_name = vim.fn.fnamemodify(venv, ':t')
 
-      -- Кешируем версию Python для окружения
-      if not python_version_cache[venv] then
-        local python_bin = venv .. '/bin/python'
-        local version_output = vim.fn.system(python_bin .. ' --version 2>&1')
-        local version = version_output:match 'Python (%d+%.%d+%.%d+)' or version_output:match 'Python (%d+%.%d+)'
-        python_version_cache[venv] = version or '?'
+      if python_version_cache[venv] == nil then
+        python_version_cache[venv] = 'pending'
+        vim.system({ venv .. '/bin/python', '--version' }, { text = true }, function(out)
+          local stdout = (out.stdout or '') .. (out.stderr or '')
+          local version = stdout:match 'Python (%d+%.%d+%.%d+)' or stdout:match 'Python (%d+%.%d+)' or '?'
+          vim.schedule(function()
+            python_version_cache[venv] = version
+            vim.cmd 'redrawstatus'
+          end)
+        end)
       end
 
       local version = python_version_cache[venv]
+      if version == 'pending' then
+        return '%#NormalNC#' .. venv_name
+      end
       return '%#NormalNC#' .. venv_name .. ' (' .. version .. ')'
     end
 
