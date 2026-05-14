@@ -12,7 +12,7 @@ return {
         python = { 'ruff', 'mypy' },
         dockerfile = { 'hadolint' },
         yaml = { 'yamllint' },
-        ['yaml.ansible'] = { 'ansible-lint' },
+        ['yaml.ansible'] = { 'ansible_lint' },
         terraform = { 'tflint' },
       }
 
