@@ -56,7 +56,7 @@ return {
       'williamboman/mason.nvim',
       'williamboman/mason-lspconfig.nvim',
       'WhoIsSethDaniel/mason-tool-installer.nvim',
-      'hrsh7th/cmp-nvim-lsp',
+      'saghen/blink.cmp',
     },
     config = function()
       vim.api.nvim_create_autocmd('LspAttach', {
@@ -139,13 +139,7 @@ return {
         update_in_insert = false,
       }
 
-      local capabilities = vim.lsp.protocol.make_client_capabilities()
-      capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
-
-      capabilities.textDocument.completion.completionItem.snippetSupport = true
-      capabilities.textDocument.completion.completionItem.resolveSupport = {
-        properties = { 'documentation', 'detail', 'additionalTextEdits' },
-      }
+      local capabilities = require('blink.cmp').get_lsp_capabilities()
 
       local servers = {
         pyright = {
@@ -307,6 +301,11 @@ return {
         -- Jsonnet LSP
         jsonnet_ls = {},
 
+        -- Helm LSP для чартов
+        helm_ls = {
+          filetypes = { 'helm' },
+        },
+
         ansiblels = {
           settings = {
             ansible = {
@@ -345,6 +344,7 @@ return {
         'docker-compose-language-service',
         'terraform-ls',
         'ansible-language-server',
+        'helm-ls',
         -- DAP
         'debugpy',
         -- Linters
