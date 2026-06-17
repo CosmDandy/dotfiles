@@ -1,9 +1,10 @@
 return {
   {
     'nvim-treesitter/nvim-treesitter',
+    branch = 'master',
     lazy = false,
     build = ':TSUpdate',
-    main = 'nvim-treesitter',
+    main = 'nvim-treesitter.configs',
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
       ensure_installed = {
