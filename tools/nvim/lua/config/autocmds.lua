@@ -3,6 +3,7 @@ vim.filetype.add {
   extension = {
     nomad = 'hcl',
     j2 = 'jinja',
+    tf = 'terraform',
     tfvars = 'terraform',
     tftpl = 'terraform',
     tpl = 'yaml',
