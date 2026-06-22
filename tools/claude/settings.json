@@ -344,6 +344,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-lint.sh",
+            "async": true
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
