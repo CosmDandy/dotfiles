@@ -1,0 +1,50 @@
+# Note: a full end-to-end install.sh run is intentionally NOT executed here —
+# it requires Nix + access to private submodules (deploy keys), which is out of
+# scope for CI. This workflow validates script syntax/lint and the symlink
+# idempotency contract (the part most likely to break on rerun).
+name: test-install
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y zsh shellcheck yamllint
+      - name: Syntax-check all shell scripts
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if head -1 "$f" | grep -q zsh; then
+              zsh -n "$f" || fail=1
+            else
+              bash -n "$f" || fail=1
+            fi
+          done < <(git ls-files '*.sh' '*.bash')
+          exit $fail
+      - name: Shellcheck Claude hooks
+        run: |
+          shopt -s nullglob
+          for f in tools/claude/hooks/*.sh; do
+            head -1 "$f" | grep -q zsh && continue
+            shellcheck -S warning "$f"
+          done
+      - name: Yamllint (relaxed)
+        run: git ls-files '*.yml' '*.yaml' | xargs -r yamllint -d relaxed
+
+  symlinks-idempotency:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zsh (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh
+      - name: Run create_symlinks test (backup + double-run idempotency)
+        run: zsh tests/test-create-symlinks.sh
