@@ -255,7 +255,7 @@ alias uvs='uv sync'
 
 alias updm='brew update && brew upgrade && brew cleanup --prune=all && nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo nix-collect-garbage -d'
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
-alias updl='nix flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && nix-env --delete-generations +3 && nix-collect-garbage -d'
+alias updl='nix --extra-experimental-features "nix-command flakes" flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && nix-env --delete-generations +3 && nix-collect-garbage -d'
 
 alias ttyh='ghostty +list-keybinds --default'
 
