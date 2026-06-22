@@ -392,6 +392,15 @@ run = 'move-node-to-workspace 7'
 [[on-window-detected]]
 if.app-id = 'com.meetily.ai'
 run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'su.ffg.happ.plus'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'org.openvpn.client.app'
+run = 'move-node-to-workspace 7'
+[[on-window-detected]]
+if.app-id = 'com.yourcompany.AmneziaVPN'
+run = 'move-node-to-workspace 7'
 
 # 8
 [[on-window-detected]]
