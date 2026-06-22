@@ -360,5 +360,7 @@
   "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
   "voiceEnabled": true,
-  "fallbackModel": ["sonnet"]
+  "fallbackModel": [
+    "sonnet"
+  ]
 }
