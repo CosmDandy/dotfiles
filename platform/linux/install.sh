@@ -119,6 +119,7 @@ links=(
   "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
   "$DOTFILES_ROOT/tools/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
+  "$DOTFILES_ROOT/tools/k9s:$XDG_CONFIG_HOME/k9s"
   "$DOTFILES_ROOT/tools/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
   "$DOTFILES_ROOT/tools/claude/settings.json:$HOME/.claude/settings.json"
   "$DOTFILES_ROOT/tools/claude/statusline.sh:$HOME/.claude/statusline.sh"
