@@ -23,7 +23,11 @@ case "$file" in
     run ruff ruff check "$file"
     ;;
   *.sh|*.bash)
-    run shellcheck shellcheck -S warning "$file"
+    if head -1 "$file" | grep -q zsh; then
+      run zsh zsh -n "$file"
+    else
+      run shellcheck shellcheck -S warning "$file"
+    fi
     ;;
   *.yml|*.yaml)
     run yamllint yamllint -d relaxed "$file"
