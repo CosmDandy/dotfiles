@@ -46,6 +46,10 @@ return { -- Fuzzy Finder (files, lsp, etc)
         cache_picker = {
           num_pickers = 10,
         },
+        preview = {
+          filesize_limit = 1, -- МБ: большие файлы не превьюим
+          timeout = 200, -- мс на отрисовку превью, иначе бросаем
+        },
         vimgrep_arguments = vim.list_extend({
           'rg',
           '--color=never',
@@ -110,11 +114,7 @@ return { -- Fuzzy Finder (files, lsp, etc)
             preview_height = 0.6,
           },
           hidden = true,
-          find_command = vim.list_extend({
-            'rg',
-            '--files',
-            '--hidden',
-          }, ignore_globs),
+          find_command = { 'fd', '--type', 'f', '--hidden', '--strip-cwd-prefix', '--exclude', '.git', '--exclude', 'node_modules', '--exclude', '__pycache__', '--exclude', '.venv', '--exclude', 'venv' },
         },
 
         live_grep = {

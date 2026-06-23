@@ -106,7 +106,7 @@ return {
         return '%#Normal# %l:%c '
       end
 
-      local ok, count = pcall(vim.fn.searchcount, { recompute = true })
+      local ok, count = pcall(vim.fn.searchcount, { recompute = false })
       if not ok or count.current == nil or count.total == 0 then
         return '%#Normal# %l:%c '
       end

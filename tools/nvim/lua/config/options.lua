@@ -44,6 +44,9 @@ vim.o.cmdheight = 0
 -- Лимит подсветки синтаксиса для длинных строк (minified, логи, длинные JSON)
 vim.opt.synmaxcol = 300
 
+-- Больше времени на отрисовку, чтобы treesitter не отключался на больших файлах
+vim.opt.redrawtime = 2000
+
 -- Отключаем неиспользуемые providers (только Python нужен)
 vim.g.loaded_ruby_provider = 0
 vim.g.loaded_perl_provider = 0
