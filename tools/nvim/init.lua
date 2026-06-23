@@ -15,11 +15,13 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
 end ---@diagnostic disable-next-line: undefined-field
 vim.opt.rtp:prepend(lazypath)
 
-require('lazy').setup {
+require('lazy').setup({
   { import = 'plugins.editor' },
   { import = 'plugins.git' },
   { import = 'plugins.comments' },
   { import = 'plugins.navigation' },
   { import = 'plugins.ui' },
   { import = 'plugins.tools' },
-}
+}, {
+  change_detection = { enabled = false },
+})

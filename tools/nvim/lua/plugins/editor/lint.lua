@@ -9,12 +9,23 @@ return {
       local warned = {}
       lint.linters_by_ft = {
         lua = { 'luacheck' },
-        python = { 'ruff', 'mypy' },
+        python = { 'ruff' },
         dockerfile = { 'hadolint' },
         yaml = { 'yamllint' },
         ['yaml.ansible'] = { 'ansible_lint' },
         terraform = { 'tflint' },
       }
+
+      -- mypy медленный — гоняем только при сохранении, не на каждый BufEnter/InsertLeave
+      vim.api.nvim_create_autocmd('BufWritePost', {
+        group = vim.api.nvim_create_augroup('lint-mypy', { clear = true }),
+        pattern = '*.py',
+        callback = function()
+          if vim.fn.executable 'mypy' == 1 then
+            lint.try_lint 'mypy'
+          end
+        end,
+      })
 
       local lint_augroup = vim.api.nvim_create_augroup('lint', { clear = true })
       vim.api.nvim_create_autocmd({ 'BufEnter', 'BufWritePost', 'InsertLeave' }, {
