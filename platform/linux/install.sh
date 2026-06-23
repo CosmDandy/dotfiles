@@ -28,6 +28,11 @@ fi
 # Разрешаем unfree пакеты (например, claude-code)
 export NIXPKGS_ALLOW_UNFREE=1
 
+# Пиним nixpkgs на стабильный релиз, чтобы окружение контейнера не дрейфовало
+# вместе с unstable (например, Python 3.15 ломает Mason-устанавливаемые пакеты).
+NIXPKGS_CHANNEL="${NIXPKGS_CHANNEL:-nixos-25.11}"
+NIXPKGS_URL="https://github.com/NixOS/nixpkgs/archive/${NIXPKGS_CHANNEL}.tar.gz"
+
 # --- Base: core editing and shell environment ---
 packages=(
   # Neovim deps
@@ -76,11 +81,12 @@ nix_args=()
 for package in "${packages[@]}"; do
   nix_args+=("nixpkgs.$package")
 done
-print_section "Installing packages: ${packages[*]}"
-nix-env -iA "${nix_args[@]}"
+print_section "Installing packages from ${NIXPKGS_CHANNEL}: ${packages[*]}"
+nix-env -f "$NIXPKGS_URL" -iA "${nix_args[@]}"
 
-# FIXME: dotfiles клонируются в ~/dotfiles, а конфиги (tmux, etc.) ссылаются на ~/.dotfiles
-# Нужно унифицировать путь клонирования или сделать конфиги платформо-независимыми
+# DevPod always clones dotfiles to ~/dotfiles (no clone-path option exists —
+# only DOTFILES_URL/DOTFILES_SCRIPT), while configs reference ~/.dotfiles.
+# Bridge the two with a symlink so both paths resolve to the same tree.
 [[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
 
 print_section "Setting default shell to zsh"
