@@ -385,13 +385,13 @@ return {
 
         -- blink.cmp: фон такой же, как основной редактор (прозрачный)
         hl.BlinkCmpMenu = { bg = 'NONE', fg = c.fg }
-        hl.BlinkCmpMenuBorder = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpMenuBorder = { bg = 'NONE', fg = '#586e75' }
         hl.BlinkCmpMenuSelection = { bg = is_dark() and '#073642' or '#eee8d5', bold = true }
         hl.BlinkCmpDoc = { bg = 'NONE', fg = c.fg }
-        hl.BlinkCmpDocBorder = { bg = 'NONE', fg = c.fg_dark }
-        hl.BlinkCmpDocSeparator = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpDocBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.BlinkCmpDocSeparator = { bg = 'NONE', fg = '#586e75' }
         hl.BlinkCmpSignatureHelp = { bg = 'NONE', fg = c.fg }
-        hl.BlinkCmpSignatureHelpBorder = { bg = 'NONE', fg = c.fg_dark }
+        hl.BlinkCmpSignatureHelpBorder = { bg = 'NONE', fg = '#586e75' }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
     }
