@@ -127,34 +127,57 @@ ctx_color="$GREEN"
 cache_color="$RED"
 [ "$cache_hit" -ge 20 ] 2>/dev/null && cache_color="$GREEN"
 
-# Generate progress bar
-bar=$(generate_progress_bar $used_pct 10)
+# Terminal width (COLUMNS set by Claude Code v2.1.153+; fallback to wide)
+cols=${COLUMNS:-100}
 
-# ccusage: current 5h block cost + time progress bar
-NPXBIN=$(command -v npx 2>/dev/null || echo "/run/current-system/sw/bin/npx")
-cost_str=""
-ccusage_json=$("$NPXBIN" --prefer-offline ccusage blocks --json 2>/dev/null)
-if [ -n "$ccusage_json" ]; then
-  active=$(echo "$ccusage_json" | jq -c '[.blocks[] | select(.isActive==true)] | last // empty')
-  if [ -n "$active" ]; then
-    # Cost + burn rate
-    cost=$(echo "$active" | jq -r '.costUSD')
-    burn=$(echo "$active" | jq -r '.burnRate.costPerHour // 0')
-    cost_fmt=$(printf "%.2f" "$cost")
-    burn_fmt=$(printf "%.2f" "$burn")
+# Output style indicator (only when not the default style)
+style_name=$(echo "$input" | jq -r '.output_style.name // "default"')
+style_str=""
+[ "$style_name" != "default" ] && style_str="${GRAY}⊙ ${style_name}${RESET}"
 
-    # Burn rate color: green <$2/h, yellow $2-5/h, red >$5/h
-    burn_color="$GREEN"
-    burn_int=$(echo "$burn" | cut -d'.' -f1)
-    [ "${burn_int:-0}" -ge 2 ] 2>/dev/null && burn_color="$YELLOW"
-    [ "${burn_int:-0}" -ge 5 ] 2>/dev/null && burn_color="$RED"
-
-    cost_str="\$${cost_fmt} ${burn_color}\$${burn_fmt}/h${RESET}"
-
-  fi
+# Context warning at autocompact threshold (85%, matches CLAUDE_AUTOCOMPACT_PCT_OVERRIDE)
+warn=""
+if [ "$used_pct" -ge 85 ] 2>/dev/null; then
+  ctx_color="$RED"
+  warn=" ⚠"
 fi
 
-# Assemble statusline
-out="${BLUE}${model}${RESET} | ${bar} ${ctx_color}${used_pct}%${RESET} | ${cache_color}◎ ${cache_hit}%${RESET} | ↑${input_str} ${GREEN}↓${output_str}${RESET}"
-[ -n "$cost_str" ] && out="${out} | ${cost_str}"
+# ccusage cost/burn — only computed for the full (wide) tier (slow npx call)
+compute_cost() {
+  local NPXBIN ccusage_json active cost burn cost_fmt burn_fmt burn_color burn_int
+  NPXBIN=$(command -v npx 2>/dev/null || echo "/run/current-system/sw/bin/npx")
+  ccusage_json=$("$NPXBIN" --prefer-offline ccusage blocks --json 2>/dev/null)
+  [ -n "$ccusage_json" ] || return 0
+  active=$(echo "$ccusage_json" | jq -c '[.blocks[] | select(.isActive==true)] | last // empty')
+  [ -n "$active" ] || return 0
+  cost=$(echo "$active" | jq -r '.costUSD')
+  burn=$(echo "$active" | jq -r '.burnRate.costPerHour // 0')
+  cost_fmt=$(printf "%.2f" "$cost")
+  burn_fmt=$(printf "%.2f" "$burn")
+  burn_color="$GREEN"
+  burn_int=$(echo "$burn" | cut -d'.' -f1)
+  [ "${burn_int:-0}" -ge 2 ] 2>/dev/null && burn_color="$YELLOW"
+  [ "${burn_int:-0}" -ge 5 ] 2>/dev/null && burn_color="$RED"
+  printf '\$%s %s\$%s/h%s' "$cost_fmt" "$burn_color" "$burn_fmt" "$RESET"
+}
+
+# Tiered rendering by terminal width
+ctx_seg="${ctx_color}${used_pct}%${warn}${RESET}"
+if [ "$cols" -lt 60 ]; then
+  # compact (phone/narrow): model + short bar + context%
+  bar=$(generate_progress_bar "$used_pct" 5)
+  out="${BLUE}${model}${RESET} ${bar} ${ctx_seg}"
+elif [ "$cols" -lt 90 ]; then
+  # medium: + cache + tokens, no cost/burn
+  bar=$(generate_progress_bar "$used_pct" 10)
+  out="${BLUE}${model}${RESET} | ${bar} ${ctx_seg} | ${cache_color}◎ ${cache_hit}%${RESET} | ↑${input_str} ${GREEN}↓${output_str}${RESET}"
+  [ -n "$style_str" ] && out="${out} | ${style_str}"
+else
+  # full: everything incl ccusage cost/burn
+  bar=$(generate_progress_bar "$used_pct" 10)
+  out="${BLUE}${model}${RESET} | ${bar} ${ctx_seg} | ${cache_color}◎ ${cache_hit}%${RESET} | ↑${input_str} ${GREEN}↓${output_str}${RESET}"
+  [ -n "$style_str" ] && out="${out} | ${style_str}"
+  cost_str=$(compute_cost)
+  [ -n "$cost_str" ] && out="${out} | ${cost_str}"
+fi
 printf "%s" "$out"
