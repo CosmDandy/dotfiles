@@ -158,7 +158,7 @@ compute_cost() {
   burn_int=$(echo "$burn" | cut -d'.' -f1)
   [ "${burn_int:-0}" -ge 2 ] 2>/dev/null && burn_color="$YELLOW"
   [ "${burn_int:-0}" -ge 5 ] 2>/dev/null && burn_color="$RED"
-  printf '\$%s %s\$%s/h%s' "$cost_fmt" "$burn_color" "$burn_fmt" "$RESET"
+  printf '$%s %s$%s/h%s' "$cost_fmt" "$burn_color" "$burn_fmt" "$RESET"
 }
 
 # Tiered rendering by terminal width
