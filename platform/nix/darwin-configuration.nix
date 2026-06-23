@@ -24,7 +24,7 @@
       "microsoft-teams"
       "openvpn-connect"
       "amneziavpn"
-      "sfm"
+      # "sfm"
       # ----------
       # "secretive"
       "orbstack"
@@ -49,7 +49,7 @@
       "raycast"
       # Коммуникации
       "telegram"
-      "element"
+      # "element"
       # Системные утилиты
       "onyx"
       "ukelele"
@@ -87,7 +87,6 @@
     ffmpeg
     jq
     starship
-    claude-code
     neovim
     tmux
     atuin

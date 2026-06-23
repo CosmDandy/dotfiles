@@ -25,7 +25,7 @@ if ! command -v nix &> /dev/null; then
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Разрешаем unfree пакеты (например, claude-code)
+# Разрешаем unfree пакеты (например, terraform)
 export NIXPKGS_ALLOW_UNFREE=1
 
 # Пиним nixpkgs на стабильный релиз, чтобы окружение контейнера не дрейфовало
@@ -47,7 +47,6 @@ packages=(
   starship
   neovim
   tmux
-  claude-code
   atuin
   btop
   lazygit
@@ -83,6 +82,10 @@ for package in "${packages[@]}"; do
 done
 print_section "Installing packages from ${NIXPKGS_CHANNEL}: ${packages[*]}"
 nix-env -f "$NIXPKGS_URL" -iA "${nix_args[@]}"
+
+print_section "Installing Claude Code (native, self-updating binary)"
+curl -fsSL https://claude.ai/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 # DevPod always clones dotfiles to ~/dotfiles (no clone-path option exists —
 # only DOTFILES_URL/DOTFILES_SCRIPT), while configs reference ~/.dotfiles.
