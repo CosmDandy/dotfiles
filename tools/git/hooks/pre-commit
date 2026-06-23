@@ -11,7 +11,8 @@ fi
 
 # YAML lint
 if command -v yamllint &>/dev/null; then
-  yaml_files=$(staged_files '*.yml' '*.yaml')
+  # Helm-шаблоны содержат Go-темплейтинг ({{ }}) — это не валидный YAML, пропускаем
+  yaml_files=$(staged_files '*.yml' '*.yaml' | grep -vE '/templates/')
   if [[ -n "$yaml_files" ]]; then
     echo "$yaml_files" | xargs yamllint -d relaxed || exit 1
   fi
