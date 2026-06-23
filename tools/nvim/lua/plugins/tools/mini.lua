@@ -3,10 +3,34 @@ return {
   'echasnovski/mini.nvim',
   config = function()
     -- Better Around/Inside textobjects
-    require('mini.ai').setup { n_lines = 500 }
+    -- Дефолты mini.ai уже дают: a (аргумент), f (вызов функции), t (тег), q (кавычки), b (скобки)
+    require('mini.ai').setup {
+      n_lines = 500,
+      custom_textobjects = {
+        -- весь буфер: vig / dig / yig
+        g = function()
+          local last = vim.fn.line '$'
+          return {
+            from = { line = 1, col = 1 },
+            to = { line = last, col = math.max(vim.fn.getline(last):len(), 1) },
+          }
+        end,
+        -- число: cin / din / vin
+        n = { '%f[%d]%d+' },
+      },
+    }
 
     -- Add/delete/replace surroundings (brackets, quotes, etc.)
     require('mini.surround').setup()
+
+    -- Операторы над текстовыми объектами (gr занят LSP references, поэтому gR)
+    require('mini.operators').setup {
+      replace = { prefix = 'gR' }, -- заменить объект содержимым регистра
+      exchange = { prefix = 'gX' }, -- поменять два объекта местами
+      multiply = { prefix = 'gm' }, -- продублировать объект
+      sort = { prefix = 'gs' }, -- отсортировать строки/аргументы
+      evaluate = { prefix = 'g=' }, -- вычислить выражение
+    }
 
     -- Улучшенная навигация по тексту [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-bracketed.md]
     require('mini.bracketed').setup()
