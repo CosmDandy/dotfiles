@@ -59,7 +59,7 @@ return {
     },
 
     sources = {
-      default = { 'lsp', 'path', 'snippets', 'buffer', 'lazydev' },
+      default = { 'lsp', 'path', 'snippets', 'lazydev' },
       providers = {
         lazydev = {
           name = 'LazyDev',
@@ -71,7 +71,7 @@ return {
 
     completion = {
       accept = { auto_brackets = { enabled = true } },
-      list = { selection = { preselect = false, auto_insert = false } },
+      list = { selection = { preselect = true, auto_insert = false } },
       menu = {
         border = 'rounded',
         scrollbar = false,
@@ -83,11 +83,10 @@ return {
         },
       },
       documentation = {
-        auto_show = true,
-        auto_show_delay_ms = 200,
+        auto_show = false,
         window = { border = 'rounded' },
       },
-      ghost_text = { enabled = true },
+      ghost_text = { enabled = false },
     },
 
     signature = {
@@ -96,7 +95,7 @@ return {
     },
 
     fuzzy = {
-      implementation = 'prefer_rust_with_warning',
+      implementation = 'rust',
     },
   },
   opts_extend = { 'sources.default' },
