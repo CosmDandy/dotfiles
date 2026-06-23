@@ -2,8 +2,8 @@
 # TERMINAL COMPATIBILITY
 # =============================================================================
 
-if ! infocmp "$TERM" &>/dev/null 2>&1; then
-  export TERM='xterm-256color'
+if ! infocmp "$TERM" &> /dev/null 2>&1; then
+    export TERM='xterm-256color'
 fi
 
 # =============================================================================
@@ -36,17 +36,17 @@ export SSH_AUTH_SOCK="$HOME/.ssh/ssh_auth_sock"
 set -o vi
 
 HISTFILE=~/.zsh_history
-HISTSIZE=100000              # Количество команд в памяти
-SAVEHIST=100000              # Количество команд для сохранения на диск
+HISTSIZE=100000 # Количество команд в памяти
+SAVEHIST=100000 # Количество команд для сохранения на диск
 
-setopt HIST_IGNORE_SPACE     # Не сохранять команды, начинающиеся с пробела
-setopt HIST_IGNORE_DUPS      # Не сохранять дублирующиеся команды подряд
-setopt HIST_IGNORE_ALL_DUPS  # Удалять старые дубликаты при добавлении новых
-setopt HIST_SAVE_NO_DUPS     # Не записывать дубликаты в файл истории
-setopt HIST_FIND_NO_DUPS     # Не показывать дубликаты при поиске
-setopt SHARE_HISTORY         # Делиться историей между сессиями
-setopt APPEND_HISTORY        # Добавлять к истории, а не перезаписывать
-setopt INC_APPEND_HISTORY    # Добавлять команды в историю сразу после выполнения
+setopt HIST_IGNORE_SPACE    # Не сохранять команды, начинающиеся с пробела
+setopt HIST_IGNORE_DUPS     # Не сохранять дублирующиеся команды подряд
+setopt HIST_IGNORE_ALL_DUPS # Удалять старые дубликаты при добавлении новых
+setopt HIST_SAVE_NO_DUPS    # Не записывать дубликаты в файл истории
+setopt HIST_FIND_NO_DUPS    # Не показывать дубликаты при поиске
+setopt SHARE_HISTORY        # Делиться историей между сессиями
+setopt APPEND_HISTORY       # Добавлять к истории, а не перезаписывать
+setopt INC_APPEND_HISTORY   # Добавлять команды в историю сразу после выполнения
 
 # =============================================================================
 # COMPLETION SYSTEM
@@ -54,11 +54,27 @@ setopt INC_APPEND_HISTORY    # Добавлять команды в истори
 
 fpath=("$HOME/.zsh/completions" $fpath)
 
+# --- автогенерация completion'ов CLI в fpath (если нет; переживает пересборку devcontainer) ---
+() {
+    local cdir="$HOME/.zsh/completions"
+    mkdir -p "$cdir"
+    local tool
+    for tool in kubectl helm talosctl k9s devpod docker; do
+        (($+commands[$tool])) && [[ ! -f "$cdir/_$tool" ]] && "$tool" completion zsh > "$cdir/_$tool" 2> /dev/null
+    done
+    # cobra-CLI с флагом -s (gh, glab)
+    for tool in gh glab; do
+        (($+commands[$tool])) && [[ ! -f "$cdir/_$tool" ]] && "$tool" completion -s zsh > "$cdir/_$tool" 2> /dev/null
+    done
+    # atuin — свой синтаксис
+    (($+commands[atuin])) && [[ ! -f "$cdir/_atuin" ]] && atuin gen-completions --shell zsh > "$cdir/_atuin" 2> /dev/null
+}
+
 autoload -Uz compinit
 if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
-  compinit
+    compinit
 else
-  compinit -C
+    compinit -C
 fi
 
 # =============================================================================
@@ -134,10 +150,10 @@ alias e='exit'
 
 alias ls='eza'
 alias la='eza -laghm --all --icons --git --color=always'
-alias ll='eza -l --icons --git --color=always'             # Длинный формат без скрытых файлов
-alias lt='eza --tree --level=2 --icons'                    # Древовидный вид (2 уровня)
-alias lta='eza --tree --level=2 --icons --all'             # Древовидный вид с скрытыми файлами
-alias ltr='eza -l --sort=modified --reverse'               # Сортировка по времени изменения
+alias ll='eza -l --icons --git --color=always' # Длинный формат без скрытых файлов
+alias lt='eza --tree --level=2 --icons'        # Древовидный вид (2 уровня)
+alias lta='eza --tree --level=2 --icons --all' # Древовидный вид с скрытыми файлами
+alias ltr='eza -l --sort=modified --reverse'   # Сортировка по времени изменения
 alias tree='eza --tree --level=2 --icons --color=always'
 alias treed='eza --tree --level=3 --icons --color=always -d'
 
@@ -146,7 +162,7 @@ alias grep='grep --color=auto'
 alias fgrep='fgrep --color=auto'
 alias egrep='egrep --color=auto'
 alias diff='diff --color=auto'
-alias less='less -R'  # Показывать цвета в less
+alias less='less -R' # Показывать цвета в less
 
 # Читаемый вывод для различных команд
 alias df='df -h'
@@ -188,7 +204,7 @@ tn() {
     tmux new-window -t "${name}:" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
     local lock_count
-    lock_count=$(find ~/.claude/ide -maxdepth 1 -name '*.lock' 2>/dev/null | wc -l)
+    lock_count=$(find ~/.claude/ide -maxdepth 1 -name '*.lock' 2> /dev/null | wc -l)
     tmux send-keys -t "${name}:1" 'nvim' C-m
     tmux send-keys -t "${name}:2" "while [ \$(find ~/.claude/ide -maxdepth 1 -name '*.lock' 2>/dev/null | wc -l) -le $lock_count ]; do sleep 0.3; done && cl" C-m
     tmux select-window -t "${name}:1"
@@ -208,29 +224,29 @@ alias gd='git diff'
 alias gdiff='git diff --color-words'
 alias glog='git log --oneline --graph --decorate --color=always'
 alias gblame='git blame -w'
-alias dfu='(cd "$HOME/dotfiles" && git fetch origin && git reset --hard @{u}) && echo "✓ Dotfiles updated" || echo "✗ Failed to update dotfiles"'  # Обновление дот-файлов (принудительно из облака)
+alias dfu='(cd "$HOME/dotfiles" && git fetch origin && git reset --hard @{u}) && echo "✓ Dotfiles updated" || echo "✗ Failed to update dotfiles"' # Обновление дот-файлов (принудительно из облака)
 
 # GitHub CLI - Actions / Workflows
-alias gha='gh run list'                          # Список последних runs
-alias ghaw='gh run watch'                        # Watch текущего run в реальном времени
-alias ghav='gh run view'                         # Детали run (+ ID)
-alias ghal='gh run view --log-failed'            # Логи только упавших jobs (+ ID)
-alias ghar='gh run rerun'                        # Перезапуск run (+ ID)
-alias gharf='gh run rerun --failed'              # Перезапуск только упавших jobs (+ ID)
+alias gha='gh run list'               # Список последних runs
+alias ghaw='gh run watch'             # Watch текущего run в реальном времени
+alias ghav='gh run view'              # Детали run (+ ID)
+alias ghal='gh run view --log-failed' # Логи только упавших jobs (+ ID)
+alias ghar='gh run rerun'             # Перезапуск run (+ ID)
+alias gharf='gh run rerun --failed'   # Перезапуск только упавших jobs (+ ID)
 
 # GitHub CLI - Repo
-alias ghrv='gh repo view --web'                  # Открыть репо в браузере
+alias ghrv='gh repo view --web' # Открыть репо в браузере
 alias ghrc='gh repo clone'
 
 # GitLab CLI - CI/CD Pipelines
-alias glci='glab ci status'                       # Статус текущего pipeline
-alias glciv='glab ci view'                        # Интерактивный просмотр pipeline
-alias glcit='glab ci trace'                       # Логи job в реальном времени (+ job ID)
-alias glcir='glab ci retry'                       # Перезапуск pipeline
-alias glcil='glab ci list'                        # Список pipelines
+alias glci='glab ci status' # Статус текущего pipeline
+alias glciv='glab ci view'  # Интерактивный просмотр pipeline
+alias glcit='glab ci trace' # Логи job в реальном времени (+ job ID)
+alias glcir='glab ci retry' # Перезапуск pipeline
+alias glcil='glab ci list'  # Список pipelines
 
 # GitLab CLI - Repo
-alias glrv='glab repo view --web'                 # Открыть репо в браузере
+alias glrv='glab repo view --web' # Открыть репо в браузере
 alias glrc='glab repo clone'
 
 alias dc='docker compose'
@@ -281,10 +297,10 @@ source "${ZINIT_HOME}/zinit.zsh"
 HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_FOUND='bg=green,fg=white,bold'
 HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_NOT_FOUND='bg=red,fg=white,bold'
 HISTORY_SUBSTRING_SEARCH_GLOBBING_FLAGS='i'
-HISTORY_SUBSTRING_SEARCH_ENSURE_UNIQUE=true    # Показывать только уникальные результаты
-HISTORY_SUBSTRING_SEARCH_FUZZY=true            # Нечеткий поиск
+HISTORY_SUBSTRING_SEARCH_ENSURE_UNIQUE=true # Показывать только уникальные результаты
+HISTORY_SUBSTRING_SEARCH_FUZZY=true         # Нечеткий поиск
 
-export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#586e75"  # Цвет предложений (solarized base01)
+export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#586e75" # Цвет предложений (solarized base01)
 
 # =============================================================================
 # PLUGIN LOADING
@@ -333,7 +349,7 @@ bindkey '^[OB' history-substring-search-down
 # =============================================================================
 
 autoload -Uz _zinit
-(( ${+_comps} )) && _comps[zinit]=_zinit
+((${+_comps})) && _comps[zinit]=_zinit
 
 # =============================================================================
 # EXTERNAL TOOL INTEGRATIONS
@@ -345,3 +361,19 @@ eval "$(starship init zsh)"
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
 export PATH="$HOME/.local/bin:/Users/cosmdandy/.npm-global/bin:$PATH"
+
+autoload -U +X bashcompinit && bashcompinit
+# terraform: динамический путь (переживает обновление через nix)
+(($+commands[terraform])) && complete -o nospace -C "$(command -v terraform)" terraform
+
+# ansible: автодополнение через argcomplete (кэшируем в файл, чтобы не дёргать python на каждый старт)
+if (($+commands[register - python - argcomplete])); then
+    _af="$HOME/.zsh/completions/ansible-argcomplete.zsh"
+    if [[ ! -f "$_af" ]]; then
+        for _acmd in ansible ansible-playbook ansible-vault ansible-galaxy ansible-config ansible-doc ansible-inventory; do
+            (($+commands[$_acmd])) && register-python-argcomplete "$_acmd"
+        done > "$_af" 2> /dev/null
+    fi
+    [[ -s "$_af" ]] && source "$_af"
+    unset _af _acmd
+fi
