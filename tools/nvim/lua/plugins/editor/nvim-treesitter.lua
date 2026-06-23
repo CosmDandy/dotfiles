@@ -5,6 +5,10 @@ return {
     lazy = false,
     build = ':TSUpdate',
     main = 'nvim-treesitter.configs',
+    -- Queries для текстовых объектов функций/классов/блоков (используются через mini.ai)
+    dependencies = {
+      { 'nvim-treesitter/nvim-treesitter-textobjects', branch = 'master' },
+    },
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
       ensure_installed = {

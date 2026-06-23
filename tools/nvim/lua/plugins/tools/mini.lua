@@ -3,10 +3,18 @@ return {
   'echasnovski/mini.nvim',
   config = function()
     -- Better Around/Inside textobjects
-    -- Дефолты mini.ai уже дают: a (аргумент), f (вызов функции), t (тег), q (кавычки), b (скобки)
-    require('mini.ai').setup {
+    -- Дефолты mini.ai уже дают: a (аргумент), t (тег), q (кавычки), b (скобки)
+    local ai = require 'mini.ai'
+    ai.setup {
       n_lines = 500,
       custom_textobjects = {
+        -- Treesitter-объекты для Python/Go: функция / класс / блок
+        f = ai.gen_spec.treesitter { a = '@function.outer', i = '@function.inner' },
+        c = ai.gen_spec.treesitter { a = '@class.outer', i = '@class.inner' },
+        o = ai.gen_spec.treesitter {
+          a = { '@conditional.outer', '@loop.outer', '@block.outer' },
+          i = { '@conditional.inner', '@loop.inner', '@block.inner' },
+        },
         -- весь буфер: vig / dig / yig
         g = function()
           local last = vim.fn.line '$'
