@@ -249,12 +249,10 @@
       "Bash(git branch -D:*)",
       "Bash(git checkout -- .:*)",
       "Bash(git restore .:*)",
-      "Bash(terraform apply:*)",
       "Bash(terraform destroy:*)",
       "Bash(terraform state rm:*)",
       "Bash(terraform state mv:*)",
       "Bash(terraform import:*)",
-      "Bash(kubectl apply:*)",
       "Bash(kubectl delete:*)",
       "Bash(kubectl exec:*)",
       "Bash(kubectl patch:*)",
@@ -265,16 +263,12 @@
       "Bash(kubectl cordon:*)",
       "Bash(kubectl taint:*)",
       "Bash(docker system prune:*)",
-      "Bash(nomad job run:*)",
       "Bash(nomad job stop:*)",
       "Bash(nomad alloc stop:*)",
       "Bash(nomad node drain:*)",
       "Bash(nomad job purge:*)",
-      "Bash(helm install:*)",
-      "Bash(helm upgrade:*)",
       "Bash(helm uninstall:*)",
       "Bash(helm rollback:*)",
-      "Bash(ansible-playbook:*)",
       "Bash(ansible-vault encrypt:*)",
       "Bash(ansible-vault decrypt:*)",
       "Bash(ansible-vault edit:*)",
@@ -319,6 +313,12 @@
       "Bash(:*monero:*)"
     ],
     "ask": [
+      "Bash(terraform apply:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(helm install:*)",
+      "Bash(helm upgrade:*)",
+      "Bash(nomad job run:*)",
       "Bash(docker run:*)",
       "Bash(docker exec:*)",
       "Bash(docker rm:*)",
@@ -341,6 +341,17 @@
           {
             "type": "command",
             "command": "printf '\\a'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/pretooluse-guard.sh"
           }
         ]
       }
