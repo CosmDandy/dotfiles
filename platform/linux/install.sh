@@ -28,16 +28,16 @@ fi
 # Разрешаем unfree пакеты (например, terraform)
 export NIXPKGS_ALLOW_UNFREE=1
 
-# Пиним nixpkgs на стабильный релиз, чтобы окружение контейнера не дрейфовало
-# вместе с unstable (например, Python 3.15 ломает Mason-устанавливаемые пакеты).
-NIXPKGS_CHANNEL="${NIXPKGS_CHANNEL:-nixos-25.11}"
+# Канал unstable для свежих версий. Дрейф мажоров, ломающий Mason-пакеты,
+# гасим явными атрибутами ниже (python313, nodejs_24) — остальное едет за unstable.
+NIXPKGS_CHANNEL="${NIXPKGS_CHANNEL:-nixpkgs-unstable}"
 NIXPKGS_URL="https://github.com/NixOS/nixpkgs/archive/${NIXPKGS_CHANNEL}.tar.gz"
 
 # --- Base: core editing and shell environment ---
 packages=(
   # Neovim deps
-  python3
-  nodejs
+  python313
+  nodejs_24
   lua
   luarocks
   # CLI
