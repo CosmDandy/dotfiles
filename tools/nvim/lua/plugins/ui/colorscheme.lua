@@ -406,7 +406,12 @@ return {
         hl.SnacksPickerPreviewTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         hl.SnacksPickerBoxBorder = { bg = 'NONE', fg = '#586e75' }
         hl.SnacksPickerTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
-        hl.SnacksPickerMatch = { fg = is_dark() and '#b58900' or '#cb4b16', bold = true }
+        -- заголовки на рамке ("files" сверху) — прозрачный фон вместо тёмного FloatTitle
+        hl.SnacksPickerBorderTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        hl.SnacksPickerInputTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        hl.SnacksPickerListTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        hl.FloatTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        hl.SnacksPickerMatch = { fg = '#dc322f', bold = true }
         hl.SnacksPickerDir = { fg = '#586e75' }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
