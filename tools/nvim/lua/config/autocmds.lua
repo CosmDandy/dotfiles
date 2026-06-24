@@ -11,27 +11,18 @@ vim.filetype.add {
   filename = {
     ['.terraformrc'] = 'hcl',
     ['.terraform.tfrc'] = 'hcl',
-    ['docker-compose.yml'] = 'yaml.docker-compose',
-    ['docker-compose.yaml'] = 'yaml.docker-compose',
-    ['compose.yml'] = 'yaml.docker-compose',
-    ['compose.yaml'] = 'yaml.docker-compose',
-    ['.gitlab-ci.yml'] = 'yaml.gitlab',
   },
+  -- compose/gitlab-ci остаются обычным yaml — yamlls подбирает схему по glob (см. lsp.lua)
   pattern = {
     ['.*playbook.*%.ya?ml'] = 'yaml.ansible',
     ['.*requirements.*%.ya?ml'] = 'yaml.ansible',
     ['.*roles/.*/tasks/.*%.ya?ml'] = 'yaml.ansible',
     ['.*roles/.*/handlers/.*%.ya?ml'] = 'yaml.ansible',
-    ['docker%-compose%..*%.ya?ml'] = 'yaml.docker-compose',
-    ['%.gitlab%-ci%..*%.ya?ml'] = 'yaml.gitlab',
     -- Helm (templates/ dir in charts)
     ['.*/templates/.*%.ya?ml'] = 'helm',
     ['.*/templates/.*%.tpl'] = 'helm',
     -- GitHub Actions .tpl
     ['.*%.github/workflows/.*%.tpl'] = 'yaml',
-    -- Docker Compose .tpl
-    ['docker%-compose.*%.tpl'] = 'yaml.docker-compose',
-    ['compose.*%.tpl'] = 'yaml.docker-compose',
     -- Ansible .tpl
     ['.*playbook.*%.tpl'] = 'yaml.ansible',
     ['.*requirements.*%.tpl'] = 'yaml.ansible',
@@ -100,22 +91,12 @@ vim.api.nvim_create_user_command('ToggleBackground', function()
   vim.o.background = vim.o.background == 'dark' and 'light' or 'dark'
 end, {})
 
-vim.api.nvim_create_user_command('SetDockerCompose', function()
-  vim.bo.filetype = 'yaml.docker-compose'
-end, { desc = 'Set filetype to Docker Compose' })
-
-vim.api.nvim_create_user_command('SetGitLabCI', function()
-  vim.bo.filetype = 'yaml.gitlab'
-end, { desc = 'Set filetype to GitLab CI' })
-
 vim.api.nvim_create_user_command('SetAnsible', function()
   vim.bo.filetype = 'yaml.ansible'
 end, { desc = 'Set filetype to Ansible' })
 
 vim.api.nvim_create_user_command('SetYamlSchema', function()
   local schemas = {
-    { name = 'Docker Compose', ft = 'yaml.docker-compose' },
-    { name = 'GitLab CI', ft = 'yaml.gitlab' },
     { name = 'Ansible', ft = 'yaml.ansible' },
     { name = 'Plain YAML', ft = 'yaml' },
   }

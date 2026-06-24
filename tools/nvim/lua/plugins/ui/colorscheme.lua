@@ -10,6 +10,10 @@ return {
           return vim.o.background == 'dark'
         end
 
+        -- Палитра не содержит bg_dark (nil). Конфиг весь прозрачный (Normal guibg=NONE),
+        -- поэтому эти группы должны быть прозрачными, а не залитыми фоном.
+        local bg_dark = 'NONE'
+
         -- WhichKey с прозрачным фоном
         hl.WhichKey = {
           bg = 'NONE', -- прозрачный фон
@@ -176,15 +180,15 @@ return {
 
         -- Noice (командная строка и уведомления)
         hl.NoiceCmdlinePopup = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = c.fg,
         }
         hl.NoiceCmdlinePopupBorder = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = is_dark() and '#2aa198' or '#268bd2', -- cyan/blue
         }
         hl.NoiceCmdlineIcon = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = is_dark() and '#b58900' or '#cb4b16', -- yellow/orange
         }
         -- Mini view для макро-рекординга - яркий и заметный
@@ -311,23 +315,23 @@ return {
 
         -- GitSigns
         hl.FloatBorder = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = c.fg,
         }
         hl.NormalFloat = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = c.fg,
         }
         hl.GitSignsAdd = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = c.green,
         }
         hl.GitSignsChange = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = c.yellow,
         }
         hl.GitSignsDelete = {
-          bg = c.bg_dark,
+          bg = bg_dark,
           fg = c.red,
         }
 
