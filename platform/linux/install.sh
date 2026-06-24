@@ -103,6 +103,15 @@ if [[ "$SHELL" != "$ZSH_PATH" ]]; then
   fi
 fi
 
+# Timezone: containers default to UTC — set local zone so tmux clock, date and
+# logs show correct time. Override with CONTAINER_TZ at create time if needed.
+CONTAINER_TZ="${CONTAINER_TZ:-Europe/Moscow}"
+if [[ -f "/usr/share/zoneinfo/$CONTAINER_TZ" ]]; then
+  print_section "Setting timezone to ${CONTAINER_TZ}"
+  sudo ln -sf "/usr/share/zoneinfo/$CONTAINER_TZ" /etc/localtime
+  echo "$CONTAINER_TZ" | sudo tee /etc/timezone >/dev/null
+fi
+
 # Создаем символьные ссылки
 export XDG_CONFIG_HOME="$HOME/.config"
 
