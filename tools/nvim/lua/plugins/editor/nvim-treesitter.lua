@@ -1,61 +1,43 @@
 return {
   {
     'nvim-treesitter/nvim-treesitter',
-    branch = 'master',
+    branch = 'main',
     lazy = false,
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs',
-    -- Queries для текстовых объектов функций/классов/блоков (используются через mini.ai)
+    -- Queries текстовых объектов (функции/классы/блоки) — используются через mini.ai
     dependencies = {
-      { 'nvim-treesitter/nvim-treesitter-textobjects', branch = 'master' },
+      { 'nvim-treesitter/nvim-treesitter-textobjects', branch = 'main' },
     },
-    -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-    opts = {
-      ensure_installed = {
-        'python',
-        'sql',
-        'json',
-        'csv',
-        'bash',
-        'html',
-        'css',
-        'javascript',
-        'diff',
-        'lua',
-        'markdown',
-        'markdown_inline',
-        'gitignore',
-        'rust',
-        'dockerfile',
-        'yaml',
-        'hcl',
-        'terraform',
-        'jinja',
-        'toml',
-        'xml',
-        'regex',
-        'vim',
-        'gotmpl',
-        'helm',
-        'jsonnet',
-      },
-      auto_install = true,
-      highlight = {
-        enable = true,
-      },
-      indent = {
-        enable = true,
-      },
-      incremental_selection = {
-        enable = true,
-        keymaps = {
-          init_selection = 'gnn',
-          node_incremental = 'grn',
-          scope_incremental = 'grc',
-          node_decremental = 'grm',
-        },
-      },
-    },
+    config = function()
+      local ts = require 'nvim-treesitter'
+
+      -- Парсеры под DevOps-стек
+      local ensure = {
+        'python', 'sql', 'json', 'csv', 'bash', 'html', 'css', 'javascript',
+        'diff', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'gitignore',
+        'rust', 'dockerfile', 'yaml', 'hcl', 'terraform', 'jinja', 'toml',
+        'xml', 'regex', 'vim', 'vimdoc', 'gotmpl', 'helm', 'jsonnet',
+      }
+      -- Установить недостающие парсеры (асинхронно, idempotent)
+      pcall(function()
+        ts.install(ensure)
+      end)
+
+      -- В main подсветка/индент включаются вручную через FileType (vim.treesitter — ядро)
+      vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('treesitter-features', { clear = true }),
+        callback = function(args)
+          local buf = args.buf
+          local ft = vim.bo[buf].filetype
+          local lang = vim.treesitter.language.get_lang(ft) or ft
+          -- подсветка — только если парсер доступен (pcall защищает на первом запуске)
+          if pcall(vim.treesitter.start, buf, lang) then
+            -- индентация от nvim-treesitter
+            vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+          end
+        end,
+      })
+    end,
   },
   {
     'nvim-treesitter/nvim-treesitter-context',

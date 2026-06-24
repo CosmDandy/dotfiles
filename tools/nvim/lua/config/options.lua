@@ -62,3 +62,7 @@ vim.g.loaded_man = 1
 
 -- Ограничение shada: 100 файлов истории, 50 строк регистров, 10kb лимит
 vim.opt.shada = "'100,<50,s10,h"
+
+-- mason bin в PATH рано — чтобы tree-sitter CLI (для nvim-treesitter main)
+-- и прочие инструменты были доступны до загрузки плагинов
+vim.env.PATH = vim.fn.stdpath 'data' .. '/mason/bin:' .. vim.env.PATH
