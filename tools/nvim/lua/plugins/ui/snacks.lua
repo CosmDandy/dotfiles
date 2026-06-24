@@ -22,6 +22,24 @@ local function vertical(preview_ratio)
   }
 end
 
+-- Исключения путей (как ignore_globs в telescope) для files/grep
+local exclude = {
+  '.git',
+  'node_modules',
+  '__pycache__',
+  '*.pyc',
+  '.venv',
+  'venv',
+  '*.min.js',
+  '*.min.css',
+  'var',
+  '*.egg-info',
+}
+local function with_exclude(cfg)
+  cfg.exclude = exclude
+  return cfg
+end
+
 return {
   'folke/snacks.nvim',
   priority = 1000,
@@ -67,10 +85,11 @@ return {
       sources = {
         -- С превью снизу, ширина 0.9×0.9 (как telescope vertical)
         -- С превью снизу (60% превью / 40% список), 0.9×0.9 — как telescope vertical
-        files = vertical(0.6),
-        grep = vertical(0.6),
-        grep_buffers = vertical(0.6),
-        grep_word = vertical(0.6),
+        -- files/grep — с исключениями путей (node_modules, .venv, *.min.js и т.д.)
+        files = with_exclude(vertical(0.6)),
+        grep = with_exclude(vertical(0.6)),
+        grep_buffers = with_exclude(vertical(0.6)),
+        grep_word = with_exclude(vertical(0.6)),
         diagnostics = vertical(0.6),
         git_log = vertical(0.6),
         git_log_file = vertical(0.6),
