@@ -373,6 +373,8 @@ return {
         hl.SnacksPickerInputTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         hl.SnacksPickerListTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         hl.FloatTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        -- подсветка совпадений в результатах поиска — жёлтая (не красный Special)
+        hl.SnacksPickerMatch = { fg = '#b58900', bold = true }
         hl.SnacksPickerDir = { fg = '#586e75' }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
