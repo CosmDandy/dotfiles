@@ -26,5 +26,14 @@ return {
     { '<leader><leader>', function() Snacks.picker.buffers() end, desc = '[ ] Buffers' },
     { '<leader>/', function() Snacks.picker.lines() end, desc = '[/] Search in buffer' },
     { '<leader>s/', function() Snacks.picker.grep_buffers() end, desc = '[/] in Open Files' },
+
+    -- Эксклюзивы snacks (нет аналога в telescope)
+    { '<leader>ss', function() Snacks.picker.smart() end, desc = '[S]mart open (frecency)' },
+    { '<leader>su', function() Snacks.picker.undo() end, desc = '[U]ndo history' },
+    { '<leader>gl', function() Snacks.picker.git_log_line() end, desc = '[l]ine history (blame)' },
+    { '<leader>sc', function() Snacks.picker.lsp_incoming_calls() end, desc = '[C]alls incoming' },
+    { '<leader>sC', function() Snacks.picker.lsp_outgoing_calls() end, desc = '[C]alls outgoing' },
+    { '<leader>e', function() Snacks.picker.explorer() end, desc = '[E]xplorer' },
+    { '<leader>sR', function() Snacks.picker.registers() end, desc = '[R]egisters' },
   },
 }
