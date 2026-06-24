@@ -1,6 +1,4 @@
--- [[ LSP Config ]]
---
--- LSP Plugins
+-- [[ LSP Config ]] — нативный vim.lsp.config (nvim 0.11+), mason-lspconfig 2.0 auto-enable
 return {
   {
     'folke/lazydev.nvim',
@@ -26,7 +24,7 @@ return {
     },
   },
 
-  -- mason-lspconfig - нужен для автонастройки LSP серверов
+  -- mason-lspconfig - в 2.0 сам вызывает vim.lsp.enable для установленных серверов
   {
     'williamboman/mason-lspconfig.nvim',
     lazy = false,
@@ -82,7 +80,7 @@ return {
 
           local client = vim.lsp.get_client_by_id(event.data.client_id)
 
-          if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
             local highlight_augroup = vim.api.nvim_create_augroup('lsp-highlight', { clear = false })
             vim.api.nvim_create_autocmd({ 'CursorHold', 'CursorHoldI' }, {
               buffer = event.buf,
@@ -105,10 +103,15 @@ return {
             })
           end
 
-          if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
             map('<leader>th', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
             end, '[T]oggle Inlay [H]ints')
+          end
+
+          -- CodeLens (счётчики ссылок lua_ls/terraform) — декларативно, nvim сам обновляет
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_codeLens) then
+            vim.lsp.codelens.enable(true, { bufnr = event.buf })
           end
         end,
       })
@@ -129,201 +132,169 @@ return {
         update_in_insert = false,
       }
 
-      local capabilities = require('blink.cmp').get_lsp_capabilities()
+      -- Capabilities (blink.cmp) — глобально для всех серверов
+      vim.lsp.config('*', {
+        capabilities = require('blink.cmp').get_lsp_capabilities(),
+      })
 
-      local servers = {
-        pyright = {
-          settings = {
-            python = {
-              analysis = {
-                typeCheckingMode = 'basic',
-                autoImportCompletions = true,
-                autoSearchPaths = true,
-                useLibraryCodeForTypes = true,
-                diagnosticMode = 'openFilesOnly', -- Для больших проектов
-                reportMissingImports = true,
-                reportMissingTypeStubs = false,
-                reportGeneralTypeIssues = true,
-                reportOptionalMemberAccess = true,
-                reportOptionalSubscript = true,
-                reportPrivateImportUsage = false,
-              },
-              pythonPath = './venv/bin/python',
+      -- Дельты настроек серверов (mason-lspconfig 2.0 сам их vim.lsp.enable)
+      vim.lsp.config('pyright', {
+        settings = {
+          python = {
+            analysis = {
+              typeCheckingMode = 'basic',
+              autoImportCompletions = true,
+              autoSearchPaths = true,
+              useLibraryCodeForTypes = true,
+              diagnosticMode = 'openFilesOnly',
+              reportMissingImports = true,
+              reportMissingTypeStubs = false,
+              reportGeneralTypeIssues = true,
+              reportOptionalMemberAccess = true,
+              reportOptionalSubscript = true,
+              reportPrivateImportUsage = false,
             },
-          },
-          root_dir = function(fname)
-            local util = require 'lspconfig.util'
-            return util.root_pattern('pyproject.toml', 'setup.py', 'setup.cfg', 'requirements.txt', '.git')(fname)
-          end,
-        },
-
-        -- Lua LSP для конфигурации Neovim
-        lua_ls = {
-          settings = {
-            Lua = {
-              completion = {
-                callSnippet = 'Replace',
-              },
-              diagnostics = {
-                disable = { 'missing-fields' },
-                globals = { 'vim' }, -- Добавляем vim как глобальную переменную
-              },
-              workspace = {
-                checkThirdParty = false, -- Не спрашивать о сторонних библиотеках
-              },
-            },
+            pythonPath = './venv/bin/python',
           },
         },
+      })
 
-        -- JSON LSP для конфигурационных файлов (package.json, docker-compose.yml schemas)
-        jsonls = {
-          settings = {
-            json = {
-              schemas = require('schemastore').json.schemas(),
-              validate = { enable = true },
-              -- Форматирование JSON файлов
-              format = {
-                enable = true,
-                keepLines = false,
+      vim.lsp.config('lua_ls', {
+        settings = {
+          Lua = {
+            completion = { callSnippet = 'Replace' },
+            diagnostics = {
+              disable = { 'missing-fields' },
+              globals = { 'vim' },
+            },
+            workspace = { checkThirdParty = false },
+          },
+        },
+      })
+
+      vim.lsp.config('jsonls', {
+        settings = {
+          json = {
+            schemas = require('schemastore').json.schemas(),
+            validate = { enable = true },
+            format = { enable = true, keepLines = false },
+          },
+        },
+      })
+
+      vim.lsp.config('yamlls', {
+        filetypes = { 'yaml', 'yaml.docker-compose', 'yaml.gitlab', 'yaml.ansible' },
+        settings = {
+          yaml = {
+            schemaStore = {
+              enable = true,
+              url = 'https://www.schemastore.org/api/json/catalog.json',
+            },
+            schemas = {
+              ['https://json.schemastore.org/github-workflow.json'] = { '/.github/workflows/*.{yml,yaml}', '/.github/workflows/*.tpl' },
+              ['https://gitlab.com/gitlab-org/gitlab/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
+                '**/.gitlab-ci.yml',
+                '**/.gitlab-ci.yaml',
               },
+              ['https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json'] = {
+                '**/docker-compose*.yml',
+                '**/docker-compose*.yaml',
+                '**/compose.yml',
+                '**/compose.yaml',
+              },
+              ['https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook'] = {
+                '**/*playbook*.yml',
+                '**/*playbook*.yaml',
+              },
+              kubernetes = {
+                '**/*.k8s.yaml',
+                '**/k8s/**/*.yaml',
+                '**/kubernetes/**/*.yaml',
+              },
+            },
+            validate = true,
+            completion = true,
+            hover = true,
+            format = {
+              enable = true,
+              singleQuote = false,
+              bracketSpacing = true,
+            },
+            customTags = {
+              '!vault',
+              '!encrypted/pkcs1-oaep',
+              '!reference sequence',
             },
           },
         },
-
-        -- YAML LSP для Docker Compose, Kubernetes, CI/CD файлов
-        yamlls = {
-          settings = {
-            yaml = {
-              schemaStore = {
-                enable = true,
-                url = 'https://www.schemastore.org/api/json/catalog.json',
-              },
-              schemas = {
-                ['https://json.schemastore.org/github-workflow.json'] = { '/.github/workflows/*.{yml,yaml}', '/.github/workflows/*.tpl' },
-                ['https://gitlab.com/gitlab-org/gitlab/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
-                  '**/.gitlab-ci.yml',
-                  '**/.gitlab-ci.yaml',
-                },
-                ['https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json'] = {
-                  '**/docker-compose*.yml',
-                  '**/docker-compose*.yaml',
-                  '**/compose.yml',
-                  '**/compose.yaml',
-                },
-                ['https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook'] = {
-                  '**/*playbook*.yml',
-                  '**/*playbook*.yaml',
-                },
-                kubernetes = {
-                  '**/*.k8s.yaml',
-                  '**/k8s/**/*.yaml',
-                  '**/kubernetes/**/*.yaml',
-                },
-              },
-              validate = true,
-              completion = true,
-              hover = true,
-              format = {
-                enable = true,
-                singleQuote = false,
-                bracketSpacing = true,
-              },
-              customTags = {
-                '!vault',
-                '!encrypted/pkcs1-oaep',
-                '!reference sequence',
-              },
-            },
-          },
-          filetypes = { 'yaml', 'yaml.docker-compose', 'yaml.gitlab', 'yaml.ansible' },
-          capabilities = {
-            textDocument = {
-              completion = {
-                completionItem = {
-                  documentationFormat = { 'markdown', 'plaintext' },
-                  snippetSupport = true,
-                },
+        capabilities = {
+          textDocument = {
+            completion = {
+              completionItem = {
+                documentationFormat = { 'markdown', 'plaintext' },
+                snippetSupport = true,
               },
             },
           },
         },
+      })
 
-        bashls = {
-          filetypes = { 'sh', 'bash', 'zsh' },
-          settings = {
-            bashIde = {
-              -- Включаем глобальные переменные окружения
-              globPattern = '**/*@(.sh|.inc|.bash|.command)',
-            },
+      vim.lsp.config('bashls', {
+        filetypes = { 'sh', 'bash', 'zsh' },
+        settings = {
+          bashIde = {
+            globPattern = '**/*@(.sh|.inc|.bash|.command)',
           },
         },
+      })
 
-        -- Docker LSP для работы с Dockerfile
-        dockerls = {
-          settings = {
-            docker = {
-              languageserver = {
-                formatter = {
-                  ignoreMultilineInstructions = true,
-                },
-              },
-            },
-          },
-        },
-
-        terraformls = {
-          filetypes = { 'terraform', 'hcl', 'tf' },
-          settings = {
-            terraform = {
-              experimentalFeatures = {
-                validateOnSave = true,
+      vim.lsp.config('dockerls', {
+        settings = {
+          docker = {
+            languageserver = {
+              formatter = {
+                ignoreMultilineInstructions = true,
               },
             },
           },
         },
+      })
 
-        -- Jinja2 LSP для Ansible шаблонов (.j2 файлы)
-        jinja_lsp = {},
-
-        -- Docker Compose LSP
-        docker_compose_language_service = {},
-
-        -- Jsonnet LSP
-        jsonnet_ls = {},
-
-        -- Helm LSP для чартов
-        helm_ls = {
-          filetypes = { 'helm' },
-        },
-
-        ansiblels = {
-          settings = {
-            ansible = {
-              ansible = {
-                path = 'ansible',
-              },
-              executionEnvironment = {
-                enabled = false,
-              },
-              python = {
-                interpreterPath = 'python3',
-              },
-              validation = {
-                enabled = true,
-                lint = {
-                  enabled = true,
-                  path = 'ansible-lint',
-                },
-              },
+      vim.lsp.config('terraformls', {
+        filetypes = { 'terraform', 'hcl', 'tf' },
+        settings = {
+          terraform = {
+            experimentalFeatures = {
+              validateOnSave = true,
             },
           },
-          filetypes = { 'yaml.ansible' },
         },
-      }
+      })
 
-      -- Список инструментов для автоматической установки через Mason
-      local ensure_installed = vim.tbl_keys(servers or {})
-      vim.list_extend(ensure_installed, {
+      vim.lsp.config('helm_ls', {
+        filetypes = { 'helm' },
+      })
+
+      vim.lsp.config('ansiblels', {
+        filetypes = { 'yaml.ansible' },
+        settings = {
+          ansible = {
+            ansible = { path = 'ansible' },
+            executionEnvironment = { enabled = false },
+            python = { interpreterPath = 'python3' },
+            validation = {
+              enabled = true,
+              lint = { enabled = true, path = 'ansible-lint' },
+            },
+          },
+        },
+      })
+
+      -- jinja_lsp, docker_compose_language_service, jsonnet_ls — без дельт
+      -- (shipped-конфиги полные, automatic_enable их включит сам)
+
+      -- Mason package names (НЕ lspconfig names) — для установки инструментов
+      local ensure_installed = {
         -- LSP серверы
         'pyright',
         'lua-language-server',
@@ -335,6 +306,8 @@ return {
         'terraform-ls',
         'ansible-language-server',
         'helm-ls',
+        'jinja-lsp',
+        'jsonnet-language-server',
         -- DAP
         'debugpy',
         -- Linters
@@ -350,28 +323,19 @@ return {
         'stylua',
         'yamlfmt',
         'shfmt',
-      })
+      }
 
-      -- Автоматическая установка инструментов
       require('mason-tool-installer').setup {
         ensure_installed = ensure_installed,
-        auto_update = false, -- Отключаем автообновление для быстрого запуска
-        run_on_start = true, -- Включаем автоматическую установку при первом запуске
+        auto_update = false,
+        run_on_start = true,
       }
 
-      -- Настройка серверов через mason-lspconfig
-      require('mason-lspconfig').setup {
-        handlers = {
-          function(server_name)
-            local server = servers[server_name] or {}
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
-        },
-      }
+      -- mason-lspconfig 2.0: automatic_enable=true сам вызывает vim.lsp.enable
+      -- для установленных серверов — handlers больше не нужны
+      require('mason-lspconfig').setup {}
 
-      -- Дополнительная настройка schemastore для JSON/YAML
-      local ok, schemastore = pcall(require, 'schemastore')
+      local ok = pcall(require, 'schemastore')
       if not ok then
         vim.notify('schemastore not found. Install it for better JSON/YAML support', vim.log.levels.WARN)
       end
