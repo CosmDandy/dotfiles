@@ -14,7 +14,6 @@ return {
     'williamboman/mason.nvim',
     'jay-babu/mason-nvim-dap.nvim',
     'theHamsta/nvim-dap-virtual-text',
-    { 'nvim-telescope/telescope-dap.nvim' },
     {
       'mfussenegger/nvim-dap-python',
       ft = 'python',
@@ -101,21 +100,21 @@ return {
     {
       '<leader>dc',
       function()
-        require('telescope').extensions.dap.commands()
+        require('dapui').toggle()
       end,
       desc = '[d]ebug [c]ommands',
     },
     {
       '<leader>dv',
       function()
-        require('telescope').extensions.dap.variables()
+        require('dapui').float_element('scopes')
       end,
       desc = '[d]ebug [v]ariables',
     },
     {
       '<leader>df',
       function()
-        require('telescope').extensions.dap.frames()
+        require('dapui').float_element('stacks')
       end,
       desc = '[d]ebug [f]rames',
     },
@@ -164,8 +163,6 @@ return {
       virt_text_pos = 'eol',              -- позиция виртуального текста
       virt_text_win_col = nil,            -- фиксированная позиция столбца
     }
-
-    require('telescope').load_extension('dap')
 
     dapui.setup {
       controls = {

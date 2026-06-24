@@ -1,5 +1,4 @@
--- Перевод telescope-пикеров на snacks.picker (те же keymaps).
--- live_grep_args (sG/sW) и todo (st) остаются на telescope — см. telescope.lua
+-- Все пикеры на snacks.picker (telescope удалён полностью)
 return {
   'folke/snacks.nvim',
   keys = {
@@ -7,6 +6,7 @@ return {
     { '<leader>gf', function() Snacks.picker.git_log_file() end, desc = '[f]ile history' },
     { '<leader>gh', function() Snacks.picker.git_log() end, desc = 'commits [h]istory' },
     { '<leader>gc', function() Snacks.picker.git_branches() end, desc = '[c]hange branches' },
+    { '<leader>st', function() Snacks.picker.todo_comments() end, desc = '[T]odo' },
 
     -- search
     { '<leader>sh', function() Snacks.picker.search_history() end, desc = '[h]istory' },

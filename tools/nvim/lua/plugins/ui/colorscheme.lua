@@ -10,44 +10,6 @@ return {
           return vim.o.background == 'dark'
         end
 
-        -- Telescope
-        hl.TelescopeNormal = {
-          bg = c.bg_dark,
-          fg = c.fg_dark,
-        }
-        hl.TelescopeBorder = {
-          bg = c.bg_dark,
-          fg = c.bg_dark,
-        }
-        hl.TelescopePromptNormal = {
-          bg = c.bg_dark,
-          fg = c.bg_dark,
-        }
-        hl.TelescopePromptBorder = {
-          bg = c.bg_dark,
-          fg = c.bg_dark,
-        }
-        hl.TelescopePromptTitle = {
-          bg = c.bg_dark,
-          fg = c.bg_dark,
-        }
-        hl.TelescopePreviewTitle = {
-          bg = c.bg_dark,
-          fg = c.bg_dark,
-        }
-        hl.TelescopeResultsTitle = {
-          bg = c.bg_dark,
-          fg = c.bg_dark,
-        }
-        hl.TelescopeSelection = {
-          bg = is_dark() and '#073642' or '#eee8d5', -- base02 для темной, base2 для светлой
-          fg = is_dark() and c.fg or '#002B36', -- стандартный fg для темной, base03 для светлой
-        }
-        hl.TelescopeSelectionCaret = {
-          fg = is_dark() and c.red or '#DC322F', -- accent цвет
-          bg = is_dark() and '#073642' or '#eee8d5',
-        }
-
         -- WhichKey с прозрачным фоном
         hl.WhichKey = {
           bg = 'NONE', -- прозрачный фон
@@ -411,7 +373,6 @@ return {
         hl.SnacksPickerInputTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         hl.SnacksPickerListTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         hl.FloatTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
-        hl.SnacksPickerMatch = { fg = '#dc322f', bold = true }
         hl.SnacksPickerDir = { fg = '#586e75' }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
