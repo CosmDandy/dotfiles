@@ -392,6 +392,22 @@ return {
         hl.BlinkCmpDocSeparator = { bg = 'NONE', fg = '#586e75' }
         hl.BlinkCmpSignatureHelp = { bg = 'NONE', fg = c.fg }
         hl.BlinkCmpSignatureHelpBorder = { bg = 'NONE', fg = '#586e75' }
+
+        -- snacks.picker: прозрачный фон, рамки приглушённым серым (как blink)
+        hl.SnacksPicker = { bg = 'NONE', fg = c.fg }
+        hl.SnacksPickerBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerInput = { bg = 'NONE', fg = c.fg }
+        hl.SnacksPickerInputBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerInputSearch = { bg = 'NONE', fg = is_dark() and '#b58900' or '#cb4b16' }
+        hl.SnacksPickerList = { bg = 'NONE', fg = c.fg }
+        hl.SnacksPickerListBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerPreview = { bg = 'NONE', fg = c.fg }
+        hl.SnacksPickerPreviewBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerPreviewTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        hl.SnacksPickerBoxBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
+        hl.SnacksPickerMatch = { fg = is_dark() and '#b58900' or '#cb4b16', bold = true }
+        hl.SnacksPickerDir = { fg = '#586e75' }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
     }

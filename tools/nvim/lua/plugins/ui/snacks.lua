@@ -29,6 +29,30 @@ return {
         end,
       },
     },
+    picker = {
+      enabled = true,
+      ui_select = true, -- заменяет vim.ui.select (вместо telescope-ui-select)
+      sources = {
+        -- файлы: классический вид с превью справа
+        files = { layout = { preset = 'telescope' } },
+        -- grep: снизу на всю ширину, удобно читать совпадения
+        grep = { layout = { preset = 'ivy' } },
+        grep_buffers = { layout = { preset = 'ivy' } },
+        grep_word = { layout = { preset = 'ivy' } },
+        diagnostics = { layout = { preset = 'ivy' } },
+        -- компактные списки без тяжёлого превью: сверху по центру
+        buffers = { layout = { preset = 'vscode' } },
+        recent = { layout = { preset = 'vscode' } },
+        -- системные списки: выпадашка по центру
+        keymaps = { layout = { preset = 'dropdown' } },
+        marks = { layout = { preset = 'dropdown' } },
+        help = { layout = { preset = 'dropdown' } },
+        search_history = { layout = { preset = 'dropdown' } },
+        pickers = { layout = { preset = 'dropdown' } },
+        lsp_symbols = { layout = { preset = 'dropdown' } },
+        -- LSP-навигация и git остаются на дефолте (превью важно)
+      },
+    },
     indent = {
       enabled = true,
       indent = {
