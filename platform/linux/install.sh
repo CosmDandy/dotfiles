@@ -167,6 +167,13 @@ if [[ ! -d ~/.tmux/plugins/tpm ]]; then
   git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 fi
 
+print_section "Installing tree-sitter CLI"
+# nvim-treesitter (main) компилирует парсеры через CLI tree-sitter.
+# mason-пакет tree-sitter-cli падает на aarch64 — ставим через npm в ~/.local.
+if ! command -v tree-sitter &>/dev/null; then
+  npm install -g --prefix "$HOME/.local" tree-sitter-cli
+fi
+
 print_section "Installing nvim plugins"
 nvim --headless "+Lazy! sync" +qa
 
