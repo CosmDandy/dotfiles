@@ -15,9 +15,10 @@ return { -- Fuzzy Finder (files, lsp, etc)
   'nvim-telescope/telescope.nvim',
   cmd = 'Telescope',
   keys = {
-    { '<leader>s', desc = '[S]earch' },
-    { '<leader>/', desc = 'Search in buffer' },
-    { '<leader><leader>', desc = 'Buffers' },
+    -- На telescope остаётся только то, что snacks.picker не заменяет
+    { '<leader>sG', desc = '[G]rep with args' },
+    { '<leader>sW', mode = { 'n', 'v' }, desc = '[W]ord with args' },
+    { '<leader>st', desc = '[T]odo' },
   },
   branch = 'master',
   dependencies = {
@@ -65,9 +66,6 @@ return { -- Fuzzy Finder (files, lsp, etc)
         }, ignore_globs),
       },
       extensions = {
-        ['ui-select'] = {
-          require('telescope.themes').get_dropdown(),
-        },
         live_grep_args = {
           auto_quoting = true,
           mappings = {
@@ -152,53 +150,14 @@ return { -- Fuzzy Finder (files, lsp, etc)
       },
     }
     pcall(telescope.load_extension, 'fzf')
-    pcall(telescope.load_extension, 'ui-select')
     pcall(telescope.load_extension, 'live_grep_args')
 
-    -- [[Telescope Keymaps]]
-    local builtin = require 'telescope.builtin'
+    -- Только live_grep_args остаётся на telescope (snacks.picker его не заменяет),
+    -- и todo — остальное переехало в snacks-picker.lua
     local lga_shortcuts = require 'telescope-live-grep-args.shortcuts'
-
-    vim.keymap.set('n', '<leader>gf', builtin.git_bcommits, { desc = '[f]ile history' })
-    vim.keymap.set('n', '<leader>gh', builtin.git_commits, { desc = 'commits [h]istory' })
-    vim.keymap.set('n', '<leader>gc', builtin.git_branches, { desc = '[c]hange branches' })
-    vim.keymap.set('n', '<leader>sh', builtin.search_history, { desc = '[h]istory' })
-    vim.keymap.set('n', '<leader>sH', builtin.help_tags, { desc = '[H]elp' })
-    vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[K]eymaps' })
-    vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[F]iles' })
-    vim.keymap.set('n', '<leader>s?', builtin.builtin, { desc = 'Telescope' })
-    vim.keymap.set('n', '<leader>sw', builtin.grep_string, { desc = '[W]ord' })
-    vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[G]rep' })
     vim.keymap.set('n', '<leader>sG', telescope.extensions.live_grep_args.live_grep_args, { desc = '[G]rep with args' })
     vim.keymap.set('n', '<leader>sW', lga_shortcuts.grep_word_under_cursor, { desc = '[W]ord with args' })
     vim.keymap.set('v', '<leader>sW', lga_shortcuts.grep_visual_selection, { desc = '[W]ord with args' })
-    vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[D]iagnostics' })
-    vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[R]esume' })
-    vim.keymap.set('n', '<leader>sm', builtin.marks, { desc = '[M]arks' })
-    vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[.] Recent Files' })
-    vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Buffers' })
-    vim.keymap.set('n', '<leader>st', '<cmd>TodoTelescope<CR>', {
-      desc = '[T]odo',
-      noremap = true,
-      silent = true,
-    })
-
-    vim.keymap.set('n', '<leader>/', function()
-      builtin.current_buffer_fuzzy_find(require('telescope.themes').get_dropdown {
-        winblend = 10,
-        previewer = false,
-      })
-    end, { desc = '[/] Search' })
-
-    vim.keymap.set('n', '<leader>s/', function()
-      builtin.live_grep {
-        grep_open_files = true,
-        prompt_title = 'Grep in Open Files',
-      }
-    end, { desc = '[/] in Open Files' })
-
-    vim.keymap.set('n', '<leader>sn', function()
-      builtin.find_files { cwd = vim.fn.stdpath 'config' }
-    end, { desc = '[N]eovim files' })
+    vim.keymap.set('n', '<leader>st', '<cmd>TodoTelescope<CR>', { desc = '[T]odo', noremap = true, silent = true })
   end,
 }
