@@ -154,7 +154,6 @@ return {
         'terraform-ls',
         'ansible-language-server',
         'helm-ls',
-        'jinja-lsp',
         'jsonnet-language-server',
         -- DAP
         'debugpy',
@@ -179,9 +178,24 @@ return {
         run_on_start = true,
       }
 
-      -- mason-lspconfig 2.0: automatic_enable=true сам вызывает vim.lsp.enable
-      -- для установленных серверов — handlers больше не нужны
-      require('mason-lspconfig').setup {}
+      -- mason-lspconfig 2.0: automatic_enable как whitelist — только реальные LSP-серверы
+      -- (иначе formatters/linters stylua/ruff/tflint цепляются как LSP; они и так
+      --  работают через conform/nvim-lint)
+      require('mason-lspconfig').setup {
+        automatic_enable = {
+          'pyright',
+          'lua_ls',
+          'jsonls',
+          'yamlls',
+          'bashls',
+          'dockerls',
+          'terraformls',
+          'helm_ls',
+          'ansiblels',
+          'jsonnet_ls',
+          'docker_compose_language_service',
+        },
+      }
 
       local ok = pcall(require, 'schemastore')
       if not ok then
