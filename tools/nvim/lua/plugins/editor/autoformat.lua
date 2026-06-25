@@ -1,6 +1,4 @@
 -- Система автоформатирования для Python/SQL/DevOps разработчика
--- Этот файл заменит ваш nvim/lua/plugins/editor/autoformat.lua
-
 return {
   'stevearc/conform.nvim',
   event = { 'BufWritePre' }, -- Загружаем перед сохранением для максимальной производительности
@@ -11,7 +9,7 @@ return {
       function()
         require('conform').format {
           async = true,
-          lsp_format = 'prefer', -- Предпочитаем LSP форматирование когда доступно
+          lsp_format = 'fallback', -- LSP только когда нет настроенного форматтера (наши форматтеры главнее)
           timeout_ms = 3000, -- Увеличенный таймаут для больших файлов
         }
       end,
@@ -30,7 +28,6 @@ return {
     },
   },
   opts = {
-    notify_on_error = true, -- Уведомляем об ошибках форматирования
     notify_no_formatters = false, -- Не спамим если форматер не найден
 
     format_on_save = function(bufnr)
@@ -54,7 +51,7 @@ return {
 
       return {
         timeout_ms = 3000,
-        lsp_format = 'prefer',
+        lsp_format = 'fallback',
       }
     end,
 
@@ -66,8 +63,14 @@ return {
       -- Lua - для конфигурации Neovim и скриптов
       lua = { 'stylua' },
 
-      -- DevOps конфигурации - критично для правильной работы инфраструктуры
-      yaml = { 'yamlfmt' },
+      -- yaml: не yamlfmt-ить helm-шаблоны (Go-template ломается форматтером)
+      yaml = function(bufnr)
+        local name = vim.api.nvim_buf_get_name(bufnr)
+        if vim.bo[bufnr].filetype == 'helm' or name:match '/templates/' then
+          return {}
+        end
+        return { 'yamlfmt' }
+      end,
 
       -- Shell скрипты для автоматизации
       bash = { 'shfmt' },
@@ -76,7 +79,7 @@ return {
 
       -- HCL (Terraform/Nomad) - форматирование через LSP (terraform fmt)
       hcl = {},
-      terraform = {},
+      terraform = { 'terraform_fmt' },
 
       -- Dockerfile
       dockerfile = {}, -- Используем только LSP форматирование для Dockerfile
@@ -89,22 +92,33 @@ return {
     formatters = {
       -- Python форматеры с оптимизированными настройками
       -- Конфигурация ruff для комплексного форматирования Python кода
+      -- полный args (не prepend): встроенный ruff_fix уже содержит 'check --fix',
+      -- prepend дублировал бы субкоманду → 'ruff check … check …' (ломалось)
       ruff_fix = {
-        prepend_args = {
+        args = {
           'check',
           '--fix',
           '--select',
           'I,F,E,W,UP,B',
           '--force-exclude',
+          '--exit-zero',
+          '--no-cache',
+          '--stdin-filename',
+          '$FILENAME',
+          '-',
         },
       },
 
+      -- '--respect-gitignore' убран: это флаг 'check', для 'format' невалиден
       ruff_format = {
-        prepend_args = {
+        args = {
           'format',
           '--line-length',
           '88',
-          '--respect-gitignore',
+          '--force-exclude',
+          '--stdin-filename',
+          '$FILENAME',
+          '-',
         },
       },
 

@@ -28,10 +28,17 @@ return {
       })
 
       local lint_augroup = vim.api.nvim_create_augroup('lint', { clear = true })
-      vim.api.nvim_create_autocmd({ 'BufEnter', 'BufWritePost', 'InsertLeave' }, {
+      local timer = assert((vim.uv or vim.loop).new_timer())
+      -- BufReadPost (один раз на открытие) вместо BufEnter (каждый фокус окна);
+      -- debounce 100мс схлопывает серию событий в один запуск линтеров
+      vim.api.nvim_create_autocmd({ 'BufReadPost', 'BufWritePost', 'InsertLeave', 'TextChanged' }, {
         group = lint_augroup,
         callback = function()
-          if vim.opt_local.modifiable:get() then
+          timer:stop()
+          timer:start(100, 0, vim.schedule_wrap(function()
+            if not vim.opt_local.modifiable:get() then
+              return
+            end
             local ft_linters = lint.linters_by_ft[vim.bo.filetype] or {}
             local available, missing = {}, {}
             for _, name in ipairs(ft_linters) do
@@ -51,7 +58,7 @@ return {
             if #available > 0 then
               lint.try_lint(available)
             end
-          end
+          end))
         end,
       })
     end,
