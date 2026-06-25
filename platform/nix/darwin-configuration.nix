@@ -88,6 +88,7 @@
     jq
     starship
     neovim
+    tree-sitter  # CLI: nvim-treesitter (main) компилирует парсеры через него (на Linux ставится npm-ом в install.sh)
     tmux
     atuin
     btop
