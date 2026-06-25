@@ -9,7 +9,11 @@ return {
       n_lines = 500,
       custom_textobjects = {
         -- Treesitter-объекты для Python/Go: функция / класс / блок
-        f = ai.gen_spec.treesitter { a = '@function.outer', i = '@function.inner' },
+        -- f: функция через treesitter; fallback на function_call в файлах без парсера
+        f = {
+          ai.gen_spec.treesitter { a = '@function.outer', i = '@function.inner' },
+          ai.gen_spec.function_call(),
+        },
         c = ai.gen_spec.treesitter { a = '@class.outer', i = '@class.inner' },
         o = ai.gen_spec.treesitter {
           a = { '@conditional.outer', '@loop.outer', '@block.outer' },
@@ -29,15 +33,20 @@ return {
     }
 
     -- Add/delete/replace surroundings (brackets, quotes, etc.)
-    require('mini.surround').setup()
+    require('mini.surround').setup {
+      n_lines = 100, -- многострочные YAML/блоки
+      custom_surroundings = {
+        -- обёртки под шаблоны (sa<motion><key>):
+        j = { output = { left = '{{ ', right = ' }}' } }, -- Helm/Jinja вывод
+        J = { output = { left = '{% ', right = ' %}' } }, -- Jinja-блок
+        ['$'] = { output = { left = '${', right = '}' } }, -- Terraform-интерполяция
+      },
+    }
 
     -- Операторы над текстовыми объектами (gr занят LSP references, поэтому gR)
     require('mini.operators').setup {
       replace = { prefix = 'gR' }, -- заменить объект содержимым регистра
       exchange = { prefix = 'gX' }, -- поменять два объекта местами
-      multiply = { prefix = 'gm' }, -- продублировать объект
-      sort = { prefix = 'gs' }, -- отсортировать строки/аргументы
-      evaluate = { prefix = 'g=' }, -- вычислить выражение
     }
 
     -- Улучшенная навигация по тексту [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-bracketed.md]
@@ -95,9 +104,9 @@ return {
 
     local function get_git_status()
       local branch = vim.b.gitsigns_status_dict or { head = '' }
-      local is_head_empty = branch.head ~= ''
+      local has_head = branch.head ~= ''
 
-      return is_head_empty and string.format('%s ', branch.head) or ''
+      return has_head and string.format('%s ', branch.head) or ''
     end
 
     local function get_lsp_diagnostic()
@@ -114,7 +123,11 @@ return {
         warnings = get_severity(vim.diagnostic.severity.WARN),
       }
 
-      return string.format(' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ', result.errors or 0, result.warnings or 0)
+      return string.format(
+        ' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ',
+        result.errors,
+        result.warnings
+      )
     end
 
     local function get_fileinfo()
@@ -225,7 +238,6 @@ return {
       return '%#NormalNC#' .. venv_name .. ' (' .. version .. ')'
     end
 
-    -- Переопределение функции content_provider для mini.statusline
     statusline.setup {
       content = {
         active = function()
@@ -241,13 +253,15 @@ return {
             '%=', -- Разделитель, центрирует то, что после него
             get_macro_recording(), -- САМОЕ ВАЖНОЕ!
             get_readonly(), -- READONLY если readonly
-            get_python_env(), -- Python окружение
+            -- на узких окнах (<120) прячем второстепенное; на нормальной ширине вид прежний
+            statusline.is_truncated(120) and '' or get_python_env(), -- Python окружение
             get_lsp_diagnostic(),
-            get_filetype(),
+            statusline.is_truncated(120) and '' or get_filetype(),
             get_searchcount(),
           }
 
-          return table.concat(items)
+          -- combine_groups вместо ручного concat: тот же вывод для строк + аккуратная обработка пустых секций
+          return statusline.combine_groups(items)
         end,
 
         inactive = function()
@@ -255,7 +269,6 @@ return {
         end,
       },
 
-      use_icons = true,
       set_vim_settings = true,
     }
   end,
