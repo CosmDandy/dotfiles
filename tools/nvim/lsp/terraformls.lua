@@ -1,5 +1,5 @@
 return {
-  filetypes = { 'terraform', 'hcl', 'tf' },
+  filetypes = { 'terraform', 'hcl' },
   settings = {
     terraform = {
       experimentalFeatures = {
