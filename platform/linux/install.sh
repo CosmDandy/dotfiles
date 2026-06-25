@@ -76,12 +76,10 @@ if [[ "$PROFILE" == "full" ]]; then
   )
 fi
 
-nix_args=()
-for package in "${packages[@]}"; do
-  nix_args+=("nixpkgs.$package")
-done
+# -iA с -f: атрибуты берутся от корня tarball-набора, поэтому БЕЗ префикса nixpkgs.
+# (префикс нужен только при резолве через канал/NIX_PATH, без -f)
 print_section "Installing packages from ${NIXPKGS_CHANNEL}: ${packages[*]}"
-nix-env -f "$NIXPKGS_URL" -iA "${nix_args[@]}"
+nix-env -f "$NIXPKGS_URL" -iA "${packages[@]}"
 
 print_section "Installing Claude Code (native, self-updating binary)"
 curl -fsSL https://claude.ai/install.sh | bash
