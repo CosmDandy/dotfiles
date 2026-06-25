@@ -11,24 +11,18 @@ return {
   dependencies = {
     'rcarriga/nvim-dap-ui',
     'nvim-neotest/nvim-nio',
-    'williamboman/mason.nvim',
+    'mason-org/mason.nvim',
     'jay-babu/mason-nvim-dap.nvim',
     'theHamsta/nvim-dap-virtual-text',
     {
       'mfussenegger/nvim-dap-python',
       ft = 'python',
       config = function()
-        -- ИЗМЕНЕНО: Улучшенная автоматическая настройка debugpy
-        local path = vim.fn.stdpath("data") .. '/mason/packages/debugpy/venv/bin/python'
+        -- debugpy-адаптер из mason-venv; python для отлаживаемой программы
+        -- dap-python определяет сам (.venv проекта / VIRTUAL_ENV)
+        local path = vim.fn.stdpath 'data' .. '/mason/packages/debugpy/venv/bin/python'
         require('dap-python').setup(path)
-
-        -- НОВОЕ: Добавление testpy для тестирования
         require('dap-python').test_runner = 'pytest'
-
-        -- НОВОЕ: Настройка представлений переменных для лучшей читаемости
-        require('dap-python').resolve_python = function()
-          return path
-        end
       end,
     },
   },
@@ -96,13 +90,12 @@ return {
       end,
       desc = 'See last session result.',
     },
-    -- НОВОЕ: Дополнительные полезные сочетания клавиш
     {
       '<leader>dc',
       function()
-        require('dapui').toggle()
+        require('dap').continue()
       end,
-      desc = '[d]ebug [c]ommands',
+      desc = '[d]ebug [c]ontinue',
     },
     {
       '<leader>dv',
@@ -132,6 +125,42 @@ return {
       end,
       desc = '[d]ebug [T]est class',
     },
+    {
+      '<leader>dC',
+      function()
+        require('dap').run_to_cursor()
+      end,
+      desc = '[d]ebug run to [C]ursor',
+    },
+    {
+      '<leader>dl',
+      function()
+        require('dap').run_last()
+      end,
+      desc = '[d]ebug run [l]ast',
+    },
+    {
+      '<leader>de',
+      function()
+        require('dapui').eval()
+      end,
+      mode = { 'n', 'v' },
+      desc = '[d]ebug [e]val expression',
+    },
+    {
+      '<leader>dx',
+      function()
+        require('dap').set_exception_breakpoints { 'raised', 'uncaught' }
+      end,
+      desc = '[d]ebug e[x]ception breakpoints',
+    },
+    {
+      '<leader>dL',
+      function()
+        require('dap').set_breakpoint(nil, nil, vim.fn.input 'Log point message: ')
+      end,
+      desc = '[d]ebug [L]og point',
+    },
   },
   config = function()
     local dap = require 'dap'
@@ -151,102 +180,50 @@ return {
     }
 
     require('nvim-dap-virtual-text').setup {
-      enabled = true,                     -- включено по умолчанию
-      enabled_commands = true,            -- команды для включения/отключения
-      highlight_changed_variables = true, -- подсветка измененных переменных
-      highlight_new_as_changed = true,    -- подсветка новых переменных
-      show_stop_reason = true,            -- показ причины остановки
-      commented = true,                   -- текст как комментарии
-      only_first_definition = false,      -- показать только первое определение
-      all_references = true,              -- показать все ссылки
-      all_frames = false,                 -- показать значения из всех фреймов
-      virt_text_pos = 'eol',              -- позиция виртуального текста
-      virt_text_win_col = nil,            -- фиксированная позиция столбца
+      -- только отличия от дефолта upstream:
+      highlight_new_as_changed = true, -- новые переменные подсвечивать как изменённые
+      commented = true,                -- виртуальный текст в виде комментария
+      only_first_definition = false,   -- показывать у всех вхождений, не только первого
+      all_references = true,           -- показывать все ссылки
+      virt_text_pos = 'eol',           -- на 0.10+ дефолт 'inline', нам нужен eol
     }
 
     dapui.setup {
-      controls = {
-        element = "repl",
-        enabled = true,
-      },
-      element_mappings = {},
-      expand_lines = true,
-      floating = {
-        border = "single",
-        mappings = {
-          close = { "q", "<Esc>" }
-        }
-      },
-      force_buffers = true,
+      -- icons: пустые строки = без глифов сворачивания (НЕ дефолт; дефолт — глифы-треугольники)
       icons = {
         collapsed = "",
         current_frame = "",
-        expanded = ""
+        expanded = "",
       },
+      -- кастомные доли панелей (дефолт — равные 0.25)
       layouts = {
         {
           elements = {
-            {
-              id = "scopes",
-              size = 0.4
-            },
-            {
-              id = "breakpoints",
-              size = 0.15
-            },
-            {
-              id = "stacks",
-              size = 0.25
-            },
-            {
-              id = "watches",
-              size = 0.2
-            }
+            { id = "scopes", size = 0.4 },
+            { id = "breakpoints", size = 0.15 },
+            { id = "stacks", size = 0.25 },
+            { id = "watches", size = 0.2 },
           },
           position = "left",
-          size = 40
+          size = 40,
         },
         {
           elements = {
-            {
-              id = "repl",
-              size = 0.5
-            },
-            {
-              id = "console",
-              size = 0.5
-            }
+            { id = "repl", size = 0.5 },
+            { id = "console", size = 0.5 },
           },
           position = "bottom",
-          size = 15
-        }
+          size = 15,
+        },
       },
-      mappings = {
-        edit = "e",
-        expand = { "<CR>", "<2-LeftMouse>" },
-        open = "o",
-        remove = "d",
-        repl = "r",
-        toggle = "t"
-      },
-      render = {
-        indent = 1,
-        max_value_lines = 100
-      }
+      render = { max_value_lines = 100 }, -- остальное (controls/floating/mappings/expand_lines) = дефолт
     }
 
 
-    dap.configurations.python = {
-      {
-        type = 'python',
-        request = 'launch',
-        name = 'Local Python',
-        program = '${file}',
-        pythonPath = function()
-          return vim.fn.expand '.venv/bin/python'
-        end,
-      },
-    }
+    -- .vscode/launch.json читается автоматически on-demand (:help dap-providers) —
+    -- ручной load_launchjs больше не нужен (deprecated).
+    -- Ручной dap.configurations.python убран: его 'Local Python' конфликтовал с конфигами,
+    -- которые регистрирует require('dap-python').setup(path).
 
     -- Change breakpoint icons
     vim.api.nvim_set_hl(0, 'DapBreak', { fg = '#e51400' })
