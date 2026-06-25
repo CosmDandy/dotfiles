@@ -32,16 +32,18 @@ esac
 
 label="$cmd"
 
-if [ "$cmd" = "node" ]; then
-    child=$(pgrep -P "$pane_pid" 2>/dev/null | head -1)
-    if [ -n "$child" ]; then
-        args=$(ps -o args= -p "$child" 2>/dev/null)
-    else
-        args=$(ps -o args= -p "$pane_pid" 2>/dev/null)
+# Claude Code: node-обёртка (devcontainers) либо нативный бинарь
+# (comm = версия, напр. 2.1.190). Ищем "claude" в args любого процесса
+# на tty панели — не зависит от глубины дерева процессов.
+case "$cmd" in
+node | [0-9]*)
+    tty=$(ps -o tty= -p "$pane_pid" 2>/dev/null | tr -d ' ')
+    if [ -n "$tty" ]; then
+        case "$(ps -t "$tty" -o args= 2>/dev/null)" in
+        *claude*) label="claude" ;;
+        esac
     fi
-    case "$args" in
-    *claude*) label="claude" ;;
-    esac
-fi
+    ;;
+esac
 
 echo "$prefix | $label"
