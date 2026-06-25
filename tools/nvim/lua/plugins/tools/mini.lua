@@ -238,12 +238,45 @@ return {
       return '%#NormalNC#' .. venv_name .. ' (' .. version .. ')'
     end
 
+    -- Счётчик поиска без позиции курсора (для Oil: l:c бессмысленно)
+    local function get_search_matches_only()
+      if vim.v.hlsearch == 0 then
+        return ''
+      end
+
+      local ok, count = pcall(vim.fn.searchcount, { recompute = false })
+      if not ok or count.current == nil or count.total == 0 then
+        return ''
+      end
+
+      if count.incomplete == 1 then
+        return '%#Normal# ?/? '
+      end
+
+      local too_many = string.format('>%d', count.maxcount)
+      local total = count.total > count.maxcount and too_many or count.total
+
+      return '%#Normal#' .. string.format(' %s matches ', total)
+    end
+
     statusline.setup {
       content = {
         active = function()
           local mode = vim.api.nvim_get_mode().mode
           local mode_name = mode_names[mode] or mode
           local mode_highlight = mode_hl[mode] or 'MiniStatuslineMode'
+
+          -- Oil: минимальный статуслайн без диагностики/filetype/позиции курсора
+          if vim.bo.filetype == 'oil' then
+            local oil_items = {
+              '%#' .. mode_highlight .. '#' .. ' ' .. string.upper(mode_name) .. ' ',
+              get_fileinfo(), -- путь текущей директории (oil://...)
+              '%=',
+              get_macro_recording(),
+              get_search_matches_only(), -- только matches при активном поиске
+            }
+            return statusline.combine_groups(oil_items)
+          end
 
           local items = {
             '%#' .. mode_highlight .. '#' .. ' ' .. string.upper(mode_name) .. ' ',
