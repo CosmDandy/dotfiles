@@ -2,6 +2,30 @@ return {
   'lewis6991/gitsigns.nvim',
   event = "BufRead",
   opts = {
+    -- Знаки незастейдженных изменений — тонкая черта │ (vs толстая ┃ у staged)
+    signs = {
+      add = { text = '│' },
+      change = { text = '│' },
+      delete = { text = '_' },
+      topdelete = { text = '‾' },
+      changedelete = { text = '~' },
+    },
+    -- Отдельные знаки застейдженных изменений (видно, что уже в индексе)
+    signs_staged = {
+      add = { text = '┃' },
+      change = { text = '┃' },
+      delete = { text = '_' },
+      topdelete = { text = '‾' },
+    },
+    -- Подсветка изменений на уровне слов прямо в буфере
+    word_diff = true,
+    -- цеплять знаки и к новым (untracked) файлам — стейджить их по кускам без git add
+    attach_to_untracked = true,
+    -- blame текущей строки в конце строки; вкл по умолчанию, <leader>gt — выключатель
+    current_line_blame = true,
+    current_line_blame_opts = {
+      delay = 2500,
+    },
     max_file_length = 200000,
     preview_config = {
       border = 'rounded',
@@ -52,10 +76,9 @@ return {
       map('n', '<leader>gR', gitsigns.reset_buffer, { desc = '[R]eset buffer' })
       map('n', '<leader>gP', gitsigns.preview_hunk, { desc = '[P]review hunk' })
       map('n', '<leader>gp', gitsigns.preview_hunk_inline, { desc = '[p]review hunk inline' })
-      -- TODO: сделать в обеих командах чтобы фон менялся а не цвет текста
       map('n', '<leader>gB', gitsigns.blame, { desc = '[B]lame' })
       map('n', '<leader>gb', gitsigns.blame_line, { desc = '[b]lame line' })
-      map('n', '<leader>gt', gitsigns.toggle_current_line_blame, { desc = 'curent [b]lame line' })
+      map('n', '<leader>gt', gitsigns.toggle_current_line_blame, { desc = '[t]oggle current-line blame' })
       map('n', '<leader>gdi', gitsigns.diffthis, { desc = '[d]iff against [i]ndex' })
       map('n', '<leader>gdc', function()
         gitsigns.diffthis '@'
