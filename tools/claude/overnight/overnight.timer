@@ -1,0 +1,12 @@
+[Unit]
+Description=Trigger Claude Code overnight queue
+
+[Timer]
+# Выровняй под окно ПОСЛЕ сброса лимитов токенов (локальное время).
+# Пример: каждый день в 04:30.
+OnCalendar=*-*-* 04:30:00
+# Если машина спала/была выключена — догнать пропущенный запуск.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
