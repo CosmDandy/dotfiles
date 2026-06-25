@@ -251,6 +251,10 @@ return {
         hl.GitSignsAddLnInline = { bg = is_dark() and c.gs_add or c.gs_add_l }
         hl.GitSignsChangeLnInline = { bg = is_dark() and c.gs_change or c.gs_change_l }
         hl.GitSignsDeleteLnInline = { bg = is_dark() and c.gs_delete or c.gs_delete_l }
+        -- DiffAdd: тема красит добавление бирюзовым (#103a3c, читается синим). Делаем зелёным —
+        -- одним override закрываются ВСЕ diff-превью: gitsigns float (GitSignsAddPreview→DiffAdd),
+        -- diffview, :diffthis и snacks git-превью (treesitter @diff.plus→DiffAdd).
+        hl.DiffAdd = { bg = is_dark() and c.gs_add or c.gs_add_l }
         -- blame текущей строки — мутно, курсивом, без жирного, чтобы не тянуть внимание
         hl.GitSignsCurrentLineBlame = { fg = c.muted, italic = true }
 
