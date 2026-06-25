@@ -4,15 +4,40 @@ return {
   priority = 1000,
   opts = function()
     return {
+      -- вариант тёмной палитры (storm/night/day); фиксируем явно
+      style = 'night',
+      -- Normal/NormalNC/LineNr → NONE штатным механизмом темы (вместо ручных highlight в init)
+      transparent = true,
+      styles = {
+        -- floats/sidebars прозрачны: c.bg_float=NONE каскадом уходит в NormalFloat,
+        -- FloatBorder, BlinkCmpDoc, SnacksPickerBorder и прочие плавающие группы
+        sidebars = 'transparent',
+        floats = 'transparent',
+      },
+      -- Семантические алиасы цветов: точные значения, что использует конфиг (стандартный
+      -- solarized — НЕ палитра темы, та чуть иные оттенки), поэтому без визуального сдвига.
+      -- bg_dark='NONE' централизует прозрачность вместо локальной переменной.
+      on_colors = function(c)
+        c.bg_dark = 'NONE' -- весь UI прозрачный (вместо локальной переменной)
+        -- стандартные solarized-акценты (точные значения конфига; палитра темы чуть иная)
+        c.sol_red = '#dc322f'
+        c.sol_yellow = '#b58900'
+        c.sol_blue = '#268bd2'
+        c.sol_cyan = '#2aa198'
+        c.muted = '#586e75' -- мутный серый (blame)
+        -- приглушённые тинты inline word-diff (gitsigns)
+        c.gs_add = '#0f3a28'
+        c.gs_change = '#3a3418'
+        c.gs_delete = '#4a1f1f'
+        c.gs_add_l = '#c7e6c7'
+        c.gs_change_l = '#e8e0b0'
+        c.gs_delete_l = '#e8c0c0'
+      end,
       on_highlights = function(hl, c)
         -- Проверяем background динамически
         local function is_dark()
           return vim.o.background == 'dark'
         end
-
-        -- Палитра не содержит bg_dark (nil). Конфиг весь прозрачный (Normal guibg=NONE),
-        -- поэтому эти группы должны быть прозрачными, а не залитыми фоном.
-        local bg_dark = 'NONE'
 
         -- WhichKey с прозрачным фоном
         hl.WhichKey = {
@@ -47,35 +72,6 @@ return {
           bg = is_dark() and '#073642' or '#eee8d5', -- base02 для темной, base2 для светлой
         }
 
-        -- Barbecue (winbar) с прозрачным фоном
-        hl.BarbecueNormal = {
-          bg = 'NONE',
-        }
-        hl.BarbecueEllipsis = {
-          bg = 'NONE',
-        }
-        hl.BarbecueSeparator = {
-          bg = 'NONE',
-        }
-        hl.BarbecueDirectory = {
-          bg = 'NONE',
-        }
-        hl.BarbecueDirectoryBasename = {
-          bg = 'NONE',
-        }
-        hl.BarbecueContext = {
-          bg = 'NONE',
-        }
-        hl.BarbecueContextPrefix = {
-          bg = 'NONE',
-        }
-        hl.BarbecueContextSuffix = {
-          bg = 'NONE',
-        }
-        hl.BarbecueModified = {
-          bg = 'NONE',
-        }
-
         -- Статусная строка (mini.statusline) с прозрачным фоном
         hl.StatusLine = {
           bg = 'NONE',
@@ -107,96 +103,29 @@ return {
 
         -- LSP Диагностика - только цветной текст БЕЗ фона
         -- Errors - red
-        hl.DiagnosticError = {
-          fg = '#dc322f', -- red
-          bg = 'NONE',
-        }
-        hl.DiagnosticVirtualTextError = {
-          fg = '#dc322f',
-          bg = 'NONE',
-        }
-        hl.DiagnosticUnderlineError = {
-          sp = '#dc322f',
-          underline = true,
-        }
-        hl.DiagnosticSignError = {
-          fg = '#dc322f',
-          bg = 'NONE',
-        }
+        hl.DiagnosticError = { fg = c.sol_red, bg = 'NONE' }
+        hl.DiagnosticVirtualTextError = { fg = c.sol_red, bg = 'NONE' }
+        hl.DiagnosticUnderlineError = { sp = c.sol_red, underline = true }
+        hl.DiagnosticSignError = { fg = c.sol_red, bg = 'NONE' }
 
-        -- Warnings - yellow/orange
-        hl.DiagnosticWarn = {
-          fg = '#b58900', -- yellow
-          bg = 'NONE',
-        }
-        hl.DiagnosticVirtualTextWarn = {
-          fg = '#b58900',
-          bg = 'NONE',
-        }
-        hl.DiagnosticUnderlineWarn = {
-          sp = '#b58900',
-          underline = true,
-        }
-        hl.DiagnosticSignWarn = {
-          fg = '#b58900',
-          bg = 'NONE',
-        }
+        -- Warnings - yellow
+        hl.DiagnosticWarn = { fg = c.sol_yellow, bg = 'NONE' }
+        hl.DiagnosticVirtualTextWarn = { fg = c.sol_yellow, bg = 'NONE' }
+        hl.DiagnosticUnderlineWarn = { sp = c.sol_yellow, underline = true }
+        hl.DiagnosticSignWarn = { fg = c.sol_yellow, bg = 'NONE' }
 
         -- Info - blue
-        hl.DiagnosticInfo = {
-          fg = '#268bd2', -- blue
-          bg = 'NONE',
-        }
-        hl.DiagnosticVirtualTextInfo = {
-          fg = '#268bd2',
-          bg = 'NONE',
-        }
-        hl.DiagnosticUnderlineInfo = {
-          sp = '#268bd2',
-          underline = true,
-        }
-        hl.DiagnosticSignInfo = {
-          fg = '#268bd2',
-          bg = 'NONE',
-        }
+        hl.DiagnosticInfo = { fg = c.sol_blue, bg = 'NONE' }
+        hl.DiagnosticVirtualTextInfo = { fg = c.sol_blue, bg = 'NONE' }
+        hl.DiagnosticUnderlineInfo = { sp = c.sol_blue, underline = true }
+        hl.DiagnosticSignInfo = { fg = c.sol_blue, bg = 'NONE' }
 
         -- Hints - cyan
-        hl.DiagnosticHint = {
-          fg = '#2aa198', -- cyan
-          bg = 'NONE',
-        }
-        hl.DiagnosticVirtualTextHint = {
-          fg = '#2aa198',
-          bg = 'NONE',
-        }
-        hl.DiagnosticUnderlineHint = {
-          sp = '#2aa198',
-          underline = true,
-        }
-        hl.DiagnosticSignHint = {
-          fg = '#2aa198',
-          bg = 'NONE',
-        }
+        hl.DiagnosticHint = { fg = c.sol_cyan, bg = 'NONE' }
+        hl.DiagnosticVirtualTextHint = { fg = c.sol_cyan, bg = 'NONE' }
+        hl.DiagnosticUnderlineHint = { sp = c.sol_cyan, underline = true }
+        hl.DiagnosticSignHint = { fg = c.sol_cyan, bg = 'NONE' }
 
-        -- Noice (командная строка и уведомления)
-        hl.NoiceCmdlinePopup = {
-          bg = bg_dark,
-          fg = c.fg,
-        }
-        hl.NoiceCmdlinePopupBorder = {
-          bg = bg_dark,
-          fg = is_dark() and '#2aa198' or '#268bd2', -- cyan/blue
-        }
-        hl.NoiceCmdlineIcon = {
-          bg = bg_dark,
-          fg = is_dark() and '#b58900' or '#cb4b16', -- yellow/orange
-        }
-        -- Mini view для макро-рекординга - яркий и заметный
-        hl.NoiceMini = {
-          bg = is_dark() and '#dc322f' or '#cb4b16', -- red/orange - очень заметно
-          fg = is_dark() and '#FDF6E3' or '#002B36',
-          bold = true,
-        }
         hl.MiniStatuslineDevinfo = {
           bg = 'NONE',
         }
@@ -276,28 +205,10 @@ return {
           bold = true,
         }
 
-        -- LSP подсветка одинаковых символов - cyan underline на легком фоне
-        hl.LspReferenceText = {
-          bg = is_dark() and '#073642' or '#eee8d5', -- base02/base2
-          underline = true,
-          sp = '#2aa198', -- cyan для underline
-        }
-        hl.LspReferenceRead = {
-          bg = is_dark() and '#073642' or '#eee8d5',
-          underline = true,
-          sp = '#268bd2', -- blue для read
-        }
-        hl.LspReferenceWrite = {
-          bg = is_dark() and '#073642' or '#eee8d5',
-          underline = true,
-          sp = '#cb4b16', -- orange для write (более заметно)
-        }
-
-        -- Alpha dashboard header - orange bold "GO BIG OR GO HOME"
-        hl.AlphaHeader = {
-          fg = '#cb4b16', -- orange
-          bold = true,
-        }
+        -- LSP подсветка одинаковых символов — только фон, БЕЗ подчёркивания
+        hl.LspReferenceText = { bg = is_dark() and '#073642' or '#eee8d5' } -- base02/base2
+        hl.LspReferenceRead = { bg = is_dark() and '#073642' or '#eee8d5' }
+        hl.LspReferenceWrite = { bg = is_dark() and '#073642' or '#eee8d5' }
 
         -- Выделение
         hl.Visual = {
@@ -314,30 +225,38 @@ return {
         }
 
         -- GitSigns
+        hl.EndOfBuffer = { bg = 'NONE' } -- transparent покрывает Normal/NormalNC/LineNr, но не EndOfBuffer
         hl.FloatBorder = {
-          bg = bg_dark,
+          bg = c.bg_dark,
           fg = c.fg,
         }
         hl.NormalFloat = {
-          bg = bg_dark,
+          bg = c.bg_dark,
           fg = c.fg,
         }
         hl.GitSignsAdd = {
-          bg = bg_dark,
+          bg = c.bg_dark,
           fg = c.green,
         }
         hl.GitSignsChange = {
-          bg = bg_dark,
+          bg = c.bg_dark,
           fg = c.yellow,
         }
         hl.GitSignsDelete = {
-          bg = bg_dark,
+          bg = c.bg_dark,
           fg = c.red,
         }
+        -- word_diff (gitsigns): inline-подсветка изменённых слов. На прозрачной теме
+        -- без явного фона невидима — задаём приглушённые тинты в solarized-палитре.
+        hl.GitSignsAddLnInline = { bg = is_dark() and c.gs_add or c.gs_add_l }
+        hl.GitSignsChangeLnInline = { bg = is_dark() and c.gs_change or c.gs_change_l }
+        hl.GitSignsDeleteLnInline = { bg = is_dark() and c.gs_delete or c.gs_delete_l }
+        -- blame текущей строки — мутно, курсивом, без жирного, чтобы не тянуть внимание
+        hl.GitSignsCurrentLineBlame = { fg = c.muted, italic = true }
 
         -- snacks.dashboard: красный header (текст + волны), серый футер со временем
         hl.SnacksDashboardHeader = { fg = '#dc322f', bold = true }
-        hl.SnacksDashboardFooter = { fg = is_dark() and '#586e75' or '#93a1a1' }
+        hl.SnacksDashboardFooter = { fg = is_dark() and c.muted or '#93a1a1' }
 
         -- snacks.indent: явные цвета (по дефолту линкуется на NonText, почти невидим)
         hl.SnacksIndent = { fg = is_dark() and '#3a4d52' or '#93a1a1' } -- тусклые гайды на всех уровнях
@@ -351,26 +270,26 @@ return {
 
         -- blink.cmp: фон такой же, как основной редактор (прозрачный)
         hl.BlinkCmpMenu = { bg = 'NONE', fg = c.fg }
-        hl.BlinkCmpMenuBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.BlinkCmpMenuBorder = { bg = 'NONE', fg = c.muted }
         hl.BlinkCmpMenuSelection = { bg = is_dark() and '#073642' or '#eee8d5', bold = true }
         hl.BlinkCmpDoc = { bg = 'NONE', fg = c.fg }
-        hl.BlinkCmpDocBorder = { bg = 'NONE', fg = '#586e75' }
-        hl.BlinkCmpDocSeparator = { bg = 'NONE', fg = '#586e75' }
+        hl.BlinkCmpDocBorder = { bg = 'NONE', fg = c.muted }
+        hl.BlinkCmpDocSeparator = { bg = 'NONE', fg = c.muted }
         hl.BlinkCmpSignatureHelp = { bg = 'NONE', fg = c.fg }
-        hl.BlinkCmpSignatureHelpBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.BlinkCmpSignatureHelpBorder = { bg = 'NONE', fg = c.muted }
 
         -- snacks.picker: прозрачный фон, рамки приглушённым серым (как blink)
         hl.SnacksPicker = { bg = 'NONE', fg = c.fg }
-        hl.SnacksPickerBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerBorder = { bg = 'NONE', fg = c.muted }
         hl.SnacksPickerInput = { bg = 'NONE', fg = c.fg }
-        hl.SnacksPickerInputBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerInputBorder = { bg = 'NONE', fg = c.muted }
         hl.SnacksPickerInputSearch = { bg = 'NONE', fg = is_dark() and '#b58900' or '#cb4b16' }
         hl.SnacksPickerList = { bg = 'NONE', fg = c.fg }
-        hl.SnacksPickerListBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerListBorder = { bg = 'NONE', fg = c.muted }
         hl.SnacksPickerPreview = { bg = 'NONE', fg = c.fg }
-        hl.SnacksPickerPreviewBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerPreviewBorder = { bg = 'NONE', fg = c.muted }
         hl.SnacksPickerPreviewTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
-        hl.SnacksPickerBoxBorder = { bg = 'NONE', fg = '#586e75' }
+        hl.SnacksPickerBoxBorder = { bg = 'NONE', fg = c.muted }
         hl.SnacksPickerTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         -- заголовки на рамке ("files" сверху) — прозрачный фон вместо тёмного FloatTitle
         hl.SnacksPickerBorderTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
@@ -379,17 +298,15 @@ return {
         hl.FloatTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         -- подсветка совпадений в результатах поиска — жёлтая (не красный Special)
         hl.SnacksPickerMatch = { fg = '#b58900', bold = true }
-        hl.SnacksPickerDir = { fg = '#586e75' }
+        hl.SnacksPickerDir = { fg = c.muted }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
     }
   end,
   init = function()
     vim.cmd.colorscheme 'solarized-osaka'
-    vim.cmd [[highlight Normal guibg=NONE ctermbg=NONE]]
-    vim.cmd [[highlight NormalNC guibg=NONE ctermbg=NONE]]
-    vim.cmd [[highlight EndOfBuffer guibg=NONE ctermbg=NONE]]
-    vim.cmd [[highlight FloatBorder guibg=NONE ctermbg=NONE]]
-    vim.cmd [[highlight NormalFloat guibg=NONE ctermbg=NONE]]
+    -- Ручные `highlight … guibg=NONE` больше не нужны: transparent=true и
+    -- styles.floats/sidebars='transparent' делают Normal/NormalNC/NormalFloat/
+    -- FloatBorder прозрачными внутри темы; EndOfBuffer добит в on_highlights.
   end,
 }

@@ -14,6 +14,7 @@ end)
 vim.opt.numberwidth = 5
 vim.opt.fillchars:append { eob = ' ' } -- Убираем символы тильды (~) в пустых строках
 vim.opt.breakindent = true             -- Enable break indent
+vim.opt.breakindentopt = 'shift:2'     -- отступ перенесённых длинных строк (YAML/HCL)
 vim.opt.undofile = true                -- Save undo history
 vim.opt.ignorecase = true
 vim.opt.smartcase = true               -- Case-insensitive searching UNLESS \C or one or more capital letters in the search term
@@ -29,17 +30,19 @@ vim.opt.cursorline = true              -- Show which line your cursor is on
 vim.opt.scrolloff = 10                 -- Minimal number of screen lines to keep above and below the cursor.
 vim.opt.sidescrolloff = 10             -- Горизонтальный отступ при сайдскроллинге
 vim.opt.termguicolors = true           -- Поддержка 24-битного цвета
-vim.opt.wrap = true
 vim.opt.linebreak = true
-vim.opt.encoding = "utf-8"
-vim.opt.fileencoding = "utf-8"
-vim.opt.ambiwidth = "single"
 vim.opt.ttimeoutlen = 10 -- Сократить время ожидания терминальных кодов
 
 
 vim.loader.enable()
 vim.o.laststatus = 3
 vim.o.cmdheight = 0
+
+-- Глобальная рамка плавающих окон (hover/signature/LSP) — nvim 0.11+; явные border у blink/snacks/noice её переопределяют
+vim.o.winborder = 'rounded'
+
+-- Плавный скролл по визуальным строкам при wrap
+vim.opt.smoothscroll = true
 
 -- Лимит подсветки синтаксиса для длинных строк (minified, логи, длинные JSON)
 vim.opt.synmaxcol = 300

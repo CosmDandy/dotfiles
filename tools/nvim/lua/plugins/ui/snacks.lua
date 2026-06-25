@@ -22,6 +22,11 @@ local function vertical(preview_ratio)
   }
 end
 
+-- select-окно без превью, по центру (preset 'select' прячет preview), 0.6×0.5; свежая таблица на вызов
+local function select()
+  return { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } }
+end
+
 -- Исключения путей (как ignore_globs в telescope) для files/grep
 local exclude = {
   '.git',
@@ -53,6 +58,31 @@ return {
     },
     -- inline-рендер картинок не нужен и ломает treesitter на nvim 0.12 (метод range)
     image = { enabled = false },
+    -- рисовать файл сразу при открытии из шелла, до загрузки плагинов (без мелькания)
+    quickfile = { enabled = true },
+    -- плавающий vim.ui.input (rename и пр.) вместо строки внизу — в стиле остального snacks
+    input = { enabled = true },
+    -- подсветка вхождений символа под курсором (LSP document_highlight) + прыжки ]]/[[
+    words = { enabled = true },
+    -- текст-объекты по области: ii/ai + прыжки [i/]i
+    scope = { enabled = true },
+    -- Уведомления (заменили nvim-notify). style='compact' = с рамкой + иконкой/заголовком
+    notifier = {
+      enabled = true,
+      timeout = 3000,
+      style = 'compact',
+      top_down = true,
+    },
+    styles = {
+      notification = {
+        border = 'rounded',
+        wo = { winblend = 0 },
+      },
+      notification_history = {
+        border = 'rounded',
+        wo = { winblend = 0 },
+      },
+    },
     dashboard = {
       enabled = true,
       preset = {
@@ -98,14 +128,14 @@ return {
         marks = { layout = { preset = 'dropdown' } },
         -- Без превью, по центру с рамкой (как telescope dropdown + previewer=false)
         -- preset 'select' имеет встроенное hidden={'preview'}
-        buffers = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        recent = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        lines = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        pickers = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        keymaps = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        search_history = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        help = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
-        lsp_symbols = { layout = { preset = 'select', layout = { width = 0.6, height = 0.5 } } },
+        buffers = select(),
+        recent = select(),
+        lines = select(),
+        pickers = select(),
+        keymaps = select(),
+        search_history = select(),
+        help = select(),
+        lsp_symbols = select(),
       },
     },
     indent = {

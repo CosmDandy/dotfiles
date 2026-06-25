@@ -4,6 +4,12 @@ return {
   opts = {
     preset = 'modern',
     delay = 1000,
+    -- прятать из попапа маппинги без описания (безымянный плагинный шум)
+    filter = function(mapping)
+      return mapping.desc and mapping.desc ~= ''
+    end,
+    -- не всплывать в не-редакторских буферах (терминал/quickfix/help/…)
+    disable = { bt = { 'terminal', 'quickfix', 'help', 'nofile', 'prompt' } },
     icons = {
       mappings = false,
       keys = vim.g.have_nerd_font and {} or {
@@ -38,15 +44,14 @@ return {
       },
     },
     spec = {
-      { '<leader>c',  group = '[C]ode',     mode = { 'n', 'x' } },
-      { '<leader>d',  group = '[D]ocument' },
-      { '<leader>r',  group = '[R]ename' },
-      { '<leader>s',  group = '[S]earch' },
-      { '<leader>w',  group = '[W]orkspace' },
-      { '<leader>t',  group = '[T]ools' },
-      { '<leader>m',  group = '[M]ap' },
-      { '<leader>g',  group = '[G]it',      mode = { 'n', 'v' } },
-      { '<leader>gd', group = '[D]iff',     mode = { 'n', 'v' } },
+      { '<leader>c',  group = 'code',     mode = { 'n', 'x' } },
+      { '<leader>d',  group = 'document' },
+      { '<leader>r',  group = 'rename' },
+      { '<leader>s',  group = 'search' },
+      { '<leader>w',  proxy = '<c-w>', group = 'windows' },
+      { '<leader>t',  group = 'tools' },
+      { '<leader>g',  group = 'git',      mode = { 'n', 'v' } },
+      { '<leader>gd', group = 'diff',     mode = { 'n', 'v' } },
     },
   },
 }

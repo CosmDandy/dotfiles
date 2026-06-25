@@ -37,7 +37,7 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   desc = 'Highlight when yanking (copying) text',
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
   callback = function()
-    vim.highlight.on_yank()
+    vim.hl.on_yank()
   end,
 })
 
@@ -58,8 +58,8 @@ vim.api.nvim_create_autocmd('BufReadPost', {
 vim.api.nvim_create_autocmd({ 'FocusGained', 'TermClose', 'TermLeave' }, {
   desc = 'Check for external file changes',
   group = vim.api.nvim_create_augroup('checktime', { clear = true }),
-  callback = function()
-    if vim.o.buftype ~= 'nofile' then
+  callback = function(args)
+    if vim.bo[args.buf].buftype ~= 'nofile' then
       vim.cmd 'checktime'
     end
   end,
@@ -113,17 +113,3 @@ vim.api.nvim_create_user_command('SetYamlSchema', function()
     end
   end)
 end, { desc = 'Select YAML schema' })
-
--- Автоматическое определение темы при старте и возврате фокуса
-local function detect_terminal_background()
-  -- Отправляем OSC 11 запрос цвета фона терминала
-  io.write('\x1b]11;?\x1b\\')
-  io.flush()
-end
-
-vim.api.nvim_create_autocmd({ 'VimEnter', 'FocusGained' }, {
-  group = vim.api.nvim_create_augroup('auto-background-detection', { clear = true }),
-  callback = function()
-    detect_terminal_background()
-  end,
-})

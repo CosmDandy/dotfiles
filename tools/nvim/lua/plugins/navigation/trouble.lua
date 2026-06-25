@@ -49,34 +49,13 @@ return {
       function()
         if require('trouble').is_open() then
           require('trouble').next { skip_groups = true, jump = true }
+        else
+          vim.cmd.cnext()
         end
       end,
-      desc = 'Next trouble item',
+      desc = 'Next trouble/quickfix item',
     },
   },
-  opts = {
-    modes = {
-      -- Настраиваем режимы отображения
-      preview_float = {
-        mode = 'diagnostics',
-        preview = {
-          type = 'float',
-          relative = 'editor',
-          border = 'rounded',
-          title = 'Preview',
-          title_pos = 'center',
-          position = { 0, -2 },
-          size = { width = 0.5, height = 0.5 },
-          zindex = 200,
-        },
-      },
-    },
-    focus = true,
-    follow = true, -- следовать за курсором
-    restore = true, -- восстанавливать позицию
-    auto_close = false, -- автоматически закрывать
-    auto_open = false, -- автоматически открывать
-    auto_preview = true, -- автоматический preview
-    auto_refresh = true, -- автоматическое обновление
-  },
+  -- все опции (focus/follow/restore/auto_*) совпадали с дефолтом upstream
+  opts = {},
 }
