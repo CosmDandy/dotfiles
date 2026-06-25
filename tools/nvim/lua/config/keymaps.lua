@@ -5,14 +5,12 @@ local function map(mode, l, r, opts)
 end
 -- Basic keymaps
 map('n', '<Esc>', '<cmd>nohlsearch<CR>')
-map('n', '<leader>q', vim.diagnostic.setloclist, { desc = '[Q]uickfix' })
+map('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Diagnostics → loclist' })
 
 map('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
-map('n', '<C-y>', '<C-w><C-h>', { desc = 'Move focus to the left window' })
-map('n', '<C-e>', '<C-w><C-l>', { desc = 'Move focus to the right window' })
-map('n', '<C-h>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
-map('n', '<C-a>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
+-- Навигация по сплитам/пейнам — см. plugins/navigation/tmux-navigator.lua
+-- (C-y/C-h/C-a/C-e бесшовно прыгают и по nvim-сплитам, и по tmux-пейнам)
 
 map('n', '<leader>wd', '<cmd>delmarks!<CR>', { desc = '[D]elete marks', noremap = true, silent = true })
 

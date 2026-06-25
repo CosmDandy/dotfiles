@@ -24,4 +24,9 @@ require('lazy').setup({
   { import = 'plugins.tools' },
 }, {
   change_detection = { enabled = false },
+  performance = {
+    rtp = {
+      disabled_plugins = { 'gzip', 'tarPlugin', 'zipPlugin', 'tohtml', 'matchit', 'matchparen', 'rplugin' },
+    },
+  },
 })
