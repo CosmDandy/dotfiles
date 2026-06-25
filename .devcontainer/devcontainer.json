@@ -1,6 +1,6 @@
 {
   "name": "Dotfiles DevContainer",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "onCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
     "LANG": "en_US.UTF-8",
