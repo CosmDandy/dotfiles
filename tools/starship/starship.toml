@@ -19,7 +19,7 @@ format = '[$hostname]($style) in '
 
 [jobs]
 symbol = '✦'
-threshold = 1
+number_threshold = 1
 format = '[$symbol$number]($style) '
 
 [container]
@@ -45,6 +45,15 @@ only_with_files = true
 [nix_shell]
 format = '[$symbol$state]($style) '
 symbol = ' '
+
+[direnv]
+disabled = false
+symbol = ''
+format = '[$allowed]($style) '
+allowed_msg = ''
+not_allowed_msg = '󰚄 allow'
+denied_msg = '󰚄 denied'
+style = 'bold yellow'
 
 [helm]
 format = '[$symbol($version )]($style)'
