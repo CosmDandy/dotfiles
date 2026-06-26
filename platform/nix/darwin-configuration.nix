@@ -35,10 +35,10 @@
       # "yattee"
       # Разработка
       "ghostty"
-      "cursor"
+      # "cursor"
       "visual-studio-code"
       "devpod"
-      "utm"
+      # "utm"
       # AI инструменты
       # "chatgpt"
       # "claude"
@@ -55,7 +55,7 @@
       "ukelele"
       "betterdisplay"
       # "jordanbaird-ice"
-      "syncthing-app"
+      # "syncthing-app"
       # Дополнительные утилиты
       "flux-app"
       # Оконный менеджер
@@ -180,9 +180,9 @@
       wvous-tr-corner = 1;
       wvous-bl-corner = 1;
       wvous-br-corner = 1;
-      persistent-apps = [
-        "/System/Applications/Launchpad.app"
-      ];
+      # persistent-apps = [
+      #   "/System/Applications/Launchpad.app"
+      # ];
       persistent-others = [
         "/Users/${config.system.primaryUser}/Downloads"
       ];
