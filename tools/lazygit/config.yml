@@ -19,5 +19,4 @@ git:
   log:
     showGraph: always
 os:
-  editCommand: nvim
-  editCommandTemplate: "{{editor}} {{filename}}"
+  editPreset: nvim
