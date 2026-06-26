@@ -132,6 +132,7 @@ return {
 
     local function get_fileinfo()
       local filename = vim.fn.expand '%' == '' and 'GO BIG OR GO HOME' or vim.fn.expand '%:~:.'
+      filename = filename:gsub('^oil://', '')
       filename = ' ' .. filename .. ' '
 
       -- Красное имя файла если модифицирован, такое же как filetype если нет
