@@ -34,7 +34,6 @@ links=(
   "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
   "$DOTFILES_ROOT/tools/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  "$DOTFILES_ROOT/tools/k9s:$XDG_CONFIG_HOME/k9s"
   "$DOTFILES_ROOT/tools/ghostty/config:$XDG_CONFIG_HOME/ghostty/config"
   "$DOTFILES_ROOT/tools/vscode/settings.json:$HOME/Library/Application Support/Cursor/User/settings.json"
   "$DOTFILES_ROOT/tools/vscode/keybindings.json:$HOME/Library/Application Support/Cursor/User/keybindings.json"

@@ -1,0 +1,34 @@
+# k9s resource aliases — короткие имена для :-команды.
+aliases:
+  # Workloads
+  dp: deployments
+  sts: statefulsets
+  ds: daemonsets
+  rs: replicasets
+  cj: cronjobs
+  # Config / storage
+  cm: configmaps
+  sec: secrets
+  pvc: persistentvolumeclaims
+  pv: persistentvolumes
+  # Network
+  ing: ingresses
+  np: networkpolicies
+  ep: endpoints
+  # Autoscaling
+  hpa: horizontalpodautoscalers
+  pdb: poddisruptionbudgets
+  # RBAC
+  sa: serviceaccounts
+  ro: roles
+  rb: rolebindings
+  cr: clusterroles
+  crb: clusterrolebindings
+  # Meta
+  crd: customresourcedefinitions
+  # GitOps CRDs (Flux / ArgoCD)
+  ks: kustomizations
+  hr: helmreleases
+  gitrepo: gitrepositories
+  app: applications
+  appproj: appprojects

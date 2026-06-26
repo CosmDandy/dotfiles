@@ -71,6 +71,11 @@ if [[ "$PROFILE" == "full" ]]; then
     kubernetes-helm
     k9s
     dive
+    stern          # мультипод-логи (плагин k9s)
+    kubectl-neat   # чистый YAML (плагин k9s)
+    fluxcd         # flux GitOps (плагин k9s)
+    argocd         # argocd GitOps (плагин k9s)
+    trivy          # скан образов (плагин k9s)
     lnav
     yq-go
   )

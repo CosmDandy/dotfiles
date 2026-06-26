@@ -15,13 +15,13 @@ k9s:
   skipLatestRevCheck: false
   disablePodCounting: false
   shellPod:
-    image: busybox:1.35.0
+    image: nicolaka/netshoot:latest
     namespace: default
     limits:
-      cpu: 100m
-      memory: 100Mi
+      cpu: 200m
+      memory: 200Mi
   imageScans:
-    enable: false
+    enable: true
   logger:
     tail: 200
     buffer: 5000

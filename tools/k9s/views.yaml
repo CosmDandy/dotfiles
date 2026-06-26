@@ -1,0 +1,14 @@
+# k9s custom columns. Определение columns заменяет дефолтный набор целиком.
+views:
+  v1/pods:
+    columns:
+      - NAME
+      - READY
+      - STATUS
+      - RESTARTS
+      - CPU
+      - MEM
+      - IP
+      - NODE
+      - QOS
+      - AGE
