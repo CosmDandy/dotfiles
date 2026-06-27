@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "autoUpdatesChannel": "latest",
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
     "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
@@ -334,6 +333,9 @@
       "Bash(docker-compose restart:*)"
     ]
   },
+  "fallbackModel": [
+    "sonnet"
+  ],
   "hooks": {
     "Stop": [
       {
@@ -375,16 +377,17 @@
     "command": "~/.claude/statusline.sh",
     "refreshInterval": 15
   },
-  "outputStyle": "learning",
+  "outputStyle": "default",
+  "tui": "fullscreen",
   "language": "Russian",
   "feedbackSurveyRate": 0,
   "effortLevel": "medium",
+  "autoUpdatesChannel": "latest",
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
   "voiceEnabled": true,
-  "fallbackModel": [
-    "sonnet"
-  ]
+  "agentPushNotifEnabled": true,
+  "inputNeededNotifEnabled": true
 }
