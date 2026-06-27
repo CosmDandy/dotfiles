@@ -70,6 +70,8 @@ if [[ "$PROFILE" == "full" ]]; then
     ansible
     kubectl
     kubernetes-helm
+    kubectx        # переключение context/namespace (kubectx/kubens, с fzf — интерактивно)
+    talosctl       # управление Talos Linux кластерами
     k9s
     dive
     stern          # мультипод-логи (плагин k9s)
@@ -127,6 +129,8 @@ dirs=(
   "$HOME/.zsh/completions"
   "$HOME/.claude"
   "$HOME/.lnav/configs/default"
+  "$HOME/.kube/configs"
+  "$HOME/.talos"
 )
 
 links=(
