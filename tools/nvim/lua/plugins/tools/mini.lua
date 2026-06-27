@@ -263,6 +263,12 @@ return {
     statusline.setup {
       content = {
         active = function()
+          -- Терминалы (lazygit/snacks, claude-code, обычный терм): пустой статуслайн.
+          -- Путь, filetype, диагностика, позиция курсора для интерактивного TUI — шум.
+          if vim.bo.buftype == 'terminal' then
+            return ''
+          end
+
           local mode = vim.api.nvim_get_mode().mode
           local mode_name = mode_names[mode] or mode
           local mode_highlight = mode_hl[mode] or 'MiniStatuslineMode'
