@@ -182,6 +182,28 @@ if ! command -v ccusage &>/dev/null; then
   npm install -g --prefix "$HOME/.local" ccusage
 fi
 
+# CRD JSON-схемы для yamlls кэшируем локально (оффлайн + нет сетевого лага на
+# первом открытии после рестарта). yamlls.lua сам берёт file://-кэш если он есть,
+# иначе фолбэк на URL. Версии пиннятся образом dev-контейнера.
+print_section "Caching YAML JSON-schemas for offline LSP"
+SCHEMA_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/yaml-schemas"
+CRD_BASE="https://raw.githubusercontent.com/datreeio/CRDs-catalog/main"
+crd_schemas=(
+  argoproj.io/application_v1alpha1.json
+  gateway.networking.k8s.io/gateway_v1.json
+  gateway.networking.k8s.io/gatewayclass_v1.json
+  gateway.networking.k8s.io/httproute_v1.json
+  gateway.networking.k8s.io/referencegrant_v1beta1.json
+)
+for rel in $crd_schemas; do
+  mkdir -p "$SCHEMA_DIR/${rel:h}"
+  if curl -fsSL "$CRD_BASE/$rel" -o "$SCHEMA_DIR/$rel"; then
+    echo "  ✓ $rel"
+  else
+    echo "  ✗ $rel (не скачана — yamlls откатится на URL)"
+  fi
+done
+
 print_section "Installing nvim plugins"
 nvim --headless "+Lazy! sync" +qa
 
