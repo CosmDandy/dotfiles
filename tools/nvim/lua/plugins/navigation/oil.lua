@@ -36,6 +36,32 @@ return {
       },
     },
   },
+  config = function(_, opts)
+    require('oil').setup(opts)
+
+    -- при создании новой директории сразу кладём в неё .gitkeep,
+    -- чтобы пустую папку можно было закоммитить в git
+    vim.api.nvim_create_autocmd('User', {
+      pattern = 'OilActionsPost',
+      callback = function(event)
+        if event.data.err then
+          return
+        end
+        for _, action in ipairs(event.data.actions or {}) do
+          if action.type == 'create' and action.entry_type == 'directory' then
+            local scheme, dir = require('oil.util').parse_url(action.url)
+            -- только локальная ФС: на ssh/remote-адаптерах путь не файловый
+            if scheme == 'oil://' and dir then
+              local path = vim.fn.fnamemodify(vim.uri_decode(dir), ':p') .. '.gitkeep'
+              if vim.fn.filereadable(path) == 0 then
+                vim.fn.writefile({}, path)
+              end
+            end
+          end
+        end
+      end,
+    })
+  end,
   dependencies = {
     { 'echasnovski/mini.icons', opts = {} },
   },
