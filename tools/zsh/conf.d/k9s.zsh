@@ -1,5 +1,5 @@
 # k9s: автопереключение Solarized dark/light под тему терминала.
-# Базовый скин — Solarized Dark; для светлого фона добавляем --invert => Light.
+# Активный скин — симлинк skins/solarized.yaml; обёртка переводит его на solarized-{dark,light}.yaml.
 # Фон определяем запросом OSC 11 у терминала (работает и на маке, и в контейнере).
 # Возврат: 0 — светлый фон, 1 — тёмный, 2 — терминал не ответил.
 _k9s_term_is_light() {
@@ -38,26 +38,23 @@ _k9s_term_is_light() {
 }
 
 k9s() {
-    local invert
-    case "$K9S_INVERT" in
-        1|true|light) invert=1 ;;          # ручной override: светлая
-        0|false|dark) invert=0 ;;          # ручной override: тёмная
+    local theme skindir="${XDG_CONFIG_HOME:-$HOME/.config}/k9s/skins"
+    case "$K9S_THEME" in
+        light|dark) theme="$K9S_THEME" ;;      # ручной override: K9S_THEME=light|dark
         *)
             _k9s_term_is_light
             case $? in
-                0) invert=1 ;;             # светлый фон терминала
-                1) invert=0 ;;             # тёмный фон терминала
-                *)                         # терминал не ответил — fallback на тему macOS
+                0) theme=light ;;              # светлый фон терминала
+                1) theme=dark ;;               # тёмный фон терминала
+                *)                             # терминал не ответил — fallback на тему macOS
                     if [[ "$OSTYPE" == darwin* ]] && ! defaults read -g AppleInterfaceStyle &>/dev/null; then
-                        invert=1
+                        theme=light
                     else
-                        invert=0
+                        theme=dark
                     fi ;;
             esac ;;
     esac
-    if (( invert )); then
-        command k9s --invert "$@"
-    else
-        command k9s "$@"
-    fi
+    # config.yaml держит skin: solarized; переводим симлинк на выбранный скин
+    ln -sf "solarized-${theme}.yaml" "$skindir/solarized.yaml" 2>/dev/null
+    command k9s "$@"
 }

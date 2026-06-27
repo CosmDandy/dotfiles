@@ -165,6 +165,10 @@ create_directories "${dirs[@]}"
 print_section "Create symbolic links"
 create_symlinks "${links[@]}"
 
+# k9s: активный скин — управляемый симлинк (обёртка k9s.zsh переключает dark/light по теме).
+# Создаём дефолт (dark), чтобы и прямой `command k9s` имел скин до первого запуска обёртки.
+ln -sf solarized-dark.yaml "$XDG_CONFIG_HOME/k9s/skins/solarized.yaml"
+
 print_section "Installing tmux plugins"
 mkdir -p ~/.tmux/plugins
 if [[ ! -d ~/.tmux/plugins/tpm ]]; then

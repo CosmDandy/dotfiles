@@ -1,0 +1,110 @@
+# Solarized Light для k9s — маппинг вдохновлён nvim-темой solarized-osaka (tools/nvim).
+# Каноничная палитра https://ethanschoonover.com/solarized/
+# base03 #002b36  base02 #073642  base01 #586e75  base00 #657b83
+# base0  #839496  base1  #93a1a1  base2  #eee8d5  base3  #fdf6e3
+# Парный тёмный скин: solarized-dark.yaml — та же структура, зеркальные нейтрали.
+
+# --- нейтрали (light) ---
+bg:       &bg       default   # прозрачный — фон берётся из терминала
+base:     &base     "#fdf6e3" # base3  — база фона: текст НА насыщенных акцентах
+contrast: &contrast "#002b36" # base03 — инверс: текст на highlight-подложке (hl)
+hl:       &hl       "#eee8d5" # base2  — подложка выделения/курсора
+fg:       &fg       "#657b83" # base00 — основной текст
+fgEmph:   &fgEmph   "#586e75" # base01 — акцентный текст
+fgMuted:  &fgMuted  "#93a1a1" # base1  — приглушённый (рамки/подписи/suggest)
+# --- акценты (общие для обоих скинов) ---
+red:      &red      "#dc322f"
+orange:   &orange   "#cb4b16"
+yellow:   &yellow   "#b58900"
+green:    &green    "#859900"
+cyan:     &cyan     "#2aa198"
+blue:     &blue     "#268bd2"
+magenta:  &magenta  "#d33682"
+
+k9s:
+  body:
+    fgColor: *fg
+    bgColor: *bg
+    logoColor: *blue
+    logoColorMsg: *fgMuted
+  prompt:
+    fgColor: *fg
+    bgColor: *bg
+    suggestColor: *fgMuted
+  info:
+    fgColor: *blue
+    sectionColor: *fgMuted
+  dialog:
+    fgColor: *fg
+    bgColor: *bg
+    buttonFgColor: *base
+    buttonBgColor: *blue
+    buttonFocusFgColor: *base
+    buttonFocusBgColor: *magenta
+    labelFgColor: *yellow
+    fieldFgColor: *fg
+  frame:
+    border:
+      fgColor: *fgMuted
+      focusColor: *blue
+    menu:
+      fgColor: *fg
+      keyColor: *blue
+      numKeyColor: *blue
+    crumbs:
+      fgColor: *contrast
+      bgColor: *hl
+      activeColor: *yellow
+    status:
+      newColor: *cyan
+      modifyColor: *blue
+      addColor: *green
+      errorColor: *red
+      highlightColor: *orange
+      killColor: *magenta
+      completedColor: *fgMuted
+    title:
+      fgColor: *fg
+      bgColor: *hl
+      highlightColor: *blue
+      counterColor: *blue
+      filterColor: *cyan
+  views:
+    charts:
+      bgColor: *bg
+      dialBgColor: *bg       # подложка плиток-гейджей во вью Pulses
+      chartBgColor: *bg
+      focusFgColor: *base      # фокус-плитка: яркий текст (база фона) на акцент-чипе
+      focusBgColor: *magenta
+      defaultDialColors:
+        - *blue                # подпись+гейдж: яркий синий, виден на обеих темах
+        - *red
+      defaultChartColors:
+        - *blue
+        - *cyan
+    table:
+      fgColor: *fg
+      bgColor: *bg
+      cursorFgColor: *contrast
+      cursorBgColor: *hl
+      markColor: *yellow
+      header:
+        fgColor: *fgEmph
+        bgColor: *bg
+        sorterColor: *blue
+    xray:
+      fgColor: *fg
+      bgColor: *bg
+      cursorColor: *hl
+      graphicColor: *blue
+      showIcons: false
+    yaml:
+      keyColor: *blue
+      colonColor: *fgMuted
+      valueColor: *fg
+    logs:
+      fgColor: *fg
+      bgColor: *bg
+      indicator:
+        fgColor: *base
+        bgColor: *blue
