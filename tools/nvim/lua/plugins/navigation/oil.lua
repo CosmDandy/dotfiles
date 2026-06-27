@@ -7,8 +7,8 @@ return {
   opts = {
     -- следить за изменениями директории (создание/удаление файлов в терминале, git checkout)
     watch_for_changes = true,
-    -- удаление в системную корзину, а не безвозвратно
-    delete_to_trash = true,
+    -- удаление безвозвратно (не в системную корзину)
+    delete_to_trash = false,
     skip_confirm_for_simple_edits = true,
     -- при перемещении файлов oil дёргает LSP willRename → обновляются ссылки/импорты
     lsp_file_methods = { autosave_changes = true },

@@ -26,7 +26,7 @@ require('lazy').setup({
   change_detection = { enabled = false },
   performance = {
     rtp = {
-      disabled_plugins = { 'gzip', 'tarPlugin', 'zipPlugin', 'tohtml', 'matchit', 'matchparen', 'rplugin' },
+      disabled_plugins = { 'gzip', 'tarPlugin', 'zipPlugin', 'tohtml', 'matchit', 'rplugin' },
     },
   },
 })
