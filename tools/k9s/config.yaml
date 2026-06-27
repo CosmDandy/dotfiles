@@ -1,6 +1,6 @@
 k9s:
   liveViewAutoRefresh: true
-  refreshRate: 2
+  refreshRate: 10
   maxConnRetry: 5
   readOnly: false
   noExitOnCtrlC: false
@@ -21,7 +21,7 @@ k9s:
       cpu: 200m
       memory: 200Mi
   imageScans:
-    enable: true
+    enable: false
   logger:
     tail: 200
     buffer: 5000

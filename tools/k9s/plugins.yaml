@@ -62,39 +62,38 @@ plugins:
     args:
       - $COL-IMAGE
 
-  # Flux: reconcile Kustomization
-  flux-reconcile-ks:
-    shortCut: Ctrl-R
-    description: Flux reconcile
-    scopes:
-      - kustomizations
-    command: flux
-    background: false
-    args:
-      - reconcile
-      - kustomization
-      - $NAME
-      - -n
-      - $NAMESPACE
-      - --context
-      - $CONTEXT
-
-  # Flux: reconcile HelmRelease
-  flux-reconcile-hr:
-    shortCut: Ctrl-R
-    description: Flux reconcile
-    scopes:
-      - helmreleases
-    command: flux
-    background: false
-    args:
-      - reconcile
-      - helmrelease
-      - $NAME
-      - -n
-      - $NAMESPACE
-      - --context
-      - $CONTEXT
+  # Flux-плагины отключены: local-lab на ArgoCD (GitOps), не Flux. Раскомментируй при переходе на Flux.
+  # flux-reconcile-ks:
+  #   shortCut: Ctrl-R
+  #   description: Flux reconcile
+  #   scopes:
+  #     - kustomizations
+  #   command: flux
+  #   background: false
+  #   args:
+  #     - reconcile
+  #     - kustomization
+  #     - $NAME
+  #     - -n
+  #     - $NAMESPACE
+  #     - --context
+  #     - $CONTEXT
+  #
+  # flux-reconcile-hr:
+  #   shortCut: Ctrl-R
+  #   description: Flux reconcile
+  #   scopes:
+  #     - helmreleases
+  #   command: flux
+  #   background: false
+  #   args:
+  #     - reconcile
+  #     - helmrelease
+  #     - $NAME
+  #     - -n
+  #     - $NAMESPACE
+  #     - --context
+  #     - $CONTEXT
 
   # ArgoCD: sync приложения (нужен argocd login)
   argocd-sync:
