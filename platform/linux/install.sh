@@ -40,6 +40,7 @@ packages=(
   nodejs_24
   lua
   luarocks
+  tree-sitter
   # CLI
   eza
   fd
@@ -170,11 +171,11 @@ if [[ ! -d ~/.tmux/plugins/tpm ]]; then
   git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 fi
 
-print_section "Installing tree-sitter CLI"
-# nvim-treesitter (main) компилирует парсеры через CLI tree-sitter.
-# mason-пакет tree-sitter-cli падает на aarch64 — ставим через npm в ~/.local.
-if ! command -v tree-sitter &>/dev/null; then
-  npm install -g --prefix "$HOME/.local" tree-sitter-cli
+print_section "Installing ccusage (statusline cost/burn)"
+# ccusage НЕ в nixpkgs (только npm) — ставим прямым бинарём в ~/.local, чтобы statusline.sh
+# звал его напрямую, а не поднимал npx на каждый рендер. tree-sitter теперь идёт через nix (выше).
+if ! command -v ccusage &>/dev/null; then
+  npm install -g --prefix "$HOME/.local" ccusage
 fi
 
 print_section "Installing nvim plugins"

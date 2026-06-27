@@ -144,9 +144,22 @@ fi
 
 # ccusage cost/burn — only computed for the full (wide) tier (slow npx call)
 compute_cost() {
-  local NPXBIN ccusage_json active cost burn cost_fmt burn_fmt burn_color burn_int
-  NPXBIN=$(command -v npx 2>/dev/null || echo "/run/current-system/sw/bin/npx")
-  ccusage_json=$("$NPXBIN" --prefer-offline ccusage blocks --json 2>/dev/null)
+  local cache CCBIN ccusage_json active cost burn cost_fmt burn_fmt burn_color burn_int
+  # Кэш на 60с: ccusage дорогой (поднимает node + читает транскрипты). Без кэша он
+  # спавнился на КАЖДЫЙ рендер статус-бара ×N сессий и стакался под нагрузкой.
+  cache="${TMPDIR:-/tmp}/claude-statusline-ccusage.json"
+  if [ -f "$cache" ] && [ "$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))" -lt 60 ]; then
+    ccusage_json=$(cat "$cache")
+  else
+    touch "$cache" 2>/dev/null  # пометить свежим, чтобы параллельный рендер не запускал второй ccusage
+    CCBIN=$(command -v ccusage 2>/dev/null)  # прямой бинарь вместо npx-резолва на каждый вызов
+    if [ -n "$CCBIN" ]; then
+      ccusage_json=$("$CCBIN" blocks --json 2>/dev/null)
+    else
+      ccusage_json=$(npx --prefer-offline ccusage blocks --json 2>/dev/null)
+    fi
+    [ -n "$ccusage_json" ] && printf '%s' "$ccusage_json" >| "$cache"
+  fi
   [ -n "$ccusage_json" ] || return 0
   active=$(echo "$ccusage_json" | jq -c '[.blocks[] | select(.isActive==true)] | last // empty')
   [ -n "$active" ] || return 0
