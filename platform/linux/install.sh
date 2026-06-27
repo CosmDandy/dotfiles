@@ -49,6 +49,8 @@ packages=(
   neovim
   tmux
   atuin
+  fzf            # интерактивный выбор для kubectx/kubens и claude/custom/setup.sh
+  tmuxPlugins.tmux-thumbs   # flash-метки по экрану (prefix+f), nix-сборка без cargo
   btop
   lazygit
   lazydocker
