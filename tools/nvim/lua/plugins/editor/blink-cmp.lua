@@ -15,7 +15,8 @@ return {
   opts = {
     keymap = {
       preset = 'default',
-      ['<Tab>'] = { 'accept', 'fallback' },
+      ['<Tab>'] = { 'accept', 'snippet_forward', 'fallback' },
+      ['<S-Tab>'] = { 'snippet_backward', 'fallback' },
       ['<C-n>'] = { 'select_next', 'fallback' },
       ['<C-p>'] = { 'select_prev', 'fallback' },
       ['<C-l>'] = { 'snippet_forward', 'fallback' },
