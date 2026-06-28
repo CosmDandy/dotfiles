@@ -104,8 +104,8 @@ return {
           header = '',
           focusable = false,
         },
-        -- virtual_lines текущей строки включаем с задержкой (см. автокоманду ниже)
-        virtual_lines = false,
+        -- по умолчанию показываем все диагностики постоянно (vl_all ниже); toggle <leader>tD
+        virtual_lines = true,
         severity_sort = true,
         -- пересчитывать диагностику прямо во время ввода (свежесть важнее мерцания)
         update_in_insert = true,
@@ -114,7 +114,7 @@ return {
       -- virtual_lines под курсором появляются через 500мс покоя (не дёргают вьюпорт при скролле).
       -- vl_auto — авто-показ под курсором (toggle <leader>td); vl_all — «развернуть ВСЕ» (<leader>tD)
       local vl_auto = true
-      local vl_all = false
+      local vl_all = true
       local vl_shown = false
       local vl_timer = assert((vim.uv or vim.loop).new_timer())
       vim.api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, {
