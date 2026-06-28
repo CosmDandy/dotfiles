@@ -382,6 +382,7 @@
   "language": "Russian",
   "feedbackSurveyRate": 0,
   "effortLevel": "medium",
+  "autoUpdates": true,
   "autoUpdatesChannel": "latest",
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
