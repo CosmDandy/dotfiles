@@ -13,6 +13,8 @@ return {
 
     -- search
     { '<leader>sh', function() Snacks.picker.search_history() end, desc = '[h]istory' },
+    { '<leader>s:', function() Snacks.picker.commands() end, desc = '[:] Command palette' },
+    { '<leader>s;', function() Snacks.picker.command_history() end, desc = '[;] Command history' },
     { '<leader>sH', function() Snacks.picker.help() end, desc = '[H]elp' },
     { '<leader>sk', function() Snacks.picker.keymaps() end, desc = '[K]eymaps' },
     { '<leader>sf', function() Snacks.picker.files() end, desc = '[F]iles' },
@@ -41,7 +43,6 @@ return {
     { '<leader>gl', function() Snacks.picker.git_log_line() end, desc = '[l]ine history (blame)' },
     { '<leader>sc', function() Snacks.picker.lsp_incoming_calls() end, desc = '[c]alls incoming' },
     { '<leader>sC', function() Snacks.picker.lsp_outgoing_calls() end, desc = '[C]alls outgoing' },
-    { '<leader>E', function() Snacks.picker.explorer() end, desc = '[E]xplorer' },
     { '<leader>sR', function() Snacks.picker.registers() end, desc = '[R]egisters' },
 
     -- notifications (snacks.notifier — заменил :Noice history/dismiss)

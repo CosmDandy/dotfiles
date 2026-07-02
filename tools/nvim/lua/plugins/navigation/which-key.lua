@@ -3,7 +3,7 @@ return {
   event = 'VeryLazy',
   opts = {
     preset = 'modern',
-    delay = 1000,
+    delay = 300,
     -- прятать из попапа маппинги без описания (безымянный плагинный шум)
     filter = function(mapping)
       return mapping.desc and mapping.desc ~= ''

@@ -109,7 +109,7 @@ return {
       formatters = {
         file = {
           filename_first = true,
-          truncate = 60,
+          truncate = 80,
         },
       },
       sources = {
@@ -122,7 +122,7 @@ return {
         grep_word = with_exclude(vertical(0.6)),
         diagnostics = vertical(0.6),
         git_log = vertical(0.6),
-        git_log_file = vertical(0.6),
+        git_log_file = vertical(0.8),
         git_branches = vertical(0.6),
         -- marks — с превью (видно контекст метки), компактно по центру
         marks = { layout = { preset = 'dropdown' } },
@@ -130,12 +130,34 @@ return {
         -- preset 'select' имеет встроенное hidden={'preview'}
         buffers = select(),
         recent = select(),
-        lines = select(),
         pickers = select(),
         keymaps = select(),
         search_history = select(),
-        help = select(),
-        lsp_symbols = select(),
+        -- поиск по строкам буфера — превью снизу (длинные строки видны целиком)
+        lines = vertical(0.6),
+        -- :help — превью справа (текст статьи виден до прыжка)
+        help = { layout = { preset = 'default' } },
+        -- символы документа — список слева во всю высоту, превью кода справа.
+        -- filter=true для конфиг-ФТ: их структуру LSP размечает как Object/Key/Variable,
+        -- а дефолтный фильтр snacks эти типы прячет (оттого <leader>ds там пустой)
+        lsp_symbols = {
+          layout = { preset = 'default' },
+          filter = {
+            yaml = true,
+            json = true,
+            terraform = true,
+            helm = true,
+            dockerfile = true,
+          },
+        },
+        -- символы воркспейса — вертикально: список во всю ширину, видны пути к файлам
+        lsp_workspace_symbols = vertical(0.5),
+        -- call hierarchy — код вызывающей/вызываемой функции в превью справа
+        lsp_incoming_calls = { layout = { preset = 'default' } },
+        lsp_outgoing_calls = { layout = { preset = 'default' } },
+        -- git status/diff — превью диффа снизу (важнее списка файлов)
+        git_status = vertical(0.6),
+        git_diff = vertical(0.7),
       },
     },
     indent = {

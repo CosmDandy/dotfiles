@@ -72,7 +72,6 @@ return {
           map('<leader>e', vim.diagnostic.open_float, 'Show [E]rror')
           map('<leader>dw', vim.lsp.buf.workspace_diagnostics, '[D]iagnostics [W]orkspace')
 
-          map('<leader>li', '<cmd>LspInfo<CR>', '[L]SP [I]nfo')
           map('<leader>lr', '<cmd>LspRestart<CR>', '[L]SP [R]estart')
 
           local client = vim.lsp.get_client_by_id(event.data.client_id)
