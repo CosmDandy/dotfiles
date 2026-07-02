@@ -7,11 +7,12 @@ fullscreen = true
 mouse-hide-while-typing = true
 clipboard-paste-protection = false
 
-# keyboard-first: делаем мышь бесполезной, не запрещая физически
-copy-on-select = false          # выделение мышью ничего не копирует
-cursor-click-to-move = false    # клик в промпте не двигает курсор
-mouse-scroll-multiplier = 0.01  # колесо прокрутки практически мёртвое
-mouse-reporting = false         # приложения не получают события мыши
+# keyboard-first: нейтрализуем мышь, но оставляем живой скролл
+# (Claude Code/nvim/TUI листаются колесом через mouse-reporting)
+# выделение мышью ничего не копирует
+copy-on-select = false
+# клик в промпте не двигает курсор
+cursor-click-to-move = false
 
 macos-option-as-alt = true
 desktop-notifications = true
