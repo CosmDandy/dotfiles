@@ -13,6 +13,12 @@ format = '\([$state( $progress_current/$progress_total)]($style)\) '
 disabled = false
 format = '[$status]($style) '
 
+[username]
+show_always = false
+style_user = 'bold cyan'
+style_root = 'bold red'
+format = '[$user]($style) '
+
 [hostname]
 ssh_only = true
 format = '[$hostname]($style) in '
@@ -23,11 +29,27 @@ number_threshold = 1
 format = '[$symbol$number]($style) '
 
 [container]
+symbol = '󰆦'
 format = '[$symbol ]($style) '
+
+[custom.vm]
+when = "systemd-detect-virt -v -q && ! systemd-detect-virt -c -q"
+symbol = '󰒋'
+format = '[$symbol ]($style) '
+style = 'bold yellow'
+shell = ["bash", "--noprofile", "--norc"]
 
 [python]
 format = '[${symbol}(${version} )(\($virtualenv\))]($style) '
 symbol = ' '
+
+[golang]
+format = '[$symbol($version )]($style) '
+symbol = "\ue627 "
+
+[rust]
+format = '[$symbol($version )]($style) '
+symbol = "\ue68b "
 
 [kubernetes]
 disabled = false
@@ -56,7 +78,7 @@ denied_msg = '󰚄 denied'
 style = 'bold yellow'
 
 [helm]
-format = '[$symbol($version )]($style)'
+format = '[$symbol($version )]($style) '
 
 [aws]
 format = '[$symbol($profile )(\($region\))]($style) '
@@ -65,6 +87,11 @@ symbol = ' '
 [gcloud]
 format = '[$symbol$project(\($region\))]($style) '
 symbol = '󱇶 '
+
+[azure]
+disabled = false
+format = '[$symbol($subscription )]($style) '
+symbol = "\U000F0805 "
 
 [battery]
 full_symbol = '󰁹 '
@@ -81,3 +108,9 @@ style = 'bold red'
 min_time = 3_000
 format = '[$duration]($style) '
 style = 'yellow'
+
+[sudo]
+disabled = false
+format = '[$symbol]($style) '
+symbol = "\U000F0423 "
+style = 'bold red'
