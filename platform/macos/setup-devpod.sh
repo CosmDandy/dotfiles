@@ -15,10 +15,10 @@ devpod ide use none
 # Необходимо добавить указания .files конкретного
 
 print_section "Setting up local provider: local-docker"
-devpod provider add docker --name local-docker --use
+devpod provider add docker --name local-docker --use -o INACTIVITY_TIMEOUT=1h
 
-print_section "Setting up ssh provider: work-d-01-ssh"
-devpod provider add ssh --name work-d-01-ssh -o HOST=work-d-01
+print_section "Setting up ssh provider: kvt-d-01-ssh"
+devpod provider add ssh --name kvt-d-01-ssh -o HOST=kvt-d-01
 
 print_section "Setting up default provider: local-docker"
 devpod provider use local-docker
