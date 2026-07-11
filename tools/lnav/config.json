@@ -1,7 +1,7 @@
 {
   "$schema": "https://lnav.org/schemas/config-v1.schema.json",
   "ui": {
-    "theme": "monokai",
+    "theme": "solarized-dark",
     "keymap": "default",
     "clock-format": "%Y-%m-%d %H:%M:%S"
   },
