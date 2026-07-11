@@ -17,6 +17,9 @@ source "$PLATFORM_DIR/common.sh"
 
 "$DOTFILES_ROOT/platform/macos/setup-symlinks.sh"
 
+print_section "Applying OrbStack configuration"
+"$DOTFILES_ROOT/tools/orbstack/apply.sh"
+
 print_section "Installing Claude Code (native, self-updating binary)"
 curl -fsSL https://claude.ai/install.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
