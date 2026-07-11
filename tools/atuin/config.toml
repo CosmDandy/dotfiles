@@ -144,7 +144,7 @@ show_tabs = false
 ## 3. Slack oauth tokens (bot, user)
 ## 4. Slack webhooks
 ## 5. Stripe live/test keys
-# secrets_filter = true
+secrets_filter = true
 
 ## Defaults to true. If enabled, upon hitting enter Atuin will immediately execute the command. Press tab to return to the shell and edit.
 # This applies for new installs. Old installs will keep the old behaviour unless configured otherwise.
@@ -279,4 +279,4 @@ records = true
 # filters = [ "global", "host", "session", "workspace", "directory" ]
 
 [ai]
-enabled = true
+enabled = false
