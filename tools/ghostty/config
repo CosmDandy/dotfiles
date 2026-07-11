@@ -5,7 +5,9 @@ cursor-color = 2aa198
 fullscreen = true
 
 mouse-hide-while-typing = true
-clipboard-paste-protection = false
+clipboard-paste-protection = true
+# OSC 52: приложения (nvim/tmux/Claude Code) читают буфер без запроса-диалога.
+clipboard-read = allow
 
 # Заголовок вкладки отдаём скрипту tab-title.zsh (иконки VM/контейнера).
 # Отключаем только title-фичу; cursor/path/etc остаются.
@@ -24,5 +26,10 @@ notify-on-command-finish = unfocused
 notify-on-command-finish-after = 10s
 bell-features = system,attention,title,border
 keybind = shift+enter=text:\x1b\r
+
+# Quick Terminal (Quake-стиль): выезжает сверху по глобальному Option+F5, поверх любого приложения.
+# Глобальный бинд требует разрешения Ghostty в System Settings → Privacy → Accessibility.
+quick-terminal-position = top
+keybind = global:alt+f5=toggle_quick_terminal
 
 font-family = "JetBrainsMono Nerd Font"
