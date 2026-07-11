@@ -1,4 +1,8 @@
 add_newline = false
+palette = "solarized"
+# $all — все модули в дефолтном порядке; ${custom.vm} выносим в начало 2-й строки (к ❯),
+# чтобы server-иконка вставала как контейнерная, а не хвостом на 1-й строке.
+format = "$all${custom.vm}$character"
 
 [git_branch]
 format = 'on [$branch(:$remote_branch)]($style) '
@@ -29,13 +33,13 @@ number_threshold = 1
 format = '[$symbol$number]($style) '
 
 [container]
-symbol = '󰆦'
-format = '[$symbol ]($style) '
+symbol = '󰆧'
+format = '[$symbol]($style) '
 
 [custom.vm]
 when = "systemd-detect-virt -v -q && ! systemd-detect-virt -c -q"
 symbol = '󰒋'
-format = '[$symbol ]($style) '
+format = '[$symbol]($style) '
 style = 'bold yellow'
 shell = ["bash", "--noprofile", "--norc"]
 
@@ -114,3 +118,24 @@ disabled = false
 format = '[$symbol]($style) '
 symbol = "\U000F0423 "
 style = 'bold red'
+
+[palettes.solarized]
+# accent-цвета Solarized — читаемы и на light, и на dark фоне
+red     = "#dc322f"
+orange  = "#cb4b16"
+yellow  = "#b58900"
+green   = "#859900"
+cyan    = "#2aa198"
+blue    = "#268bd2"
+violet  = "#6c71c4"
+magenta = "#d33682"
+purple  = "#6c71c4"
+# base-тона (base03/02 тёмные, base2/3 светлые)
+base03  = "#002b36"
+base02  = "#073642"
+base01  = "#586e75"
+base00  = "#657b83"
+base0   = "#839496"
+base1   = "#93a1a1"
+base2   = "#eee8d5"
+base3   = "#fdf6e3"
