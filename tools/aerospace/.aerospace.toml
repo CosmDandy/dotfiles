@@ -17,6 +17,9 @@ config-version = 2
 # Start AeroSpace at login
 start-at-login = true
 
+# Автоперезагрузка конфига при сохранении (после включения нужен один reload вручную).
+auto-reload-config = true
+
 # Normalizations. See: https://nikitabobko.github.io/AeroSpace/guide#normalization
 enable-normalization-flatten-containers = true
 enable-normalization-opposite-orientation-for-nested-containers = true
