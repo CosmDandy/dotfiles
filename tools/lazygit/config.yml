@@ -9,6 +9,30 @@ gui:
   border: rounded
   showBottomLine: false
   showCommandLog: false
+  nerdFontsVersion: "3"
+  showFileIcons: false
+  theme:
+    activeBorderColor:
+      - '#268bd2'
+      - bold
+    inactiveBorderColor:
+      - '#586e75'
+    optionsTextColor:
+      - '#268bd2'
+    selectedLineBgColor:
+      - '#073642'
+    cherryPickedCommitBgColor:
+      - '#073642'
+    cherryPickedCommitFgColor:
+      - '#2aa198'
+    markedBaseCommitBgColor:
+      - '#073642'
+    markedBaseCommitFgColor:
+      - '#b58900'
+    unstagedChangesColor:
+      - '#dc322f'
+    defaultFgColor:
+      - '#839496'
 git:
   overrideGpg: True
   autoFetch: true
