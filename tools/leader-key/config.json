@@ -374,6 +374,13 @@
           "key": "m",
           "type": "application",
           "value": "/System/Applications/iPhone Mirroring.app"
+        },
+        {
+          "iconPath": "/Applications/BetterDisplay.app",
+          "key": "d",
+          "label": "Toggle Built-in Display",
+          "type": "url",
+          "value": "raycast://script-commands/toggle-builtin-display"
         }
       ],
       "iconPath": "lasso.badge.sparkles",

@@ -157,18 +157,19 @@ setup_app "Karabiner-Elements" \
 setup_app "Flux" \
     "Pick location"
 
-setup_app "BetterDisplay" \
-    "Mi Monitor → Edit the system configuration of this display model → on" \
-    "Mi Monitor → General Settings → Additional settings... → Display identification method → Full EDID match" \
-    "Mi Monitor → Refresh Rate → 59.95Hz" \
-    "Mi Monitor → High Resolution (HiDPI) → on" \
-    "Mi Monitor → Resolution → 2560x1440" \
-    "Built-in Display → Resolution → 1280x800" \
-    "Create Work & Home group" \
-    "Work/Home Group → Group Membership → Exclude some displays from the group → Mi Monitor" \
-    "Work/Home Group → Synchronization Settings → Add New Synchronization... → Brightness → Synchronize changes triggered externally → on" \
-    "Home Group → Layout Protection → Enable layout protection → Add New Protection... → Mi Monitor → Arrange Mi Monitor next to: Built-in Display → Position of Mi Monitor: Right of Built-in Display → Adjust anchor point offsets → on" \
-    "Work Group → Layout Protection → Enable layout protection → Add New Protection... → Mi Monitor → Arrange Mi Monitor next to: Built-in Display → Position of Mi Monitor: Left of Built-in Display → Adjust anchor point offsets → on"
+# BetterDisplay: восстановление настроек из кода (tools/betterdisplay/BetterDisplay.plist).
+# Заменяет ручной чек-лист. Настройки дисплеев привязаны к UUID железа — на свежей
+# macOS может понадобиться один раз перелинковать дисплей в app
+# (Settings -> transfer settings of a disconnected display to a connected one).
+echo "Restoring BetterDisplay settings from repo..."
+osascript -e 'quit app "BetterDisplay"' 2>/dev/null || true
+sleep 2
+defaults import pro.betterdisplay.BetterDisplay "$DOTFILES_ROOT/tools/betterdisplay/BetterDisplay.plist"
+open -a BetterDisplay
+
+# Fallback (если import не применил display-специфичное):
+#   Mi Monitor -> HiDPI on, Full EDID match, 59.95Hz, 2560x1440 ; Built-in -> 1280x800
+#   Groups Work/Home + Layout Protection (Mi Monitor left/right of Built-in) + Brightness sync
 
 print_section "All apps configured!"
 
