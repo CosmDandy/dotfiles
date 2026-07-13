@@ -1,9 +1,7 @@
 .DS_Store
 lazy-lock.json
-nix/flake.lock
 .env
 .claude
-/platform/nix/flake.lock
 
 # k9s: активный скин — управляемый симлинк (обёртка k9s.zsh), не версионируем
 tools/k9s/skins/solarized.yaml

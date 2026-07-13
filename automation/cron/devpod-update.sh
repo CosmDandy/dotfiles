@@ -29,13 +29,12 @@ while read -r name state; do
     git remote set-url origin https://github.com/CosmDandy/dotfiles.git
     git -c submodule.recurse=false fetch origin
     git checkout @{u} -- . ':!tools/claude/custom'
-    export NIXPKGS_ALLOW_UNFREE=1
-    nix-channel --update
-    if nix-env --upgrade --dry-run 2>&1 | grep -q "upgrading"; then
-      nix-env --upgrade
-    else
-      echo "Nix packages are up to date"
+    if [[ ! -f ~/.dotfiles-profile ]]; then
+      echo "legacy container (pre-home-manager) — recreate workspace to migrate"
+      exit 0
     fi
+    PROFILE=$(cat ~/.dotfiles-profile)
+    home-manager switch --flake ~/dotfiles/platform/nix#$(whoami)-$PROFILE-$(uname -m)-linux -b hm-backup
   ' && echo "$LOG_PREFIX OK: $name ($workspace)" || echo "$LOG_PREFIX FAILED: $name ($workspace)"
 
   if $was_stopped; then

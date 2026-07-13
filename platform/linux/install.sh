@@ -25,71 +25,27 @@ if ! command -v nix &> /dev/null; then
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Разрешаем unfree пакеты (например, terraform)
-export NIXPKGS_ALLOW_UNFREE=1
-
-# Канал unstable для свежих версий. Дрейф мажоров, ломающий Mason-пакеты,
-# гасим явными атрибутами ниже (python313, nodejs_24) — остальное едет за unstable.
-NIXPKGS_CHANNEL="${NIXPKGS_CHANNEL:-nixpkgs-unstable}"
-NIXPKGS_URL="https://github.com/NixOS/nixpkgs/archive/${NIXPKGS_CHANNEL}.tar.gz"
-
-# --- Base: core editing and shell environment ---
-packages=(
-  # Neovim deps
-  python313
-  nodejs_24
-  lua
-  luarocks
-  tree-sitter
-  # CLI
-  eza
-  fd
-  ripgrep
-  starship
-  neovim
-  tmux
-  atuin
-  fzf            # интерактивный выбор для kubectx/kubens и claude/custom/setup.sh
-  tmuxPlugins.tmux-thumbs   # flash-метки по экрану (prefix+f), nix-сборка без cargo
-  btop
-  lazygit
-  lazydocker
-  uv
-  gitleaks
-  yamllint
-  shellcheck
-  gh
-  glab
-  iperf3
-)
-
-# --- Full: IaC, K8s, DevOps tools ---
-if [[ "$PROFILE" == "full" ]]; then
-  packages+=(
-    go
-    gdu
-    terraform
-    ansible
-    kubectl
-    kubernetes-helm
-    kubectx        # переключение context/namespace (kubectx/kubens, с fzf — интерактивно)
-    talosctl       # управление Talos Linux кластерами
-    k9s
-    dive
-    stern          # мультипод-логи (плагин k9s)
-    kubectl-neat   # чистый YAML (плагин k9s)
-    fluxcd         # flux GitOps (плагин k9s)
-    argocd         # argocd GitOps (плагин k9s)
-    trivy          # скан образов (плагин k9s)
-    lnav
-    yq-go
-  )
+# Flakes нужны для home-manager; ванильный nix не включает их по умолчанию
+mkdir -p "$HOME/.config/nix"
+if ! grep -q "experimental-features" "$HOME/.config/nix/nix.conf" 2>/dev/null; then
+  echo "experimental-features = nix-command flakes" >> "$HOME/.config/nix/nix.conf"
 fi
 
-# -iA с -f: атрибуты берутся от корня tarball-набора, поэтому БЕЗ префикса nixpkgs.
-# (префикс нужен только при резолве через канал/NIX_PATH, без -f)
-print_section "Installing packages from ${NIXPKGS_CHANNEL}: ${packages[*]}"
-nix-env -f "$NIXPKGS_URL" -iA "${packages[@]}"
+# ===============================
+# Пакеты: декларативно через home-manager (списки в platform/nix/home/).
+# Версии запинены flake.lock — повторный switch даёт тот же результат.
+# Атрибут: <user>-<profile>-<arch>, см. platform/nix/flake.nix
+# ===============================
+FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
+HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
+
+print_section "Activating home-manager configuration: ${HM_CONFIG}"
+# --inputs-from: home-manager резолвится по flake.lock репо, а не по свежему master;
+# -b: файлы, которые HM отказался бы перезаписать, уезжают в *.hm-backup
+nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+
+# Маркер профиля — читает cron-обновление (automation/cron/devpod-update.sh)
+echo "$PROFILE" > "$HOME/.dotfiles-profile"
 
 print_section "Installing Claude Code (native, self-updating binary)"
 curl -fsSL https://claude.ai/install.sh | bash
