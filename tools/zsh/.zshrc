@@ -93,7 +93,6 @@ alias docs='cd ~/Documents'
 
 alias v='nvim'
 alias b='btop'
-alias lg='lazygit'
 alias lzd='lazydocker'
 
 alias cl='claude --permission-mode bypassPermissions'

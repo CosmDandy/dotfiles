@@ -17,7 +17,17 @@ return {
     },
   },
   keys = {
-    { '<leader>gg', function() Snacks.lazygit() end, desc = 'Lazy[G]it' },
+    {
+      '<leader>gg',
+      function()
+        -- В nvim обёртка lg() из шелла не работает (snacks зовёт бинарь напрямую).
+        -- Подставляем light/dark-оверлей lazygit по vim.o.background — как lg() по OSC11.
+        local d = vim.fn.expand '~/.config/lazygit'
+        local overlay = (vim.o.background == 'light') and 'theme-light.yml' or 'theme-dark.yml'
+        Snacks.lazygit { args = { '--use-config-file=' .. d .. '/config.yml,' .. d .. '/' .. overlay } }
+      end,
+      desc = 'Lazy[G]it',
+    },
     {
       '<leader>gy',
       mode = { 'n', 'v' },

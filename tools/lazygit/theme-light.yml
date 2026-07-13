@@ -1,0 +1,5 @@
+# Оверлей для светлого фона терминала (см. обёртку lg в tools/zsh/conf.d/lg.zsh).
+gui:
+  theme:
+    selectedLineBgColor:
+      - '#eee8d5'
