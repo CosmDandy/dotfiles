@@ -270,7 +270,9 @@ alias uvs='uv sync'
 
 alias updm='nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo nix-collect-garbage -d'
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
-alias updl='nix --extra-experimental-features "nix-command flakes" flake update --flake ~/dotfiles/platform/nix && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && nix-env --delete-generations +3 && nix-collect-garbage -d'
+# Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
+# поэтому git pull + home-manager switch, а не flake update в контейнере
+alias updl='git -C ~/dotfiles pull --ff-only && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo full)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage -d'
 
 alias ttyh='ghostty +list-keybinds --default'
 
