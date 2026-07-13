@@ -18,10 +18,11 @@ source "$PLATFORM_DIR/common.sh"
 PROFILE="${PROFILE:-full}"
 print_section "Profile: ${PROFILE}"
 
-# Установка Nix
+# Установка Nix (--no-channel-add: каналы не нужны — пакеты едут по flake.lock,
+# а дефолтный nixpkgs-unstable канал тянет ~400MB незапиненного дерева)
 if ! command -v nix &> /dev/null; then
   print_section "Installing Nix"
-  curl -L https://nixos.org/nix/install | sh
+  curl -L https://nixos.org/nix/install | sh -s -- --no-channel-add
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 

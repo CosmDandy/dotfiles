@@ -272,7 +272,7 @@ alias updm='nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-reb
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
 # Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
 # поэтому git pull + home-manager switch, а не flake update в контейнере
-alias updl='git -C ~/dotfiles pull --ff-only && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo full)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage -d'
+alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo full)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage -d'
 
 alias ttyh='ghostty +list-keybinds --default'
 

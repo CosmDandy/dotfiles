@@ -16,11 +16,22 @@ permissions:
   contents: read
   packages: write
 
+# Раны сериализуются: manifest мерджит мутабельные :full-{amd64,arm64} теги,
+# параллельные раны могли бы смешать архитектуры из разных коммитов
+concurrency:
+  group: devcontainer-image
+  cancel-in-progress: false
+
 env:
   IMAGE: ghcr.io/cosmdandy/devcontainer
 
+# NB: после ПЕРВОГО пуша пакет ghcr.io/cosmdandy/devcontainer надо один раз
+# сделать public (GitHub → Packages → devcontainer → Package settings →
+# Change visibility), иначе анонимный docker pull в devpod up получит denied.
 jobs:
   build:
+    # guard: workflow_dispatch с не-master ветки не должен перезаписывать прод-теги
+    if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
         include:

@@ -27,8 +27,13 @@ ENV USER=vscode \
     HOME=/home/vscode
 WORKDIR /home/vscode
 
-# Nix single-user (версия запинена)
-RUN curl -fsSL https://releases.nixos.org/nix/nix-2.33.1/install | sh -s -- --no-daemon \
+# Nix single-user: версия запинена, скрипт сверяется с checksum (security.md);
+# --no-channel-add — канал не нужен (всё флейковое) и иначе запёк бы ~400MB
+# незапиненного nixpkgs-unstable в образ мимо nix-collect-garbage
+RUN curl -fsSL https://releases.nixos.org/nix/nix-2.33.1/install -o /tmp/nix-install \
+  && echo "2bbe0d388d1bee5ee60ed67b844f428b6031a1b7c42d7d03319ad7133867290d  /tmp/nix-install" | sha256sum -c - \
+  && sh /tmp/nix-install --no-daemon --no-channel-add \
+  && rm /tmp/nix-install \
   && mkdir -p "$HOME/.config/nix" \
   && echo "experimental-features = nix-command flakes" >> "$HOME/.config/nix/nix.conf"
 
