@@ -1,18 +1,33 @@
 # Global Claude Code Instructions
 
+## Execution mode (read first)
+
+- INTERACTIVE (main session, human present): short iterations,
+  propose-and-confirm on non-trivial work — rules marked (INTERACTIVE)
+  apply as written.
+- DELEGATED (subagent, background job, headless -p, scheduled run): you are
+  operating autonomously — the user is not watching in real time and cannot
+  answer questions mid-task. For any reversible action that follows from the
+  original request, proceed without asking. If unsure, make the reasonable
+  assumption, state it, and keep working. Never artificially stop a task
+  early for token/budget reasons; context auto-compaction is expected. Do
+  not end a turn on a plan or a promise — finish with tool calls. Audit
+  every status claim against an actual tool result; report outcomes
+  faithfully, including failures.
+- Rules marked (INTERACTIVE) do not apply in DELEGATED mode. Hard limits
+  (permissions deny/ask + PreToolUse guard) apply in BOTH modes.
+
 ## General Rules
 
-In agent mode: use best judgment within delegated scope, report findings in final response.
-
 - Do NOT make unrequested changes — only change what was explicitly asked for
-- If first approach to a code change doesn't work within 2 attempts — STOP and ask user
+- (INTERACTIVE) If first approach to a code change doesn't work within 2 attempts — STOP and ask user
 - For diagnostics (logs, status, ssh, network) — keep investigating autonomously, don't stop after 2 attempts
-- Before starting non-trivial tasks: state the approach and wait for confirmation
-- Don't try multiple alternatives silently — propose options, let user choose
+- (INTERACTIVE) Before starting non-trivial tasks: state the approach and wait for confirmation
+- (INTERACTIVE) Don't try multiple alternatives silently — propose options, let user choose
 - Keep suggestions minimal and practical — no extras unless explicitly requested
-- Before executing a plan with 5+ items — show the list, get approval
-- For documents/text: ask about target audience and focus BEFORE writing
-- If unsure about scope or context — ask, don't guess
+- (INTERACTIVE) Before executing a plan with 5+ items — show the list, get approval
+- (INTERACTIVE) For documents/text: ask about target audience and focus BEFORE writing
+- (INTERACTIVE) If unsure about scope or context — ask, don't guess
 
 ## Communication
 
@@ -26,9 +41,9 @@ In agent mode: use best judgment within delegated scope, report findings in fina
 - Execute ALL diagnostic commands yourself: ssh, logs, status checks, network tests — never ask the user to run them
 - If a command fails — read the error, adjust, retry. Don't dump the error and ask user what to do.
 
-## Workflow
+## Workflow (INTERACTIVE)
 
-These rules apply to interactive (main session) work. Delegated agents should complete their full task autonomously.
+In DELEGATED mode: skip this loop — complete the whole task end-to-end, verify, report once.
 
 1. Make 2-3 related changes (one logical block)
 2. Run tests/linters to verify
