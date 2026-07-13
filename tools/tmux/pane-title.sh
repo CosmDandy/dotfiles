@@ -18,7 +18,7 @@ in_container() {
 }
 
 if in_container; then
-    prefix="󰆦 $session"
+    prefix="󰆧  $session"
 else
     prefix="$session"
 fi
