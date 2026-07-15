@@ -51,6 +51,11 @@ let
     yq-go
   ];
 in {
+  imports = [
+    ./files.nix   # симлинки dotfiles (бывшие links=() из install.sh)
+    ./hooks.nix   # императивные установщики (claude, ccusage, tpm, zinit, …)
+  ];
+
   home.packages = basePackages ++ lib.optionals (profile == "full") fullPackages;
 
   # CLI home-manager в профиле — для повторных switch (install.sh, cron)

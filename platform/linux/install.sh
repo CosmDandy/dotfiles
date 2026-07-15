@@ -8,10 +8,11 @@ PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PLATFORM_DIR/common.sh"
 
 # ===============================
-# Profiles: base | full (default)
-#   base — core editor, shell, git
-#   full — base + IaC/K8s/container/DevOps tools
+# Тонкий bootstrap: всё окружение (пакеты, симлинки, установщики) декларируется
+# в platform/nix/home/ и применяется одним home-manager switch. Здесь остаётся
+# только неустранимый минимум: nix, flakes, bridge-симлинк и system-уровень.
 #
+# Profiles: base | full (default)
 # Usage: PROFILE=base ./install.sh
 #    or: devpod up --dotfiles-script-env PROFILE=base
 # ===============================
@@ -32,9 +33,15 @@ if ! grep -q "experimental-features" "$HOME/.config/nix/nix.conf" 2>/dev/null; t
   echo "experimental-features = nix-command flakes" >> "$HOME/.config/nix/nix.conf"
 fi
 
+# Bridge-симлинки: home-модули (files.nix/hooks.nix) ссылаются на ~/dotfiles,
+# конфиги исторически — на ~/.dotfiles. Оба пути должны вести в один клон.
+# DevPod клонирует в ~/dotfiles (clone-path не настраивается), руками часто ~/.dotfiles
+[[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
+[[ "$DOTFILES_ROOT" != "$HOME/dotfiles" && ! -e "$HOME/dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/dotfiles"
+
 # ===============================
-# Пакеты: декларативно через home-manager (списки в platform/nix/home/).
-# Версии запинены flake.lock — повторный switch даёт тот же результат.
+# Весь user-space одним switch: пакеты + симлинки + activation-хуки
+# (claude, ccusage, tpm, zinit, nvim-плагины, MCP). Версии пиннятся flake.lock.
 # Атрибут: <user>-<profile>-<arch>, см. platform/nix/flake.nix
 # ===============================
 FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
@@ -48,15 +55,10 @@ nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${
 # Маркер профиля — читает cron-обновление (automation/cron/devpod-update.sh)
 echo "$PROFILE" > "$HOME/.dotfiles-profile"
 
-print_section "Installing Claude Code (native, self-updating binary)"
-curl -fsSL https://claude.ai/install.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
-
-# DevPod always clones dotfiles to ~/dotfiles (no clone-path option exists —
-# only DOTFILES_URL/DOTFILES_SCRIPT), while configs reference ~/.dotfiles.
-# Bridge the two with a symlink so both paths resolve to the same tree.
-[[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
-
+# ===============================
+# System-уровень (sudo): вне зоны home-manager. В prebuilt-образе уже сделано —
+# эти шаги идемпотентны и отрабатывают мгновенно
+# ===============================
 print_section "Setting default shell to zsh"
 ZSH_PATH="$(which zsh)"
 if [[ "$SHELL" != "$ZSH_PATH" ]]; then
@@ -76,123 +78,6 @@ if [[ -f "/usr/share/zoneinfo/$CONTAINER_TZ" ]]; then
   sudo ln -sf "/usr/share/zoneinfo/$CONTAINER_TZ" /etc/localtime
   echo "$CONTAINER_TZ" | sudo tee /etc/timezone >/dev/null
 fi
-
-# Создаем символьные ссылки
-export XDG_CONFIG_HOME="$HOME/.config"
-
-dirs=(
-  "$XDG_CONFIG_HOME"
-  "$XDG_CONFIG_HOME/atuin"
-  "$XDG_CONFIG_HOME/btop"
-  "$XDG_CONFIG_HOME/lazygit"
-  "$HOME/.zsh/completions"
-  "$HOME/.claude"
-  "$HOME/.lnav/configs/default"
-  "$HOME/.kube/configs"
-  "$HOME/.talos"
-)
-
-links=(
-  "$DOTFILES_ROOT/tools/tmux/.tmux.conf:$HOME/.tmux.conf"
-  "$DOTFILES_ROOT/tools/zsh/.zprofile:$HOME/.zprofile"
-  "$DOTFILES_ROOT/tools/zsh/.zshrc:$HOME/.zshrc"
-  "$DOTFILES_ROOT/tools/zsh/completions:$HOME/.zsh/completions"
-  "$DOTFILES_ROOT/tools/git/.gitignore_global:$HOME/.gitignore_global"
-  "$DOTFILES_ROOT/tools/git/.gitconfig:$HOME/.gitconfig"
-  "$DOTFILES_ROOT/tools/lazygit/config.yml:$XDG_CONFIG_HOME/lazygit/config.yml"
-  "$DOTFILES_ROOT/tools/lazygit/theme-light.yml:$XDG_CONFIG_HOME/lazygit/theme-light.yml"
-  "$DOTFILES_ROOT/tools/lazygit/theme-dark.yml:$XDG_CONFIG_HOME/lazygit/theme-dark.yml"
-  "$DOTFILES_ROOT/tools/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
-  "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
-  "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
-  "$DOTFILES_ROOT/tools/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  "$DOTFILES_ROOT/tools/k9s:$XDG_CONFIG_HOME/k9s"
-  "$DOTFILES_ROOT/tools/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
-  "$DOTFILES_ROOT/tools/claude/settings.json:$HOME/.claude/settings.json"
-  "$DOTFILES_ROOT/tools/claude/statusline.sh:$HOME/.claude/statusline.sh"
-  "$DOTFILES_ROOT/tools/claude/agents:$HOME/.claude/agents"
-  "$DOTFILES_ROOT/tools/claude/commands:$HOME/.claude/commands"
-  "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
-  "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
-  "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
-  "$DOTFILES_ROOT/tools/git/.gitconfig-work:$HOME/.gitconfig-work"
-  "$DOTFILES_ROOT/tools/git/.allowed_signers:$HOME/.allowed_signers"
-  "$DOTFILES_ROOT/tools/git/hooks:$HOME/.git-hooks"
-)
-
-mkdir -p "$HOME/.ssh"
-cp "$DOTFILES_ROOT/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
-chmod 644 "$HOME/.ssh/known_hosts"
-
-print_section "Create directories for symbolic links"
-create_directories "${dirs[@]}"
-
-print_section "Create symbolic links"
-create_symlinks "${links[@]}"
-
-# k9s: активный скин — управляемый симлинк (обёртка k9s.zsh переключает dark/light по теме).
-# Создаём дефолт (dark), чтобы и прямой `command k9s` имел скин до первого запуска обёртки.
-ln -sf solarized-dark.yaml "$XDG_CONFIG_HOME/k9s/skins/solarized.yaml"
-
-print_section "Installing tmux plugins"
-mkdir -p ~/.tmux/plugins
-if [[ ! -d ~/.tmux/plugins/tpm ]]; then
-  git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-fi
-
-print_section "Installing ccusage (statusline cost/burn)"
-# ccusage НЕ в nixpkgs (только npm) — ставим прямым бинарём в ~/.local, чтобы statusline.sh
-# звал его напрямую, а не поднимал npx на каждый рендер. tree-sitter теперь идёт через nix (выше).
-if ! command -v ccusage &>/dev/null; then
-  npm install -g --prefix "$HOME/.local" ccusage
-fi
-
-# CRD JSON-схемы для yamlls кэшируем локально (оффлайн + нет сетевого лага на
-# первом открытии после рестарта). yamlls.lua сам берёт file://-кэш если он есть,
-# иначе фолбэк на URL. Версии пиннятся образом dev-контейнера.
-print_section "Caching YAML JSON-schemas for offline LSP"
-SCHEMA_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/yaml-schemas"
-CRD_BASE="https://raw.githubusercontent.com/datreeio/CRDs-catalog/main"
-crd_schemas=(
-  argoproj.io/application_v1alpha1.json
-  gateway.networking.k8s.io/gateway_v1.json
-  gateway.networking.k8s.io/gatewayclass_v1.json
-  gateway.networking.k8s.io/httproute_v1.json
-  gateway.networking.k8s.io/referencegrant_v1beta1.json
-)
-for rel in $crd_schemas; do
-  mkdir -p "$SCHEMA_DIR/${rel:h}"
-  if curl -fsSL "$CRD_BASE/$rel" -o "$SCHEMA_DIR/$rel"; then
-    echo "  ✓ $rel"
-  else
-    echo "  ✗ $rel (не скачана — yamlls откатится на URL)"
-  fi
-done
-
-print_section "Installing nvim plugins"
-nvim --headless "+Lazy! sync" +qa
-
-# TODO: Разобраться с автоматической установкой Mason tools
-# Проблема: команда зависает или не находит нужные команды в headless режиме
-# Временное решение: установить вручную через :MasonToolsInstall после первого запуска nvim
-# print_section "Installing Mason tools (LSP, linters, formatters)"
-# nvim --headless "+lua require('mason-tool-installer').check_install(true)" +qa
-
-print_section "Initializing claude submodule"
-git -C "$DOTFILES_ROOT" submodule update --init tools/claude/custom
-
-print_section "Installing Claude Code MCP servers"
-"$DOTFILES_ROOT/tools/claude/custom/install.sh"
-
-print_section "Setup global gitignore"
-git config --global core.excludesfile ~/.gitignore_global
-
-print_section "Installing zinit"
-if [[ ! -d "$HOME/.local/share/zinit" ]]; then
-  bash -c "$(curl --fail --show-error --silent --location https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh)"
-fi
-
-# Плагины zinit будут установлены автоматически при первом запуске zsh
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
