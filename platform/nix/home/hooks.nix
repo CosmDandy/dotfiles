@@ -8,10 +8,12 @@ in {
   home.activation = {
     # Claude Code — сознательно НЕ через nix: официальный бинарь самообновляется,
     # в иммутабельном store это невозможно. Хук лишь ставит его при отсутствии
+    # PATH: скачанные инсталлеры зовут curl/tar по имени, а PATH активации минимальный
     installClaudeCode = after ''
       if [ ! -x "$HOME/.local/bin/claude" ] && ! command -v claude >/dev/null 2>&1; then
         run ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
-          && run ${pkgs.bash}/bin/bash /tmp/claude-install.sh \
+          && PATH="${lib.makeBinPath [ pkgs.curl pkgs.coreutils pkgs.gnutar pkgs.gzip pkgs.unzip ]}:$PATH" \
+             run ${pkgs.bash}/bin/bash /tmp/claude-install.sh \
           && run rm -f /tmp/claude-install.sh \
           || echo "warn: claude install skipped (offline?)"
       fi
@@ -33,10 +35,12 @@ in {
       fi
     '';
 
+    # PATH: инсталлер zinit клонирует репо через git по имени
     installZinit = after ''
       if [ ! -d "$HOME/.local/share/zinit" ]; then
         run ${pkgs.curl}/bin/curl -fsSL https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh -o /tmp/zinit-install.sh \
-          && NO_INPUT=1 run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
+          && PATH="${lib.makeBinPath [ pkgs.git pkgs.curl pkgs.coreutils ]}:$PATH" NO_INPUT=1 \
+             run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
           && run rm -f /tmp/zinit-install.sh \
           || echo "warn: zinit install skipped (offline?)"
       fi
