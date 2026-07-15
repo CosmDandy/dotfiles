@@ -51,6 +51,8 @@
       "telegram"
       # "element"
       # Системные утилиты
+      # каск, а не nixpkgs: bitwarden-desktop тянет electron, помеченный insecure
+      "bitwarden"
       "onyx"
       "ukelele"
       "betterdisplay"
