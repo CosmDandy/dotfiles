@@ -38,6 +38,7 @@
       # "cursor"
       "visual-studio-code"
       "devpod"
+      "postico"
       # "utm"
       # AI инструменты
       # "chatgpt"
