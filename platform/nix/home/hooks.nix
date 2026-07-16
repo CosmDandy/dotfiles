@@ -21,15 +21,6 @@ in {
       fi
     '';
 
-    # ccusage не в nixpkgs (только npm) — прямой бинарь в ~/.local, чтобы
-    # statusline.sh не поднимал npx на каждый рендер
-    installCcusage = after ''
-      if [ ! -x "$HOME/.local/bin/ccusage" ] && ! command -v ccusage >/dev/null 2>&1; then
-        run ${pkgs.nodejs_24}/bin/npm install -g --prefix "$HOME/.local" ccusage \
-          || echo "warn: ccusage install skipped (offline?)"
-      fi
-    '';
-
     installTpm = after ''
       if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
         run ${pkgs.git}/bin/git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" \

@@ -21,6 +21,7 @@ let
     btop
     lazygit
     lazydocker
+    ccusage        # cost/burn-rate в statusline.sh Claude Code
     uv
     gitleaks
     yamllint
