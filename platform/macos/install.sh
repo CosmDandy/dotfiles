@@ -7,15 +7,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PLATFORM_DIR/common.sh"
 
-"$DOTFILES_ROOT/platform/macos/install-nix.sh"
-
+# Порядок важен: darwin-rebuild внутри install-nix.sh прогоняет brew bundle,
+# поэтому к этому моменту brew уже должен стоять (иначе активация падает с
+# exit 2), а симлинки — быть на месте (brew bundle читает ~/.homebrew/trust.json).
+# install-extra.sh и setup-devpod.sh настраивают приложения и devpod CLI,
+# которые ставятся касками из того же brew bundle, — только после него.
 "$DOTFILES_ROOT/platform/macos/install-brew.sh"
+
+"$DOTFILES_ROOT/platform/macos/setup-symlinks.sh"
+
+"$DOTFILES_ROOT/platform/macos/install-nix.sh"
 
 "$DOTFILES_ROOT/platform/macos/install-extra.sh"
 
 "$DOTFILES_ROOT/platform/macos/setup-devpod.sh"
-
-"$DOTFILES_ROOT/platform/macos/setup-symlinks.sh"
 
 print_section "Applying OrbStack configuration"
 "$DOTFILES_ROOT/tools/orbstack/apply.sh"
