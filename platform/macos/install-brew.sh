@@ -15,9 +15,5 @@ fi
 
 print_section "Configuring Homebrew environment"
 eval "$(/opt/homebrew/bin/brew shellenv)"
-
-print_section "Adding Homebrew environment to shell profile"
-BREW_PROFILE="$HOME/.zprofile"
-if ! grep -q 'eval "\$\(\/opt\/homebrew\/bin\/brew shellenv\)"' "$BREW_PROFILE"; then
-    echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$BREW_PROFILE"
-fi
+# shellenv в логин-шелле — декларативно в tools/zsh/.zprofile; append сюда
+# писал бы сквозь home-manager-симлинк прямо в репо

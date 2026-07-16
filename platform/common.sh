@@ -1,11 +1,26 @@
 #!/usr/bin/env zsh
+#
+# Библиотека для установщиков. Собственного `set` здесь НЕТ намеренно: файл
+# подключается через source, и `set -e` менял бы поведение вызывающего скрипта,
+# а не своё. Режим задают сами установщики (`set -euo pipefail`); здешний код
+# написан так, чтобы под ними не падать — отсюда `${VAR:-}` ниже.
+#
+# И почему zsh, а не bash: на свежем маке nix ещё не установлен, поэтому
+# `#!/usr/bin/env bash` разрешается в /bin/bash 3.2 (2007 год) — там
+# `"${arr[@]}"` для пустого массива под `set -u` падает с «unbound variable».
+# Системный zsh при этом 5.9. Перевод установщиков на bash был бы регрессом.
 
 # Если DOTFILES_ROOT не определена (скрипт запущен напрямую, а не через setup.sh)
-if [ -z "$DOTFILES_ROOT" ]; then
+if [ -z "${DOTFILES_ROOT:-}" ]; then
   # ${(%):-%x} — zsh-нативный путь текущего sourced-файла (BASH_SOURCE в zsh пустой)
   PLATFORM_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
   export DOTFILES_ROOT="$(dirname "$PLATFORM_DIR")"
 fi
+
+# nix-darwin'овский /etc/zshenv перезаписывает PATH каждому новому zsh-процессу
+# (set-environment без guard-переменной) — суб-скрипты теряют /opt/homebrew/bin,
+# унаследованный от install.sh, и не находят devpod/orb. Возвращаем сами.
+[[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
 
 RED='\033[0;31m'
 NC='\033[0m'
@@ -20,8 +35,14 @@ print_section() {
 }
 
 confirm() {
+  # Headless (нет tty): read -k 1 мгновенно возвращает EOF, и while true
+  # превращается в вечный цикл — автоподтверждаем и идём дальше
+  if [[ ! -t 0 ]]; then
+    echo "$1 — no tty, auto-yes"
+    return 0
+  fi
   while true; do
-    read -k 1 "REPLY?$1 (y/n): "
+    read -k 1 "REPLY?$1 (y/n): " || { echo "stdin closed — auto-yes"; return 0; }
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
       echo "Continuing..."
@@ -54,7 +75,7 @@ setup_app() {
   echo ""
   read "response?Press Enter when done (or 's' to skip): "
 
-  if [[ "$response" == "s" ]]; then
+  if [[ "${response:-}" == "s" ]]; then
     echo "⊘ Skipped $app_name"
   else
     echo "✓ Completed $app_name"
@@ -69,31 +90,5 @@ create_directories() {
   for dir in "${directories[@]}"; do
     mkdir -p "$dir"
     echo "Created directory ${dir}"
-  done
-}
-
-create_symlinks() {
-  local items=("$@")
-  for item in "${items[@]}"; do
-    IFS=':' read -r source target <<< "$item"
-
-    if [[ -L "$target" && "$(readlink "$target")" == "$source" ]]; then
-      echo "✓ Symlink up to date: $target"
-      continue
-    fi
-
-    mkdir -p "$(dirname "$target")"
-
-    if [[ -L "$target" || -e "$target" ]]; then
-      if [[ -L "$target" ]]; then
-        rm -f "$target"
-      else
-        mv "$target" "${target}.before-dotfiles"
-        echo "↪ Backed up $target → ${target}.before-dotfiles"
-      fi
-    fi
-
-    ln -sfn "$source" "$target"
-    echo "Created symlink for $source → $target"
   done
 }

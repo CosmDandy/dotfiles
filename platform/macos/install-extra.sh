@@ -6,28 +6,24 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PLATFORM_DIR/common.sh"
 
-print_section "Installing apps"
-links=(
-    "https://appstorrent.ru/48-final-cut-pro.html"
-    "https://appstorrent.ru/87-capture-one.html"
-    "https://appstorrent.ru/1938-istatistica-pro.html"
-    "https://appstorrent.ru/1789-network-radar.html"
-    "https://appstorrent.ru/423-kaleidoscope.html"
-    "https://appstorrent.ru/3019-screen-studio.html"
-    "https://appstorrent.ru/162-transmit.html"
-    "https://appstorrent.ru/672-cleanshot-x.html"
-    "https://appstorrent.ru/3647-superwhisper.html"
-    "https://appstorrent.ru/42-things-3.html"
-    "https://www.logitech.com/en-eu/software/logi-options-plus.html"
-)
+# Скрипт целиком интерактивен (open url/app, «нажми Enter») — в headless
+# каждый open падает с RBS «Launch failed». Запускать руками в GUI-сессии.
+if [[ ! -t 0 ]]; then
+  print_section "Skipping interactive app setup (no tty) — запусти platform/macos/install-extra.sh вручную"
+  exit 0
+fi
 
-for link in "${links[@]}"; do
-    echo "Opening link: $link"
-    open "$link"
-    sleep 1
-done
-
-confirm "Press 'y' when download all files"
+# Источники дистрибутивов — в приватном сабмодуле: репозиторий публичный.
+# Sourced, а не запуск отдельным процессом: скрипту нужны print_section,
+# confirm и setup_app, объявленные в common.sh выше. Файл только ОБЪЯВЛЯЕТ
+# функции; вызываются они ниже, каждая на своём месте.
+EXTRA_SOURCES="$DOTFILES_ROOT/private/macos/extra-apps.sh"
+if [[ -f "$EXTRA_SOURCES" ]]; then
+    source "$EXTRA_SOURCES"
+    extra_download_sources
+else
+    print_section "private/macos/extra-apps.sh не найден (сабмодуль не инициализирован) — источники пропущены"
+fi
 
 setup_app "OrbStack" \
     "Start at login → on" \
@@ -56,16 +52,6 @@ setup_app "Things3" \
     "Быстрый ввод с: Command + F3" \
     "Показывать события из календаря в списках задач «Сегодня» и «Планы» → on"
 
-setup_app "SuperWhisper" \
-    "Create mode → Voice to text → Voice Model → Ultra V3 Turbo" \
-    "Toggle Recording → Command + F1" \
-    "Automatically check for updates → off" \
-    "Launch on login → on" \
-    "Mini Recording window → on" \
-    "Always show Mini Recording Window → off" \
-    "Show in Dock → off" \
-    "Dynamic normalization → on"
-
 setup_app "CleanShot X" \
     "Startup: Start at login → on" \
     "Menu bar: Show icon → off" \
@@ -80,12 +66,11 @@ setup_app "CleanShot X" \
     "Freeze screen: Freeze screen when taking a screenshot → on" \
     "Automatically check for updates → off"
 
-setup_app "Activation Tool" \
-    "激活/Activation" \
-    "确定 (Принять)" \
-    "退出/Exit (Выход)" \
-    "Highlight recorded area during recording → off"
-sudo rm -rf "/Applications/Activation Tool.app"
+# Активация — здесь же, где стояла раньше: приложения, которые тул патчит, к
+# этому моменту установлены и настроены.
+if typeset -f extra_activation >/dev/null; then
+    extra_activation
+fi
 
 setup_app "Raycast" \
     "Import Data"
@@ -104,18 +89,10 @@ setup_app "Arc" \
 
 "$DOTFILES_ROOT/platform/macos/install-arc-extension.sh"
 
-setup_app "Cursor" \
-    "Login to account" \
-    "Keybindings → Vim" \
-    "Open Cursor from Terminal → Install"
-
 setup_app "Visual Studio Code" \
     "Cmd + Shift + P → Shell Command: Install 'code' command in PATH"
 
 "$DOTFILES_ROOT/tools/vscode/install_common.sh"
-
-setup_app "ChatGPT" \
-    "Login to account"
 
 setup_app "Claude" \
     "Login to account"
@@ -124,26 +101,12 @@ setup_app "Telegram" \
     "Login to My account" \
     "Login to Work account"
 
-setup_app "WhatsApp" \
-    "Login to account"
-
 setup_app "Microsoft Teams" \
     "Login to account"
-
-setup_app "iStatistica Pro" \
-    "Download iStatistica Sensors Plugin"
-
-setup_app "Transmit"
 
 setup_app "UTM"
 
 setup_app "Onyx"
-
-setup_app "Ukelele"
-
-setup_app "Kaleidoscope"
-
-setup_app "Network Radar"
 
 setup_app "Final Cut Pro"
 
@@ -157,18 +120,17 @@ setup_app "Karabiner-Elements" \
 setup_app "Flux" \
     "Pick location"
 
+# BetterDisplay: plist в репо не держим (EDID, серийники мониторов, маркер
+# лицензии — публичный репозиторий). Настройки восстанавливаются из restic-бэкапа:
+#   restic restore --target / --include "$HOME/Library/Preferences/pro.betterdisplay.BetterDisplay.plist" latest
+# затем перезапустить BetterDisplay. Привязка к дисплеям идёт по UUID железа — на
+# свежей macOS может понадобиться перелинковать дисплей
+# (Settings -> transfer settings of a disconnected display to a connected one).
 setup_app "BetterDisplay" \
-    "Mi Monitor → Edit the system configuration of this display model → on" \
-    "Mi Monitor → General Settings → Additional settings... → Display identification method → Full EDID match" \
-    "Mi Monitor → Refresh Rate → 59.95Hz" \
-    "Mi Monitor → High Resolution (HiDPI) → on" \
-    "Mi Monitor → Resolution → 2560x1440" \
-    "Built-in Display → Resolution → 1280x800" \
-    "Create Work & Home group" \
-    "Work/Home Group → Group Membership → Exclude some displays from the group → Mi Monitor" \
-    "Work/Home Group → Synchronization Settings → Add New Synchronization... → Brightness → Synchronize changes triggered externally → on" \
-    "Home Group → Layout Protection → Enable layout protection → Add New Protection... → Mi Monitor → Arrange Mi Monitor next to: Built-in Display → Position of Mi Monitor: Right of Built-in Display → Adjust anchor point offsets → on" \
-    "Work Group → Layout Protection → Enable layout protection → Add New Protection... → Mi Monitor → Arrange Mi Monitor next to: Built-in Display → Position of Mi Monitor: Left of Built-in Display → Adjust anchor point offsets → on"
+    "Restore plist из бэкапа (см. комментарий) ЛИБО вручную:" \
+    "Mi Monitor -> HiDPI on, Full EDID match, 59.95Hz, 2560x1440" \
+    "Built-in -> 1280x800" \
+    "Groups Work/Home + Layout Protection + Brightness sync"
 
 print_section "All apps configured!"
 

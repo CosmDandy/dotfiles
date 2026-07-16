@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Сборка бинаря bt-layout-switch и выдача TCC-разрешений.
+# Сам launchd-агент ставится декларативно nix-darwin'ом
+# (launchd.user.agents.bt-layout-switch) при darwin-rebuild switch —
+# этот скрипт агент НЕ устанавливает.
+
 DOTFILES="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="${DOTFILES}/automation/launchd/scripts/bt-layout-switch.app"
 SCRIPT="${APP}/Contents/MacOS/bt-layout-switch"
 CONFIG="${DOTFILES}/automation/launchd/config/bt-layout.conf"
-PLIST_SRC="${DOTFILES}/automation/launchd/agents/com.cosmdandy.bt-layout-switch.plist"
-PLIST_DST="${HOME}/Library/LaunchAgents/com.cosmdandy.bt-layout-switch.plist"
-LABEL="com.cosmdandy.bt-layout-switch"
+LABEL="org.nixos.bt-layout-switch"
 
 # Ensure app bundle structure exists
 mkdir -p "${APP}/Contents/MacOS"
@@ -42,14 +45,8 @@ if [[ -z "$MAC" ]]; then
     exit 1
 fi
 
-# Symlink plist
-ln -sf "$PLIST_SRC" "$PLIST_DST"
-
-# Load agent (unload first if already running)
-launchctl bootout "gui/$(id -u)" "$PLIST_DST" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
-
-echo "bt-layout-switch installed and started"
+echo "bt-layout-switch binary ready"
+echo "  agent  : ставится darwin-rebuild switch (label ${LABEL})"
 echo "  config : $CONFIG"
 echo "  log    : /tmp/bt-layout-switch.log"
 echo "  status : launchctl list | grep bt-layout"
@@ -68,4 +65,4 @@ echo "       $SCRIPT --request-accessibility"
 echo "     Approve in System Settings → Privacy & Security → Accessibility."
 echo ""
 echo "After all three are approved, restart:"
-echo "  launchctl kickstart -k \"gui/\$(id -u)/com.cosmdandy.bt-layout-switch\""
+echo "  launchctl kickstart -k \"gui/\$(id -u)/${LABEL}\""
