@@ -6,6 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PLATFORM_DIR/common.sh"
 
+# Скрипт целиком интерактивен (open url/app, «нажми Enter») — в headless
+# каждый open падает с RBS «Launch failed». Запускать руками в GUI-сессии.
+if [[ ! -t 0 ]]; then
+  print_section "Skipping interactive app setup (no tty) — запусти platform/macos/install-extra.sh вручную"
+  exit 0
+fi
+
 print_section "Installing apps"
 links=(
     "https://appstorrent.ru/48-final-cut-pro.html"

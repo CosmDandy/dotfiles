@@ -20,8 +20,14 @@ print_section() {
 }
 
 confirm() {
+  # Headless (нет tty): read -k 1 мгновенно возвращает EOF, и while true
+  # превращается в вечный цикл — автоподтверждаем и идём дальше
+  if [[ ! -t 0 ]]; then
+    echo "$1 — no tty, auto-yes"
+    return 0
+  fi
   while true; do
-    read -k 1 "REPLY?$1 (y/n): "
+    read -k 1 "REPLY?$1 (y/n): " || { echo "stdin closed — auto-yes"; return 0; }
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
       echo "Continuing..."

@@ -12,7 +12,7 @@
 | `pinentry-mac` | Диалог мастер-пароля для rbw | там же |
 | `direnv` + `nix-direnv` | Окружение из `.envrc` при `cd`; кэш `use flake` | там же + hook в `tools/zsh/.zshrc`, `tools/direnv/direnvrc` |
 | `gitleaks` | Скан секретов в pre-commit | `tools/git/hooks/pre-commit` |
-| Конфиг rbw | email, `lock_timeout`, pinentry | `~/.dotfiles-private/rbw/config.json` → симлинк |
+| Конфиг rbw | email, `lock_timeout`, pinentry | `~/.dotfiles/private/rbw/config.json` (сабмодуль) → симлинк |
 | Trust Homebrew | Доверие к сторонним tap | `tools/homebrew/trust.json` → симлинк на два пути |
 
 ## Что настроить
@@ -70,4 +70,4 @@ rbw config show         # эффективный конфиг
 ## Известные проблемы
 
 - **gitleaks не работает в самом dotfiles-репо**: в `.git/config` `core.hooksPath` переопределён на пустой `.git/hooks` (глобально — `~/.git-hooks`, там хук есть).
-- **Приватный репозиторий склонирован дважды**: `~/.dotfiles-private` (на него смотрят симлинки) и подмодуль `~/.dotfiles/private` — один remote, разные незакоммиченные правки. Копии разъедутся и затрут друг друга.
+- ~~**Приватный репозиторий склонирован дважды**~~ — исправлено: симлинки смотрят на сабмодуль `private/`, отдельный клон `~/.dotfiles-private` упразднён. Осталось руками: (1) закоммитить `rbw/config.json` из `~/.dotfiles-private` в master приватного репо (симлинк уже целится в `private/rbw/`, но в сабмодуле каталога ещё нет); (2) перенести прочие незакоммиченные правки и удалить `~/.dotfiles-private`.

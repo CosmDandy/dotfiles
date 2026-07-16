@@ -62,9 +62,10 @@ links=(
   "$DOTFILES_ROOT/tools/claude/custom/skills:$HOME/.claude/skills"
   "$DOTFILES_ROOT/tools/claude/custom/rules:$HOME/.claude/rules"
   "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
-  "$HOME/.dotfiles-private/ssh/config:$HOME/.ssh/config"
+  # приватные конфиги — из сабмодуля private/ (отдельный клон ~/.dotfiles-private упразднён)
+  "$DOTFILES_ROOT/private/ssh/config:$HOME/.ssh/config"
   # rbw на macOS игнорирует XDG_CONFIG_HOME и читает конфиг из Library
-  "$HOME/.dotfiles-private/rbw/config.json:$HOME/Library/Application Support/rbw/config.json"
+  "$DOTFILES_ROOT/private/rbw/config.json:$HOME/Library/Application Support/rbw/config.json"
   "$DOTFILES_ROOT/tools/git/.gitconfig-work:$HOME/.gitconfig-work"
   "$DOTFILES_ROOT/tools/git/.allowed_signers:$HOME/.allowed_signers"
   "$DOTFILES_ROOT/tools/git/hooks:$HOME/.git-hooks"
