@@ -18,10 +18,6 @@ in {
   home.file = {
     ".hushlogin".source = link "tools/zsh/.hushlogin";
     ".aerospace.toml".source = link "tools/aerospace/.aerospace.toml";
-    # trust.json читается по двум путям: ~/.config/homebrew (интерактивный шелл,
-    # XDG_CONFIG_HOME задан) и ~/.homebrew (brew bundle из darwin-rebuild, где
-    # sudo сохраняет только PATH). Оба ведут на один файл.
-    ".homebrew/trust.json".source = link "tools/homebrew/trust.json";
     # новые хосты дописываются сквозь симлинк в tools/git/known_hosts (под git)
     ".ssh/known_hosts".source = link "tools/git/known_hosts";
     # приватные конфиги — из сабмодуля private/; до его init симлинки висячие
@@ -38,10 +34,21 @@ in {
   xdg.configFile = {
     "ghostty/config".source = link "tools/ghostty/config";
     "direnv/direnvrc".source = link "tools/direnv/direnvrc";
-    "homebrew/trust.json".source = link "tools/homebrew/trust.json";
   };
 
   home.activation = {
+    # trust.json — ПРЯМЫМИ симлинками, не через home.file: brew пишет в trust
+    # store и отказывается работать с целью в /nix/store («insecure trust
+    # store: target directory not owned by the current user»), что валит
+    # brew bundle в активации. Два пути: ~/.config/homebrew (интерактивный
+    # шелл, XDG_CONFIG_HOME задан) и ~/.homebrew (brew bundle из
+    # darwin-rebuild, где sudo сохраняет только PATH).
+    homebrewTrust = after ''
+      run mkdir -p "$HOME/.homebrew" "$HOME/.config/homebrew"
+      run ln -sfn "${dotfiles}/tools/homebrew/trust.json" "$HOME/.homebrew/trust.json"
+      run ln -sfn "${dotfiles}/tools/homebrew/trust.json" "$HOME/.config/homebrew/trust.json"
+    '';
+
     # ControlMaster в private/ssh/config держит мультиплекс-сокеты здесь
     sshSockets = after ''
       run mkdir -p "$HOME/.ssh/sockets"
