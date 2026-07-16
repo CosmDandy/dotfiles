@@ -37,11 +37,13 @@ in {
       fi
     '';
 
-    # PATH: инсталлер zinit клонирует репо через git по имени
+    # PATH: инсталлер zinit клонирует репо через git по имени.
+    # ZSHRC=/dev/null: иначе инсталлер дописывает annex-блок и маркер сквозь
+    # симлинк ~/.zshrc прямо в репо — наш .zshrc уже содержит zinit-блок
     installZinit = after ''
       if [ ! -d "$HOME/.local/share/zinit" ]; then
         run ${pkgs.curl}/bin/curl -fsSL https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh -o /tmp/zinit-install.sh \
-          && PATH="${lib.makeBinPath [ pkgs.git pkgs.curl pkgs.coreutils ]}:$PATH" NO_INPUT=1 \
+          && PATH="${lib.makeBinPath [ pkgs.git pkgs.curl pkgs.coreutils ]}:$PATH" NO_INPUT=1 ZSHRC=/dev/null \
              run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
           && run rm -f /tmp/zinit-install.sh \
           || echo "warn: zinit install skipped (offline?)"
