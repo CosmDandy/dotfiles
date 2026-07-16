@@ -16,6 +16,8 @@ dirs=(
   "$XDG_CONFIG_HOME/lazygit"
   "$XDG_CONFIG_HOME/direnv"
   "$HOME/Library/Application Support/rbw"
+  "$XDG_CONFIG_HOME/homebrew"
+  "$HOME/.homebrew"
   "$HOME/.ssh/sockets"
   "$HOME/Library/Application Support/Cursor/User/"
   "$HOME/Library/Application Support/Code/User/"
@@ -38,6 +40,11 @@ links=(
   "$DOTFILES_ROOT/tools/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
   "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
   "$DOTFILES_ROOT/tools/direnv/direnvrc:$XDG_CONFIG_HOME/direnv/direnvrc"
+  # trust.json читается по двум путям: ~/.config/homebrew (интерактивный шелл,
+  # XDG_CONFIG_HOME задан) и ~/.homebrew (brew bundle из darwin-rebuild, где
+  # sudo сохраняет только PATH). Оба ведут на один файл.
+  "$DOTFILES_ROOT/tools/homebrew/trust.json:$XDG_CONFIG_HOME/homebrew/trust.json"
+  "$DOTFILES_ROOT/tools/homebrew/trust.json:$HOME/.homebrew/trust.json"
   "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
   "$DOTFILES_ROOT/tools/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
   "$DOTFILES_ROOT/tools/ghostty/config:$XDG_CONFIG_HOME/ghostty/config"
