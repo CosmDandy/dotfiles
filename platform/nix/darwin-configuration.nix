@@ -99,6 +99,10 @@
     lazydocker
     gdu
     gitleaks
+    direnv
+    nix-direnv
+    rbw
+    pinentry_mac
     yamllint
     shellcheck
     blueutil

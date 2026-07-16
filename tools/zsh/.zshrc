@@ -359,6 +359,9 @@ eval "$(starship init zsh)"
 
 # Atuin - улучшенная история команд с синхронизацией
 eval "$(atuin init zsh)"
+
+# Direnv - автозагрузка окружения из .envrc при входе в каталог
+(($+commands[direnv])) && eval "$(direnv hook zsh)"
 export PATH="$HOME/.local/bin:/Users/cosmdandy/.npm-global/bin:$PATH"
 
 autoload -U +X bashcompinit && bashcompinit

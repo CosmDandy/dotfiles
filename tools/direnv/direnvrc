@@ -1,0 +1,4 @@
+# nix-direnv: кэширует nix-окружения (use flake / use nix), делает вход в каталог мгновенным
+if [[ -f /run/current-system/sw/share/nix-direnv/direnvrc ]]; then
+  source /run/current-system/sw/share/nix-direnv/direnvrc
+fi
