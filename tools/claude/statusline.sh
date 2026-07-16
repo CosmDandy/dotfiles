@@ -142,36 +142,52 @@ if [ "$used_pct" -ge 85 ] 2>/dev/null; then
   warn=" ⚠"
 fi
 
-# ccusage cost/burn — only computed for the full (wide) tier (slow npx call)
-compute_cost() {
-  local cache CCBIN ccusage_json active cost burn cost_fmt burn_fmt burn_color burn_int
-  # Кэш на 60с: ccusage дорогой (поднимает node + читает транскрипты). Без кэша он
-  # спавнился на КАЖДЫЙ рендер статус-бара ×N сессий и стакался под нагрузкой.
-  cache="${TMPDIR:-/tmp}/claude-statusline-ccusage.json"
-  if [ -f "$cache" ] && [ "$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))" -lt 60 ]; then
-    ccusage_json=$(cat "$cache")
-  else
-    touch "$cache" 2>/dev/null  # пометить свежим, чтобы параллельный рендер не запускал второй ccusage
-    CCBIN=$(command -v ccusage 2>/dev/null)  # прямой бинарь вместо npx-резолва на каждый вызов
-    if [ -n "$CCBIN" ]; then
-      ccusage_json=$("$CCBIN" blocks --json 2>/dev/null)
-    else
-      ccusage_json=$(npx --prefer-offline ccusage blocks --json 2>/dev/null)
-    fi
-    [ -n "$ccusage_json" ] && printf '%s' "$ccusage_json" >| "$cache"
+# Burn rate (tok/min) — считаем сами из дельт cumulative-токенов, которые
+# Claude Code передаёт statusline'у: каждая сессия пишет сэмплы в свой
+# state-файл, суммируем скорость по всем живым сессиям. Токены, не деньги:
+# метрика не зависит от цены модели (ccusage в $/h горел красным на любой
+# активности Fable). Пороги — первая прикидка, крутить здесь:
+BURN_WINDOW=300      # окно усреднения, сек
+BURN_YELLOW=50000    # tok/min: жёлтый
+BURN_RED=150000      # tok/min: красный
+compute_burn() {
+  local dir sid now total f mtime first_ts first_tok last_ts last_tok span rate sum color
+  dir="${TMPDIR:-/tmp}/claude-burn"
+  mkdir -p "$dir" 2>/dev/null || return 0
+  sid=$(echo "$input" | jq -r '.session_id // empty')
+  [ -n "$sid" ] || return 0
+  now=$(date +%s)
+  total=$(echo "$input" | jq -r '(.context_window.total_input_tokens // 0) + (.context_window.total_output_tokens // 0)')
+  f="$dir/$sid"
+  # счётчик упал (компакция/перезапуск сессии) — базлайн заново
+  if [ -f "$f" ]; then
+    last_tok=$(tail -1 "$f" | cut -d' ' -f2)
+    [ "${total:-0}" -lt "${last_tok:-0}" ] 2>/dev/null && : >| "$f"
   fi
-  [ -n "$ccusage_json" ] || return 0
-  active=$(echo "$ccusage_json" | jq -c '[.blocks[] | select(.isActive==true)] | last // empty')
-  [ -n "$active" ] || return 0
-  cost=$(echo "$active" | jq -r '.costUSD')
-  burn=$(echo "$active" | jq -r '.burnRate.costPerHour // 0')
-  cost_fmt=$(printf "%.2f" "$cost")
-  burn_fmt=$(printf "%.2f" "$burn")
-  burn_color="$GREEN"
-  burn_int=$(echo "$burn" | cut -d'.' -f1)
-  [ "${burn_int:-0}" -ge 2 ] 2>/dev/null && burn_color="$YELLOW"
-  [ "${burn_int:-0}" -ge 5 ] 2>/dev/null && burn_color="$RED"
-  printf '$%s %s$%s/h%s' "$cost_fmt" "$burn_color" "$burn_fmt" "$RESET"
+  echo "$now $total" >> "$f"
+  # оставить сэмплы окна + один базлайн старше окна (для полной дельты)
+  awk -v now="$now" -v w="$BURN_WINDOW" '
+    $1 < now-w { base=$0; next } { if (base != "") { print base; base="" } print }
+  ' "$f" >| "$f.tmp" && mv "$f.tmp" "$f"
+  sum=0
+  for f in "$dir"/*; do
+    [ -f "$f" ] || continue
+    case "$f" in *.tmp) continue ;; esac
+    # мёртвая сессия: файл не обновлялся дольше окна — вычистить
+    mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+    if [ "$((now - mtime))" -gt "$BURN_WINDOW" ]; then rm -f "$f"; continue; fi
+    first_ts=$(head -1 "$f" | cut -d' ' -f1); first_tok=$(head -1 "$f" | cut -d' ' -f2)
+    last_ts=$(tail -1 "$f" | cut -d' ' -f1);  last_tok=$(tail -1 "$f" | cut -d' ' -f2)
+    span=$((last_ts - first_ts))
+    [ "$span" -ge 30 ] || continue  # мало данных для скорости
+    rate=$(( (last_tok - first_tok) * 60 / span ))
+    [ "$rate" -gt 0 ] && sum=$((sum + rate))
+  done
+  [ "$sum" -gt 0 ] || return 0
+  color="$GREEN"
+  [ "$sum" -ge "$BURN_YELLOW" ] && color="$YELLOW"
+  [ "$sum" -ge "$BURN_RED" ] && color="$RED"
+  printf '%s🔥%s/m%s' "$color" "$(format_tokens "$sum")" "$RESET"
 }
 
 # Tiered rendering by terminal width
@@ -186,11 +202,11 @@ elif [ "$cols" -lt 90 ]; then
   out="${BLUE}${model}${RESET} | ${bar} ${ctx_seg} | ${cache_color}◎ ${cache_hit}%${RESET} | ↑${input_str} ${GREEN}↓${output_str}${RESET}"
   [ -n "$style_str" ] && out="${out} | ${style_str}"
 else
-  # full: everything incl ccusage cost/burn
+  # full: everything incl burn rate
   bar=$(generate_progress_bar "$used_pct" 10)
   out="${BLUE}${model}${RESET} | ${bar} ${ctx_seg} | ${cache_color}◎ ${cache_hit}%${RESET} | ↑${input_str} ${GREEN}↓${output_str}${RESET}"
   [ -n "$style_str" ] && out="${out} | ${style_str}"
-  cost_str=$(compute_cost)
-  [ -n "$cost_str" ] && out="${out} | ${cost_str}"
+  burn_str=$(compute_burn)
+  [ -n "$burn_str" ] && out="${out} | ${burn_str}"
 fi
 printf "%s" "$out"
