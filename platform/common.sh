@@ -7,6 +7,11 @@ if [ -z "$DOTFILES_ROOT" ]; then
   export DOTFILES_ROOT="$(dirname "$PLATFORM_DIR")"
 fi
 
+# nix-darwin'овский /etc/zshenv перезаписывает PATH каждому новому zsh-процессу
+# (set-environment без guard-переменной) — суб-скрипты теряют /opt/homebrew/bin,
+# унаследованный от install.sh, и не находят devpod/orb. Возвращаем сами.
+[[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+
 RED='\033[0;31m'
 NC='\033[0m'
 
