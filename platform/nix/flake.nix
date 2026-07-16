@@ -42,9 +42,20 @@
         system = "aarch64-darwin";
         modules = [
           ./darwin-configuration.nix
-          {
+          home-manager.darwinModules.home-manager
+          ({ config, ... }: {
             nixpkgs.config.allowUnfree = true;
-          }
+            # Пользовательский слой (симлинки, activation-хуки) — те же модули,
+            # что и Linux homeConfigurations; пакеты остаются в systemPackages
+            home-manager = {
+              useGlobalPkgs = true;
+              useUserPackages = true;
+              # существующие файлы/чужие симлинки уводятся в *.hm-backup,
+              # а не валят активацию (как -b hm-backup в updl на Linux)
+              backupFileExtension = "hm-backup";
+              users.${config.system.primaryUser}.imports = [ ./home/darwin.nix ];
+            };
+          })
         ];
       };
 

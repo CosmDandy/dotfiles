@@ -1,7 +1,8 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
-  # Живой working copy репо (devpod клонирует в ~/dotfiles; ~/.dotfiles — bridge-симлинк)
-  dotfiles = "${config.home.homeDirectory}/dotfiles";
+  # Живой working copy репо: на Linux devpod клонирует в ~/dotfiles
+  # (~/.dotfiles — bridge-симлинк), на macOS репо живёт в ~/.dotfiles
+  dotfiles = "${config.home.homeDirectory}/${if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"}";
   # Симлинк на файл в клоне, НЕ на копию в store: правка в репо видна сразу,
   # без home-manager switch (та же семантика, что были ln -s в install.sh)
   link = path: config.lib.file.mkOutOfStoreSymlink "${dotfiles}/${path}";
@@ -19,10 +20,9 @@ in {
     ".claude/CLAUDE.md".source = link "tools/claude/CLAUDE.md";
     ".claude/settings.json".source = link "tools/claude/settings.json";
     ".claude/statusline.sh".source = link "tools/claude/statusline.sh";
-    ".claude/agents".source = link "tools/claude/agents";
-    ".claude/commands".source = link "tools/claude/commands";
-    ".claude/skills".source = link "tools/claude/skills";
-    ".claude/rules".source = link "tools/claude/rules";
+    # ~/.claude/{agents,commands,skills,rules} НЕ здесь: ими владеет
+    # tools/claude/custom/install.sh (хук installClaudeCustom) — сабмодуль
+    # может отсутствовать на момент linkGeneration
     ".lnav/configs/default/config.json".source = link "tools/lnav/config.json";
   };
 
@@ -43,21 +43,23 @@ in {
       run mkdir -p "$HOME/.kube/configs" "$HOME/.talos"
     '';
 
-    # known_hosts — копией, не симлинком: ssh должен мочь дописывать в файл.
-    # Guard на клон: при сборке образа ~/dotfiles ещё нет
-    sshKnownHosts = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-      if [ -f "${dotfiles}/tools/git/known_hosts" ]; then
-        run mkdir -p "$HOME/.ssh"
-        run cp "${dotfiles}/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
-        run chmod 644 "$HOME/.ssh/known_hosts"
-      fi
-    '';
-
     # Активный скин k9s — мутабельный симлинк (обёртка k9s.zsh переключает
     # dark/light по теме), поэтому не home.file: только дефолт, если отсутствует
     k9sDefaultSkin = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
       if [ -d "${dotfiles}/tools/k9s/skins" ] && [ ! -e "${dotfiles}/tools/k9s/skins/solarized.yaml" ]; then
         run ln -sf solarized-dark.yaml "${dotfiles}/tools/k9s/skins/solarized.yaml"
+      fi
+    '';
+  } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+    # known_hosts — копией, не симлинком: ssh должен мочь дописывать в файл.
+    # Guard на клон: при сборке образа ~/dotfiles ещё нет. На macOS вместо
+    # копии — симлинк в репо (darwin.nix): новые хосты дописываются в
+    # tools/git/known_hosts и остаются под git
+    sshKnownHosts = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+      if [ -f "${dotfiles}/tools/git/known_hosts" ]; then
+        run mkdir -p "$HOME/.ssh"
+        run cp "${dotfiles}/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
+        run chmod 644 "$HOME/.ssh/known_hosts"
       fi
     '';
   };

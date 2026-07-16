@@ -1,6 +1,6 @@
 { config, lib, pkgs, ... }:
 let
-  dotfiles = "${config.home.homeDirectory}/dotfiles";
+  dotfiles = "${config.home.homeDirectory}/${if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"}";
   # Активация может бежать при сборке образа (сети/клона может не быть) и при
   # каждом switch — каждый хук идемпотентен и толерантен к оффлайну
   after = lib.hm.dag.entryAfter [ "linkGeneration" ];
@@ -66,10 +66,11 @@ in {
     '';
 
     # nvim-плагины: только при живом конфиге (при сборке образа симлинк на
-    # ~/dotfiles ещё висячий) и пустом каталоге плагинов
+    # ~/dotfiles ещё висячий) и пустом каталоге плагинов. nvim из pkgs:
+    # на darwin он в системном профиле, а не в ~/.nix-profile
     syncNvimPlugins = after ''
       if [ -e "$HOME/.config/nvim/init.lua" ] && [ ! -d "$HOME/.local/share/nvim/lazy" ]; then
-        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git ]}:$PATH" \
+        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim ]}:$PATH" \
           run nvim --headless "+Lazy! sync" +qa \
           || echo "warn: nvim Lazy sync failed (offline?)"
       fi
