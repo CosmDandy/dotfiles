@@ -8,98 +8,57 @@ PLATFORM_DIR="$(dirname "$SCRIPT_DIR")"
 source "$PLATFORM_DIR/common.sh"
 
 # ===============================
-# Profiles: base | full (default)
-#   base — core editor, shell, git
-#   full — base + IaC/K8s/container/DevOps tools
+# Тонкий bootstrap: всё окружение (пакеты, симлинки, установщики) декларируется
+# в platform/nix/home/ и применяется одним home-manager switch. Здесь остаётся
+# только неустранимый минимум: nix, flakes, bridge-симлинк и system-уровень.
 #
+# Profiles: base | full (default)
 # Usage: PROFILE=base ./install.sh
 #    or: devpod up --dotfiles-script-env PROFILE=base
 # ===============================
 PROFILE="${PROFILE:-full}"
 print_section "Profile: ${PROFILE}"
 
-# Установка Nix
+# Установка Nix (--no-channel-add: каналы не нужны — пакеты едут по flake.lock,
+# а дефолтный nixpkgs-unstable канал тянет ~400MB незапиненного дерева)
 if ! command -v nix &> /dev/null; then
   print_section "Installing Nix"
-  curl -L https://nixos.org/nix/install | sh
+  curl -L https://nixos.org/nix/install | sh -s -- --no-channel-add
   . "$HOME/.nix-profile/etc/profile.d/nix.sh"
 fi
 
-# Разрешаем unfree пакеты (например, terraform)
-export NIXPKGS_ALLOW_UNFREE=1
-
-# Канал unstable для свежих версий. Дрейф мажоров, ломающий Mason-пакеты,
-# гасим явными атрибутами ниже (python313, nodejs_24) — остальное едет за unstable.
-NIXPKGS_CHANNEL="${NIXPKGS_CHANNEL:-nixpkgs-unstable}"
-NIXPKGS_URL="https://github.com/NixOS/nixpkgs/archive/${NIXPKGS_CHANNEL}.tar.gz"
-
-# --- Base: core editing and shell environment ---
-packages=(
-  # Neovim deps
-  python313
-  nodejs_24
-  lua
-  luarocks
-  tree-sitter
-  # CLI
-  eza
-  fd
-  ripgrep
-  starship
-  neovim
-  tmux
-  atuin
-  fzf            # интерактивный выбор для kubectx/kubens и claude/custom/setup.sh
-  tmuxPlugins.tmux-thumbs   # flash-метки по экрану (prefix+f), nix-сборка без cargo
-  btop
-  lazygit
-  lazydocker
-  uv
-  gitleaks
-  yamllint
-  shellcheck
-  gh
-  glab
-  iperf3
-)
-
-# --- Full: IaC, K8s, DevOps tools ---
-if [[ "$PROFILE" == "full" ]]; then
-  packages+=(
-    go
-    gdu
-    terraform
-    ansible
-    kubectl
-    kubernetes-helm
-    kubectx        # переключение context/namespace (kubectx/kubens, с fzf — интерактивно)
-    talosctl       # управление Talos Linux кластерами
-    k9s
-    dive
-    stern          # мультипод-логи (плагин k9s)
-    kubectl-neat   # чистый YAML (плагин k9s)
-    fluxcd         # flux GitOps (плагин k9s)
-    argocd         # argocd GitOps (плагин k9s)
-    trivy          # скан образов (плагин k9s)
-    lnav
-    yq-go
-  )
+# Flakes нужны для home-manager; ванильный nix не включает их по умолчанию
+mkdir -p "$HOME/.config/nix"
+if ! grep -q "experimental-features" "$HOME/.config/nix/nix.conf" 2>/dev/null; then
+  echo "experimental-features = nix-command flakes" >> "$HOME/.config/nix/nix.conf"
 fi
 
-# -iA с -f: атрибуты берутся от корня tarball-набора, поэтому БЕЗ префикса nixpkgs.
-# (префикс нужен только при резолве через канал/NIX_PATH, без -f)
-print_section "Installing packages from ${NIXPKGS_CHANNEL}: ${packages[*]}"
-nix-env -f "$NIXPKGS_URL" -iA "${packages[@]}"
-
-print_section "Installing Claude Code (native, self-updating binary)"
-curl -fsSL https://claude.ai/install.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
-
-# DevPod always clones dotfiles to ~/dotfiles (no clone-path option exists —
-# only DOTFILES_URL/DOTFILES_SCRIPT), while configs reference ~/.dotfiles.
-# Bridge the two with a symlink so both paths resolve to the same tree.
+# Bridge-симлинки: home-модули (files.nix/hooks.nix) ссылаются на ~/dotfiles,
+# конфиги исторически — на ~/.dotfiles. Оба пути должны вести в один клон.
+# DevPod клонирует в ~/dotfiles (clone-path не настраивается), руками часто ~/.dotfiles
 [[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
+[[ "$DOTFILES_ROOT" != "$HOME/dotfiles" && ! -e "$HOME/dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/dotfiles"
 
+# ===============================
+# Весь user-space одним switch: пакеты + симлинки + activation-хуки
+# (claude, ccusage, tpm, zinit, nvim-плагины, MCP). Версии пиннятся flake.lock.
+# Атрибут: <user>-<profile>-<arch>, см. platform/nix/flake.nix
+# ===============================
+FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
+HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
+
+print_section "Activating home-manager configuration: ${HM_CONFIG}"
+# --inputs-from: home-manager резолвится по flake.lock репо, а не по свежему master;
+# -b: файлы, которые HM отказался бы перезаписать, уезжают в *.hm-backup
+nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+
+# Маркер профиля — читает cron-обновление (automation/cron/devpod-update.sh)
+echo "$PROFILE" > "$HOME/.dotfiles-profile"
+
+# ===============================
+# System-уровень (sudo): вне зоны home-manager. В prebuilt-образе уже сделано —
+# эти шаги идемпотентны и отрабатывают мгновенно
+# ===============================
 print_section "Setting default shell to zsh"
 ZSH_PATH="$(which zsh)"
 if [[ "$SHELL" != "$ZSH_PATH" ]]; then
@@ -119,123 +78,6 @@ if [[ -f "/usr/share/zoneinfo/$CONTAINER_TZ" ]]; then
   sudo ln -sf "/usr/share/zoneinfo/$CONTAINER_TZ" /etc/localtime
   echo "$CONTAINER_TZ" | sudo tee /etc/timezone >/dev/null
 fi
-
-# Создаем символьные ссылки
-export XDG_CONFIG_HOME="$HOME/.config"
-
-dirs=(
-  "$XDG_CONFIG_HOME"
-  "$XDG_CONFIG_HOME/atuin"
-  "$XDG_CONFIG_HOME/btop"
-  "$XDG_CONFIG_HOME/lazygit"
-  "$HOME/.zsh/completions"
-  "$HOME/.claude"
-  "$HOME/.lnav/configs/default"
-  "$HOME/.kube/configs"
-  "$HOME/.talos"
-)
-
-links=(
-  "$DOTFILES_ROOT/tools/tmux/.tmux.conf:$HOME/.tmux.conf"
-  "$DOTFILES_ROOT/tools/zsh/.zprofile:$HOME/.zprofile"
-  "$DOTFILES_ROOT/tools/zsh/.zshrc:$HOME/.zshrc"
-  "$DOTFILES_ROOT/tools/zsh/completions:$HOME/.zsh/completions"
-  "$DOTFILES_ROOT/tools/git/.gitignore_global:$HOME/.gitignore_global"
-  "$DOTFILES_ROOT/tools/git/.gitconfig:$HOME/.gitconfig"
-  "$DOTFILES_ROOT/tools/lazygit/config.yml:$XDG_CONFIG_HOME/lazygit/config.yml"
-  "$DOTFILES_ROOT/tools/lazygit/theme-light.yml:$XDG_CONFIG_HOME/lazygit/theme-light.yml"
-  "$DOTFILES_ROOT/tools/lazygit/theme-dark.yml:$XDG_CONFIG_HOME/lazygit/theme-dark.yml"
-  "$DOTFILES_ROOT/tools/starship/starship.toml:$XDG_CONFIG_HOME/starship.toml"
-  "$DOTFILES_ROOT/tools/atuin/config.toml:$XDG_CONFIG_HOME/atuin/config.toml"
-  "$DOTFILES_ROOT/tools/nvim:$XDG_CONFIG_HOME/nvim"
-  "$DOTFILES_ROOT/tools/btop/btop.conf:$XDG_CONFIG_HOME/btop/btop.conf"
-  "$DOTFILES_ROOT/tools/k9s:$XDG_CONFIG_HOME/k9s"
-  "$DOTFILES_ROOT/tools/claude/CLAUDE.md:$HOME/.claude/CLAUDE.md"
-  "$DOTFILES_ROOT/tools/claude/settings.json:$HOME/.claude/settings.json"
-  "$DOTFILES_ROOT/tools/claude/statusline.sh:$HOME/.claude/statusline.sh"
-  "$DOTFILES_ROOT/tools/claude/agents:$HOME/.claude/agents"
-  "$DOTFILES_ROOT/tools/claude/commands:$HOME/.claude/commands"
-  "$DOTFILES_ROOT/tools/claude/skills:$HOME/.claude/skills"
-  "$DOTFILES_ROOT/tools/claude/rules:$HOME/.claude/rules"
-  "$DOTFILES_ROOT/tools/lnav/config.json:$HOME/.lnav/configs/default/config.json"
-  "$DOTFILES_ROOT/tools/git/.gitconfig-work:$HOME/.gitconfig-work"
-  "$DOTFILES_ROOT/tools/git/.allowed_signers:$HOME/.allowed_signers"
-  "$DOTFILES_ROOT/tools/git/hooks:$HOME/.git-hooks"
-)
-
-mkdir -p "$HOME/.ssh"
-cp "$DOTFILES_ROOT/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
-chmod 644 "$HOME/.ssh/known_hosts"
-
-print_section "Create directories for symbolic links"
-create_directories "${dirs[@]}"
-
-print_section "Create symbolic links"
-create_symlinks "${links[@]}"
-
-# k9s: активный скин — управляемый симлинк (обёртка k9s.zsh переключает dark/light по теме).
-# Создаём дефолт (dark), чтобы и прямой `command k9s` имел скин до первого запуска обёртки.
-ln -sf solarized-dark.yaml "$XDG_CONFIG_HOME/k9s/skins/solarized.yaml"
-
-print_section "Installing tmux plugins"
-mkdir -p ~/.tmux/plugins
-if [[ ! -d ~/.tmux/plugins/tpm ]]; then
-  git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-fi
-
-print_section "Installing ccusage (statusline cost/burn)"
-# ccusage НЕ в nixpkgs (только npm) — ставим прямым бинарём в ~/.local, чтобы statusline.sh
-# звал его напрямую, а не поднимал npx на каждый рендер. tree-sitter теперь идёт через nix (выше).
-if ! command -v ccusage &>/dev/null; then
-  npm install -g --prefix "$HOME/.local" ccusage
-fi
-
-# CRD JSON-схемы для yamlls кэшируем локально (оффлайн + нет сетевого лага на
-# первом открытии после рестарта). yamlls.lua сам берёт file://-кэш если он есть,
-# иначе фолбэк на URL. Версии пиннятся образом dev-контейнера.
-print_section "Caching YAML JSON-schemas for offline LSP"
-SCHEMA_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/yaml-schemas"
-CRD_BASE="https://raw.githubusercontent.com/datreeio/CRDs-catalog/main"
-crd_schemas=(
-  argoproj.io/application_v1alpha1.json
-  gateway.networking.k8s.io/gateway_v1.json
-  gateway.networking.k8s.io/gatewayclass_v1.json
-  gateway.networking.k8s.io/httproute_v1.json
-  gateway.networking.k8s.io/referencegrant_v1beta1.json
-)
-for rel in $crd_schemas; do
-  mkdir -p "$SCHEMA_DIR/${rel:h}"
-  if curl -fsSL "$CRD_BASE/$rel" -o "$SCHEMA_DIR/$rel"; then
-    echo "  ✓ $rel"
-  else
-    echo "  ✗ $rel (не скачана — yamlls откатится на URL)"
-  fi
-done
-
-print_section "Installing nvim plugins"
-nvim --headless "+Lazy! sync" +qa
-
-# TODO: Разобраться с автоматической установкой Mason tools
-# Проблема: команда зависает или не находит нужные команды в headless режиме
-# Временное решение: установить вручную через :MasonToolsInstall после первого запуска nvim
-# print_section "Installing Mason tools (LSP, linters, formatters)"
-# nvim --headless "+lua require('mason-tool-installer').check_install(true)" +qa
-
-print_section "Initializing claude submodule"
-git -C "$DOTFILES_ROOT" submodule update --init tools/claude/custom
-
-print_section "Installing Claude Code MCP servers"
-"$DOTFILES_ROOT/tools/claude/custom/install.sh"
-
-print_section "Setup global gitignore"
-git config --global core.excludesfile ~/.gitignore_global
-
-print_section "Installing zinit"
-if [[ ! -d "$HOME/.local/share/zinit" ]]; then
-  bash -c "$(curl --fail --show-error --silent --location https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh)"
-fi
-
-# Плагины zinit будут установлены автоматически при первом запуске zsh
 
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))

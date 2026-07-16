@@ -1,0 +1,71 @@
+# Prebuilt devcontainer-образ (platform/linux/Dockerfile): пересобирается при
+# изменении пинов/пакетов (platform/nix) и публикуется в ghcr. Нативные раннеры
+# обеих архитектур — сборка terraform из исходников под QEMU была бы часовой.
+name: devcontainer-image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'platform/nix/**'
+      - 'platform/linux/Dockerfile'
+      - '.github/workflows/devcontainer-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# Раны сериализуются: manifest мерджит мутабельные :full-{amd64,arm64} теги,
+# параллельные раны могли бы смешать архитектуры из разных коммитов
+concurrency:
+  group: devcontainer-image
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/cosmdandy/devcontainer
+
+# NB: после ПЕРВОГО пуша пакет ghcr.io/cosmdandy/devcontainer надо один раз
+# сделать public (GitHub → Packages → devcontainer → Package settings →
+# Change visibility), иначе анонимный docker pull в devpod up получит denied.
+jobs:
+  build:
+    # guard: workflow_dispatch с не-master ветки не должен перезаписывать прод-теги
+    if: github.ref == 'refs/heads/master'
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
+        with:
+          context: .
+          file: platform/linux/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}:full-${{ matrix.arch }}
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge per-arch tags into multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:full" \
+            "$IMAGE:full-amd64" \
+            "$IMAGE:full-arm64"
