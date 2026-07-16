@@ -22,6 +22,10 @@ cd ~/.dotfiles
 `~/.dotfiles-private` больше не нужен. Интерактивная настройка приложений:
 `platform/macos/install-extra.sh` (в headless-прогоне пропускается автоматически).
 
+Пользовательское окружение (симлинки конфигов, devpod, orbstack, Claude Code,
+MCP) на macOS управляется home-manager внутри `darwin-rebuild switch` — те же
+модули `platform/nix/home/`, что и на Linux. Повторное применение: `updm`.
+
 balena etcher
 Office 2024
 wispr flow

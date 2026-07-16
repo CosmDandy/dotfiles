@@ -65,7 +65,7 @@ rbw config show         # эффективный конфиг
 - **`brew trust` пишет не туда.** Активация nix-darwin вызывает `sudo --preserve-env=PATH`, `XDG_CONFIG_HOME` теряется → brew читает `~/.homebrew/trust.json`, а интерактивный шелл — `~/.config/homebrew/trust.json`. Поэтому симлинки на оба пути; brew пишет сквозь симлинк, не подменяя его.
 - **`flake.lock` нельзя держать в `.gitignore`** — nix исключает игнорируемые файлы из git-флейка, и пины молча не работают. nixpkgs и nix-darwin двигать парой; проверять кэш: `nix build nixpkgs#blueutil --max-jobs 0`.
 - **`bitwarden-desktop` из nixpkgs** тянет electron, помеченный insecure → ставится каском.
-- **SSH:** `ControlMaster` + `ControlPersist 10m` в `~/.ssh/config` — одно подтверждение ключа на хост вместо подтверждения на каждую команду. Нужен каталог `~/.ssh/sockets` (создаёт `setup-symlinks.sh`).
+- **SSH:** `ControlMaster` + `ControlPersist 10m` в `~/.ssh/config` — одно подтверждение ключа на хост вместо подтверждения на каждую команду. Нужен каталог `~/.ssh/sockets` (создаёт activation-хук `sshSockets` в `platform/nix/home/darwin.nix`).
 
 ## Известные проблемы
 

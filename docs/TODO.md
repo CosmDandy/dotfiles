@@ -44,5 +44,7 @@
       `tools/vscode` (не тронут с февраля; в casks три редактора), дубли
       casks (chatgpt/claude/lm-studio, utm/orbstack), argocd vs fluxcd,
       talosctl (есть ли кластеры), iperf3 в base-профиле
-- [ ] macOS: перевод `platform/macos/install.sh` на home-manager
-      (после обкатки схемы на Linux и UTM-тестов)
+- [x] macOS: перевод `platform/macos/install.sh` на home-manager —
+      darwinConfigurations подключает `home/darwin.nix` (общие files/hooks
+      с Linux + mac-слой); setup-symlinks.sh и setup-devpod.sh удалены,
+      install.sh = bootstrap (CLT, Rosetta, сабмодули, brew, nix)
