@@ -187,9 +187,11 @@
       wvous-tr-corner = 1;
       wvous-bl-corner = 1;
       wvous-br-corner = 1;
-      # persistent-apps = [
-      #   "/System/Applications/Launchpad.app"
-      # ];
+      # Пустой список: nix-darwin вычищает закреплённые приложения — в доке
+      # остаются только Finder, запущенные, Downloads (persistent-others) и
+      # Корзина. Закомментированный блок = док не управляется вовсе (после
+      # 8fe6b2f свежая машина оставалась с дефолтным набором Apple-приложений)
+      persistent-apps = [ ];
       persistent-others = [
         "/Users/${config.system.primaryUser}/Downloads"
       ];
