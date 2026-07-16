@@ -6,6 +6,10 @@ export PATH="$HOME/.nix-profile/bin:$PATH"
 export PATH="$HOME/.cargo/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 
+# brew в PATH логин-шелла (раньше install-brew.sh дописывал эту строку в
+# ~/.zprofile императивно — сквозь симлинк это пачкало репо)
+[[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+
 # =============================================================================
 # XDG BASE DIRECTORY SPECIFICATION
 # =============================================================================
