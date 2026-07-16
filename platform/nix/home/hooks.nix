@@ -9,10 +9,12 @@ in {
     # Claude Code — сознательно НЕ через nix: официальный бинарь самообновляется,
     # в иммутабельном store это невозможно. Хук лишь ставит его при отсутствии
     # PATH: скачанные инсталлеры зовут curl/tar по имени, а PATH активации минимальный
+    # :/usr/bin:/bin в хвосте — PATH активации не содержит системных путей,
+    # а инсталлер на macOS зовёт shasum (перловый скрипт из /usr/bin)
     installClaudeCode = after ''
       if [ ! -x "$HOME/.local/bin/claude" ] && ! command -v claude >/dev/null 2>&1; then
         run ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
-          && PATH="${lib.makeBinPath [ pkgs.curl pkgs.coreutils pkgs.gnutar pkgs.gzip pkgs.unzip ]}:$PATH" \
+          && PATH="${lib.makeBinPath [ pkgs.curl pkgs.coreutils pkgs.gnutar pkgs.gzip pkgs.unzip ]}:$PATH:/usr/bin:/bin" \
              run ${pkgs.bash}/bin/bash /tmp/claude-install.sh \
           && run rm -f /tmp/claude-install.sh \
           || echo "warn: claude install skipped (offline?)"
@@ -67,16 +69,18 @@ in {
 
     # nvim-плагины: только при живом конфиге (при сборке образа симлинк на
     # ~/dotfiles ещё висячий) и пустом каталоге плагинов. nvim из pkgs:
-    # на darwin он в системном профиле, а не в ~/.nix-profile
+    # на darwin он в системном профиле, а не в ~/.nix-profile.
+    # curl/tar — nvim-treesitter качает парсеры; /usr/bin — cc для их сборки
     syncNvimPlugins = after ''
       if [ -e "$HOME/.config/nvim/init.lua" ] && [ ! -d "$HOME/.local/share/nvim/lazy" ]; then
-        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim ]}:$PATH" \
+        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.tree-sitter ]}:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! sync" +qa \
           || echo "warn: nvim Lazy sync failed (offline?)"
       fi
     '';
 
-    # Приватный submodule (ssh) + установка MCP-серверов; без ключей — мягкий skip
+    # Приватный submodule (ssh) + установка MCP-серверов; без ключей — мягкий skip.
+    # PATH: install.sh зовёт claude (в ~/.local/bin), uv (deps MCP-серверов)
     installClaudeCustom = after ''
       if [ -d "${dotfiles}/.git" ]; then
         if [ ! -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
@@ -84,7 +88,8 @@ in {
             || echo "warn: claude custom submodule skipped (no ssh key?)"
         fi
         if [ -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
-          run "${dotfiles}/tools/claude/custom/install.sh" \
+          PATH="$HOME/.local/bin:${lib.makeBinPath [ pkgs.git pkgs.uv ]}:$PATH:/usr/bin:/bin" \
+            run "${dotfiles}/tools/claude/custom/install.sh" \
             || echo "warn: MCP install failed"
         fi
       fi
