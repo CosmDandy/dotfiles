@@ -18,8 +18,8 @@ in {
   home.file = {
     ".hushlogin".source = link "tools/zsh/.hushlogin";
     ".aerospace.toml".source = link "tools/aerospace/.aerospace.toml";
-    # новые хосты дописываются сквозь симлинк в tools/git/known_hosts (под git)
-    ".ssh/known_hosts".source = link "tools/git/known_hosts";
+    # known_hosts НЕ здесь: ssh (UpdateHostKeys) пересоздаёт файл, уничтожая
+    # симлинк, — каждый следующий switch упирался бы в бэкап; см. хук ниже
     # приватные конфиги — из сабмодуля private/; до его init симлинки висячие
     ".ssh/config".source = link "private/ssh/config";
     # rbw на macOS игнорирует XDG_CONFIG_HOME и читает конфиг из Library
@@ -52,6 +52,16 @@ in {
     # ControlMaster в private/ssh/config держит мультиплекс-сокеты здесь
     sshSockets = after ''
       run mkdir -p "$HOME/.ssh/sockets"
+    '';
+
+    # known_hosts сеем копией только при отсутствии: дальше файлом владеет
+    # ssh (дописывает/пересоздаёт), а не home-manager
+    seedKnownHosts = after ''
+      if [ ! -e "$HOME/.ssh/known_hosts" ] && [ -f "${dotfiles}/tools/git/known_hosts" ]; then
+        run mkdir -p "$HOME/.ssh"
+        run cp "${dotfiles}/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
+        run chmod 644 "$HOME/.ssh/known_hosts"
+      fi
     '';
 
     # devpod ставится каской в homebrew-шаге активации nix-darwin, который

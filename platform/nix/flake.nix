@@ -51,8 +51,11 @@
               useGlobalPkgs = true;
               useUserPackages = true;
               # существующие файлы/чужие симлинки уводятся в *.hm-backup,
-              # а не валят активацию (как -b hm-backup в updl на Linux)
+              # а не валят активацию (как -b hm-backup в updl на Linux);
+              # overwriteBackup: повторное появление файла (например, ssh
+              # пересоздал) не должно падать на занятом *.hm-backup
               backupFileExtension = "hm-backup";
+              overwriteBackup = true;
               users.${config.system.primaryUser}.imports = [ ./home/darwin.nix ];
             };
           })
