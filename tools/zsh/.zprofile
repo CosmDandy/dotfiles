@@ -23,3 +23,19 @@ export VISUAL='nvim'
 export EDITOR='nvim'
 export COLORTERM='truecolor'
 
+# =============================================================================
+# RESOURCE LIMITS
+# =============================================================================
+
+# macOS отдаёт через launchd soft-лимит в 256 fd, и его наследует вся цепочка
+# launchd → Ghostty → zsh → дочерние процессы. libgit2 внутри nix (fetch flake-
+# инпутов в ~/.cache/nix/tarball-cache-v2) на паковке nixpkgs держит открытыми
+# сильно больше и падает с "Too many open files". Потолок — kern.maxfilesperproc
+# (10240 на macOS); выше ядро не даст. Только повышаем: в Linux-контейнерах soft
+# бывает уже больше 10240, понижать его нельзя.
+_nofile_soft=$(ulimit -Sn 2>/dev/null)
+if [ -n "$_nofile_soft" ] && [ "$_nofile_soft" != "unlimited" ] && [ "$_nofile_soft" -lt 10240 ] 2>/dev/null; then
+  ulimit -n 10240 2>/dev/null || true
+fi
+unset _nofile_soft
+
