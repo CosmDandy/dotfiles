@@ -39,7 +39,9 @@
       "visual-studio-code"
       "devpod"
       "postico"
-      # "utm"
+      # стоит на машине (UTM-тестовая инфраструктура дотфайлов);
+      # вне списка cleanup=zap удалил бы его при rebuild
+      "utm"
       # AI инструменты
       # "chatgpt"
       # "claude"
@@ -67,6 +69,12 @@
     ];
     taps = [
       "nikitabobko/tap"
+      "jorgelbg/tap"
+    ];
+    brews = [
+      # стоит на машине (эксперимент Touch ID для rbw; с rbw не работает —
+      # docs/secrets.md); вне списка cleanup=zap удалил бы его при rebuild
+      "jorgelbg/tap/pinentry-touchid"
     ];
   };
 
