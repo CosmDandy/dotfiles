@@ -151,7 +151,7 @@ BURN_WINDOW=300      # окно усреднения, сек
 BURN_YELLOW=50000    # tok/min: жёлтый
 BURN_RED=150000      # tok/min: красный
 compute_burn() {
-  local dir sid now total f mtime first_ts first_tok last_ts last_tok span rate sum color
+  local dir sid now total f mtime first_ts first_tok last_ts last_tok span rate sum color eligible
   dir="${TMPDIR:-/tmp}/claude-burn"
   mkdir -p "$dir" 2>/dev/null || return 0
   sid=$(echo "$input" | jq -r '.session_id // empty')
@@ -170,6 +170,7 @@ compute_burn() {
     $1 < now-w { base=$0; next } { if (base != "") { print base; base="" } print }
   ' "$f" >| "$f.tmp" && mv "$f.tmp" "$f"
   sum=0
+  eligible=0
   for f in "$dir"/*; do
     [ -f "$f" ] || continue
     case "$f" in *.tmp) continue ;; esac
@@ -180,10 +181,12 @@ compute_burn() {
     last_ts=$(tail -1 "$f" | cut -d' ' -f1);  last_tok=$(tail -1 "$f" | cut -d' ' -f2)
     span=$((last_ts - first_ts))
     [ "$span" -ge 30 ] || continue  # мало данных для скорости
+    eligible=1
     rate=$(( (last_tok - first_tok) * 60 / span ))
     [ "$rate" -gt 0 ] && sum=$((sum + rate))
   done
-  [ "$sum" -gt 0 ] || return 0
+  # в простое показываем 0/m; прячем, только пока данных ещё нет
+  [ "$eligible" -eq 1 ] || return 0
   color="$GREEN"
   [ "$sum" -ge "$BURN_YELLOW" ] && color="$YELLOW"
   [ "$sum" -ge "$BURN_RED" ] && color="$RED"
