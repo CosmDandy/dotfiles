@@ -187,7 +187,7 @@ compute_burn() {
   color="$GREEN"
   [ "$sum" -ge "$BURN_YELLOW" ] && color="$YELLOW"
   [ "$sum" -ge "$BURN_RED" ] && color="$RED"
-  printf '%s🔥%s/m%s' "$color" "$(format_tokens "$sum")" "$RESET"
+  printf '%s󰓅 %s/m%s' "$color" "$(format_tokens "$sum")" "$RESET"
 }
 
 # Tiered rendering by terminal width
