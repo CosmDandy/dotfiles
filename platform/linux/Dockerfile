@@ -73,6 +73,13 @@ COPY --chown=vscode:vscode platform/nix /opt/dotfiles/platform/nix
 # только в devops-профиле) не попадал в образ вообще никогда.
 COPY --chown=vscode:vscode tools/nvim /opt/dotfiles/tools/nvim
 
+# .zshrc нужен по той же причине: zinit при первом старте оболочки клонирует
+# пять плагинов (~13 МБ) — это происходило в каждом воркспейсе и было видно
+# пользователю как пауза с прогресс-барами. Достаточно один раз запустить
+# интерактивный zsh при сборке: плагины объявлены с `wait lucid`, то есть
+# асинхронно, но планировщик успевает отработать до выхода (проверено).
+COPY --chown=vscode:vscode tools/zsh /opt/dotfiles/tools/zsh
+
 # --- core: редактор, шелл, git, CI ---
 # ~/.dotfiles-profile — тот же файл, что пишет platform/linux/install.sh и
 # читают updl с devpod-update.sh: запечённый в образ, он даёт рабочий updl
@@ -81,6 +88,10 @@ FROM base AS core
 RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "/opt/dotfiles/platform/nix#vscode-core-$(uname -m)-linux" -b hm-backup \
+  # плагины zinit: только в core, devops наследует их вместе со слоем.
+  # || true — оболочка может вернуть ненулевой код из-за мелочей вроде
+  # отсутствующего TERM, но плагины к этому моменту уже склонированы
+  && (zsh -i -c exit >/dev/null 2>&1 || true) \
   && rm -f "$HOME/dotfiles" \
   # кэши сборки mason (npm ~71 МБ, go ~66 МБ) — мусор, сами пакеты уже в
   # ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout
