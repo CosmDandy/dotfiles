@@ -56,24 +56,32 @@ ENV PATH=/home/vscode/.nix-profile/bin:$PATH
 
 COPY --chown=vscode:vscode platform/nix /opt/dotfiles/platform/nix
 
-# Конфиг nvim кладём по пути, который ждут хуки: home-manager линкует
-# ~/.config/nvim -> ~/dotfiles/tools/nvim (mkOutOfStoreSymlink), и без этого
-# каталога симлинк висячий, guard `-e ~/.config/nvim/init.lua` не проходит, а
-# syncNvimPlugins/installMasonTools молча пропускаются — плагины и mason
-# качались в КАЖДЫЙ воркспейс (1.2 ГБ). Каталог сносится в стадии core, в том
-# же RUN; сам COPY (216K) остаётся в нижнем слое, это цена запекания.
-COPY --chown=vscode:vscode tools/nvim /home/vscode/dotfiles/tools/nvim
+# Конфиг nvim нужен хукам: home-manager линкует ~/.config/nvim ->
+# ~/dotfiles/tools/nvim (mkOutOfStoreSymlink), и без него симлинк висячий,
+# guard `-e ~/.config/nvim/init.lua` не проходит, а syncNvimPlugins/
+# installMasonTools молча пропускаются — плагины и mason качались в КАЖДЫЙ
+# воркспейс (1.2 ГБ).
+#
+# Лежит в /opt, а НЕ в ~/dotfiles: туда devpod клонирует настоящий репозиторий,
+# непустой каталог сломал бы клон. На время активации каждая стадия вешает
+# симлинк ~/dotfiles -> /opt/dotfiles и снимает его в том же RUN — снятие
+# мгновенное и следа в слое не оставляет.
+#
+# Симлинк обязан создаваться в КАЖДОЙ стадии: devops собирается поверх core, и
+# пока core сносил каталог насовсем, devops оставался с висячим симлинком и
+# пропускал mason — из-за чего jsonnet-language-server (ему нужен go, а он
+# только в devops-профиле) не попадал в образ вообще никогда.
+COPY --chown=vscode:vscode tools/nvim /opt/dotfiles/tools/nvim
 
 # --- core: редактор, шелл, git, CI ---
 # ~/.dotfiles-profile — тот же файл, что пишет platform/linux/install.sh и
 # читают updl с devpod-update.sh: запечённый в образ, он даёт рабочий updl
 # сразу, ещё до первого запуска install.sh
 FROM base AS core
-RUN nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
+RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
+  && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "/opt/dotfiles/platform/nix#vscode-core-$(uname -m)-linux" -b hm-backup \
-  # ~/dotfiles нужен только на время активации (см. COPY выше). Убираем до gc,
-  # иначе он поедет в образ, а при devpod up туда встанет настоящий репозиторий
-  && rm -rf "$HOME/dotfiles" \
+  && rm -f "$HOME/dotfiles" \
   # кэши сборки mason (npm ~71 МБ, go ~66 МБ) — мусор, сами пакеты уже в
   # ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
@@ -83,7 +91,10 @@ RUN nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
 # --- devops: core + IaC/K8s/container ---
 # Наследует core целиком, поэтому в слой ложится только дельта пакетов
 FROM core AS devops
-RUN nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
+RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
+  && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "/opt/dotfiles/platform/nix#vscode-devops-$(uname -m)-linux" -b hm-backup \
+  && rm -f "$HOME/dotfiles" \
+  && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
   && nix-collect-garbage -d \
   && echo devops > "$HOME/.dotfiles-profile"
