@@ -1,11 +1,23 @@
-# Prebuilt devcontainer-образ для DevPod: Ubuntu + Nix + home-manager full-профиль.
+# Prebuilt devcontainer-образ для DevPod: Ubuntu + Nix + home-manager.
 # Собирается в CI (.github/workflows/devcontainer-image.yml) под amd64+arm64,
-# публикуется как ghcr.io/cosmdandy/devcontainer:full. Store-пути совпадают с
-# flake.lock репо, поэтому home-manager switch при devpod up — мгновенный no-op.
-# ubuntu-24.04 (пин по digest мульти-арх индекса)
-FROM mcr.microsoft.com/devcontainers/base@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae
+# публикуется как ghcr.io/cosmdandy/devcontainer:{core,devops}. Store-пути
+# совпадают с flake.lock репо, поэтому home-manager switch при devpod up —
+# мгновенный no-op.
+#
+# Профиль выбирается стадией, а не build-arg: `--target core` / `--target devops`.
+# Смысл в том, что devops наследует стадию core, поэтому нижние слои у двух
+# образов буквально одни и те же — реестр их дедуплицирует, а имея :core,
+# клиент дотягивает :devops одной дельтой. Заодно монолитный слой на ~1.2 ГБ
+# разбивается надвое, что даёт параллельную загрузку.
+#
+# ВАЖНО: nix-collect-garbage обязан оставаться в ТОМ ЖЕ RUN, что и switch.
+# Удаление отдельным слоем не освобождает место — файлы остаются в нижнем слое
+# под whiteout'ом (проверено: 68 MiB против 8 MiB на синтетике), и build-
+# зависимости вроде Go-тулчейна terraform запеклись бы в образ навсегда.
 
-ARG PROFILE=full
+# ubuntu-24.04 (пин по digest мульти-арх индекса)
+FROM mcr.microsoft.com/devcontainers/base@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae AS base
+
 ENV TZ=Europe/Moscow \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
@@ -20,7 +32,10 @@ RUN apt-get update \
   && ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime \
   && echo "$TZ" > /etc/timezone \
   && chsh -s /usr/bin/zsh vscode \
-  && mkdir -m 0755 /nix && chown vscode:vscode /nix
+  && mkdir -m 0755 /nix && chown vscode:vscode /nix \
+  # маркер для .devcontainer/setup.sh: системная подготовка уже в образе,
+  # повторять её при каждом создании воркспейса незачем
+  && echo prebuilt > /etc/devcontainer-prebuilt
 
 USER vscode
 ENV USER=vscode \
@@ -39,9 +54,36 @@ RUN curl -fsSL https://releases.nixos.org/nix/nix-2.33.1/install -o /tmp/nix-ins
 
 ENV PATH=/home/vscode/.nix-profile/bin:$PATH
 
-# home-manager профиль запекается в образ; gc в том же слое выкидывает
-# build-зависимости (Go-тулчейн terraform и т.п.) из итогового размера
 COPY --chown=vscode:vscode platform/nix /opt/dotfiles/platform/nix
+
+# Конфиг nvim кладём по пути, который ждут хуки: home-manager линкует
+# ~/.config/nvim -> ~/dotfiles/tools/nvim (mkOutOfStoreSymlink), и без этого
+# каталога симлинк висячий, guard `-e ~/.config/nvim/init.lua` не проходит, а
+# syncNvimPlugins/installMasonTools молча пропускаются — плагины и mason
+# качались в КАЖДЫЙ воркспейс (1.2 ГБ). Каталог сносится в стадии core, в том
+# же RUN; сам COPY (216K) остаётся в нижнем слое, это цена запекания.
+COPY --chown=vscode:vscode tools/nvim /home/vscode/dotfiles/tools/nvim
+
+# --- core: редактор, шелл, git, CI ---
+# ~/.dotfiles-profile — тот же файл, что пишет platform/linux/install.sh и
+# читают updl с devpod-update.sh: запечённый в образ, он даёт рабочий updl
+# сразу, ещё до первого запуска install.sh
+FROM base AS core
 RUN nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
-      switch --flake "/opt/dotfiles/platform/nix#vscode-${PROFILE}-$(uname -m)-linux" -b hm-backup \
-  && nix-collect-garbage -d
+      switch --flake "/opt/dotfiles/platform/nix#vscode-core-$(uname -m)-linux" -b hm-backup \
+  # ~/dotfiles нужен только на время активации (см. COPY выше). Убираем до gc,
+  # иначе он поедет в образ, а при devpod up туда встанет настоящий репозиторий
+  && rm -rf "$HOME/dotfiles" \
+  # кэши сборки mason (npm ~71 МБ, go ~66 МБ) — мусор, сами пакеты уже в
+  # ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout
+  && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
+  && nix-collect-garbage -d \
+  && echo core > "$HOME/.dotfiles-profile"
+
+# --- devops: core + IaC/K8s/container ---
+# Наследует core целиком, поэтому в слой ложится только дельта пакетов
+FROM core AS devops
+RUN nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
+      switch --flake "/opt/dotfiles/platform/nix#vscode-devops-$(uname -m)-linux" -b hm-backup \
+  && nix-collect-garbage -d \
+  && echo devops > "$HOME/.dotfiles-profile"

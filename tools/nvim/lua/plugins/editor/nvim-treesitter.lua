@@ -18,9 +18,15 @@ return {
         'rust', 'dockerfile', 'yaml', 'hcl', 'terraform', 'jinja', 'toml',
         'xml', 'regex', 'vim', 'vimdoc', 'gotmpl', 'helm', 'jsonnet',
       }
-      -- Установить недостающие парсеры (асинхронно, idempotent)
+      -- Установить недостающие парсеры (idempotent). В интерактивной сессии —
+      -- асинхронно, чтобы не задерживать старт. В headless (сборка образа,
+      -- активация home-manager) ждём завершения: иначе nvim выходит раньше
+      -- компиляции и в образ попадает случайное подмножество парсеров.
       pcall(function()
-        ts.install(ensure)
+        local handle = ts.install(ensure)
+        if handle and #vim.api.nvim_list_uis() == 0 then
+          handle:wait(600000)
+        end
       end)
 
       -- ft → парсер там, где имена расходятся (иначе language.get_lang=nil → нет подсветки)

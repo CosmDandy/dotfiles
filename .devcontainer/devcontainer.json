@@ -1,6 +1,12 @@
 {
+  // Тег намеренно плавающий: воркспейсы одноразовые, и пересоздание должно
+  // сразу давать свежий образ (еженедельная пересборка в CI). Воспроизводимость
+  // при этом не теряется — окружение задаёт flake.lock, а образ лишь ускоряет
+  // старт: home-manager switch досыпет разницу, если store-пути разойдутся.
+  // Откат на конкретную сборку — иммутабельным тегом <профиль>-<дата>-<sha7>,
+  // список: docker buildx imagetools inspect ghcr.io/cosmdandy/devcontainer:devops
   "name": "Dotfiles DevContainer",
-  "image": "ghcr.io/cosmdandy/devcontainer:full",
+  "image": "ghcr.io/cosmdandy/devcontainer:devops",
   "onCreateCommand": "bash .devcontainer/setup.sh",
   "remoteEnv": {
     "LANG": "en_US.UTF-8",

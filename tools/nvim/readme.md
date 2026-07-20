@@ -1,12 +1,14 @@
 # Requirements
 
+Ручных шагов нет — всё приезжает из nix и хуков home-manager:
+
 - **tree-sitter CLI** — nvim-treesitter (ветка `main`) компилирует парсеры через него.
-  Без него подсветка падает с ошибками сборки парсеров.
-  - Linux: `npm install -g --prefix ~/.local tree-sitter-cli` (mason-пакет падает на aarch64) —
-    автоматизировано в `platform/linux/install.sh`.
-  - macOS: `brew install tree-sitter` (или npm как выше).
-  - Должен быть в `$PATH` (например `~/.local/bin`).
-- **Node.js/npm** — для tree-sitter CLI и части language servers.
+  Пакет `tree-sitter` объявлен в `platform/nix/home/default.nix` (corePackages),
+  то есть попадает в `$PATH` из nix-профиля на обоих платформах.
+- **Node.js/npm** — там же (`nodejs_24`), нужен части language servers и mason.
+- **Плагины, парсеры, mason-пакеты** ставятся хуками активации
+  (`platform/nix/home/hooks.nix`: `syncNvimPlugins`, `installMasonTools`)
+  и запекаются в devcontainer-образ (`platform/linux/Dockerfile`).
 
 Интересные плагины к которым я может быть когда нибудь вернусь:
 - iamcco/markdown-preview.nvim

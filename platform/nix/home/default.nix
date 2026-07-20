@@ -1,7 +1,7 @@
 { pkgs, lib, profile, ... }:
 let
-  # --- Base: core editor, shell, git ---
-  basePackages = with pkgs; [
+  # --- Core: редактор, шелл, git ---
+  corePackages = with pkgs; [
     # Neovim deps
     python313
     nodejs_24
@@ -30,8 +30,8 @@ let
     iperf3
   ];
 
-  # --- Full: base + IaC/K8s/container/DevOps tools ---
-  fullPackages = with pkgs; [
+  # --- DevOps: core + IaC/K8s/container tools ---
+  devopsPackages = with pkgs; [
     go
     gdu
     terraform
@@ -56,7 +56,7 @@ in {
     ./hooks.nix   # императивные установщики (claude, ccusage, tpm, zinit, …)
   ];
 
-  home.packages = basePackages ++ lib.optionals (profile == "full") fullPackages;
+  home.packages = corePackages ++ lib.optionals (profile == "devops") devopsPackages;
 
   # CLI home-manager в профиле — для повторных switch (install.sh, cron)
   programs.home-manager.enable = true;

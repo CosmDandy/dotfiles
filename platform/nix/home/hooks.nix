@@ -4,6 +4,11 @@ let
   # Активация может бежать при сборке образа (сети/клона может не быть) и при
   # каждом switch — каждый хук идемпотентен и толерантен к оффлайну
   after = lib.hm.dag.entryAfter [ "linkGeneration" ];
+  # installPackages в списке обязателен: он ставит пакеты профиля и идёт ПОСЛЕ
+  # обычных after-хуков. Без него mason бежал бы, пока ~/.nix-profile указывает
+  # на прежнее поколение, и на стадии devops не нашёл бы go — из-за чего
+  # jsonnet-language-server молча не ставился (проверено на собранном образе).
+  afterNvim = lib.hm.dag.entryAfter [ "syncNvimPlugins" "installPackages" ];
 in {
   home.activation = {
     # Claude Code — сознательно НЕ через nix: официальный бинарь самообновляется,
@@ -60,15 +65,42 @@ in {
       done
     '';
 
-    # nvim-плагины: только при живом конфиге (при сборке образа симлинк на
-    # ~/dotfiles ещё висячий) и пустом каталоге плагинов. nvim из pkgs:
-    # на darwin он в системном профиле, а не в ~/.nix-profile.
+    # nvim-плагины: только при живом конфиге (без него симлинк ~/.config/nvim
+    # висячий — так отсекается сборка образа до COPY tools/nvim).
+    # Guard'а по каталогу lazy НЕТ: Lazy! sync — это install + clean + update,
+    # он идемпотентен и должен идти на каждой активации, иначе добавленный в
+    # конфиг плагин не приезжал бы по updl/updm (каталог-то уже есть).
+    # Плагины сознательно не пинятся: lazy-lock.json в .gitignore, в контекст
+    # сборки не попадает, версии всегда свежие — как zinit update в updl.
+    # nvim из pkgs: на darwin он в системном профиле, а не в ~/.nix-profile.
     # curl/tar — nvim-treesitter качает парсеры; /usr/bin — cc для их сборки
     syncNvimPlugins = after ''
-      if [ -e "$HOME/.config/nvim/init.lua" ] && [ ! -d "$HOME/.local/share/nvim/lazy" ]; then
+      if [ -e "$HOME/.config/nvim/init.lua" ]; then
         PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.tree-sitter ]}:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! sync" +qa \
           || echo "warn: nvim Lazy sync failed (offline?)"
+      fi
+    '';
+
+    # Mason-пакеты (LSP-серверы, линтеры, форматтеры из ensure_installed).
+    # Отдельным шагом после Lazy sync: mason-tool-installer подключён как
+    # зависимость nvim-lspconfig, а тот грузится по BufReadPre/BufNewFile —
+    # в headless без открытого файла событие не наступает, setup() не бежит и
+    # run_on_start молчит. Отсюда явный Lazy! load + Sync-вариант команды
+    # (обычный MasonToolsInstall асинхронный, nvim вышел бы раньше установки).
+    # Guard'а по каталогу mason НЕТ намеренно: сама команда идемпотентна и при
+    # полном комплекте отрабатывает за 0с (замерено), а «пропускать, если что-то
+    # уже стоит» ломало бы многостадийный образ — стадия devops унаследовала бы
+    # непустой mason/ от core и не доставила бы jsonnet-language-server, которому
+    # нужен go (он есть только в devops-профиле). Без guard'а недостающее
+    # доустанавливается на любом switch, где инструмент наконец доступен.
+    # PATH: инсталлеры mason тянут пакеты через npm/pip/luarocks и распаковывают;
+    # ~/.nix-profile/bin первым — оттуда берётся go на devops-профиле
+    installMasonTools = afterNvim ''
+      if [ -e "$HOME/.config/nvim/init.lua" ]; then
+        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.unzip pkgs.nodejs_24 pkgs.python313 pkgs.luarocks pkgs.uv ]}:$PATH:/usr/bin:/bin" \
+          run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
+          || echo "warn: mason tools install failed (offline?)"
       fi
     '';
 

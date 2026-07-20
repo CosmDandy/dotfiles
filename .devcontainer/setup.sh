@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -e
 
+# Всё ниже уже выполнено на этапе сборки пребилт-образа (platform/linux/
+# Dockerfile ставит маркер). Повтор на каждом создании воркспейса — это
+# лишний apt-get update по сети и переустановка того, что уже стоит.
+# Голые образы mcr.microsoft.com/devcontainers/base (остальные репозитории)
+# маркера не имеют и проходят скрипт целиком.
+if [[ -f /etc/devcontainer-prebuilt ]]; then
+  echo "prebuilt image ($(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo '?')) — system prep baked in, skipping"
+  exit 0
+fi
+
 # Locale
 echo 'en_US.UTF-8 UTF-8' | sudo tee /etc/locale.gen
 sudo locale-gen

@@ -9,15 +9,25 @@ on:
     paths:
       - 'platform/nix/**'
       - 'platform/linux/Dockerfile'
+      # конфиг nvim запекается в образ (плагины + mason), поэтому его правки
+      # тоже требуют пересборки
+      - 'tools/nvim/**'
       - '.github/workflows/devcontainer-image.yml'
+  # Воскресенье 00:00 UTC = 03:00 МСК. Пересборка без изменений в репо тянет
+  # свежие apt-пакеты и патчи базового образа: nix-часть при этом идентична
+  # (её держит flake.lock), меняется только системный слой.
+  # NB: GitHub отключает schedule в репозиториях без активности 60 дней.
+  schedule:
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
-# Раны сериализуются: manifest мерджит мутабельные :full-{amd64,arm64} теги,
-# параллельные раны могли бы смешать архитектуры из разных коммитов
+# С push-by-digest гонки за промежуточные теги больше нет — части адресуются
+# по содержимому. Но финальный imagetools create всё ещё пишет изменяемые
+# :<profile>, и без очереди медленный старый ран мог бы перетереть свежий.
 concurrency:
   group: devcontainer-image
   cancel-in-progress: false
@@ -34,38 +44,98 @@ jobs:
     if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
+        profile: [core, devops]
+        arch: [amd64, arm64]
+        # runner подставляется по arch: include с ключом из матрицы дополняет
+        # совпадающие комбинации. Без arch в матрице оба объекта легли бы на
+        # все комбинации, второй перезаписал бы первый (всё ушло на arm64).
         include:
-          - runner: ubuntu-24.04
-            arch: amd64
-          - runner: ubuntu-24.04-arm
-            arch: arm64
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
       - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # push-by-digest: слои и манифест уходят в реестр БЕЗ тега, наружу отдаётся
+      # только digest. Промежуточные :<profile>-<arch> теги больше не нужны —
+      # они были изменяемым общим состоянием, через которое джобы обменивались
+      # результатом, и именно из-за них требовалась сериализация ранов.
+      # Профиль выбирается стадией Dockerfile (target), а не build-arg: devops
+      # наследует core, поэтому нижние слои у образов общие.
       - uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
+        id: build
         with:
           context: .
           file: platform/linux/Dockerfile
-          push: true
-          tags: ${{ env.IMAGE }}:full-${{ matrix.arch }}
+          target: ${{ matrix.profile }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      # Матричные джобы не умеют надёжно отдавать outputs (последняя затирает
+      # остальные), поэтому digest'ы едут в merge-джобу через артефакты
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: digest-${{ matrix.profile }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
   manifest:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
       - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Merge per-arch tags into multi-arch manifest
+      # Два тега на один манифест: плавающий :<profile> для разовых прогонов
+      # (--devcontainer-image) и иммутабельный :<profile>-<дата>-<sha7>, которым
+      # пинится devcontainer.json. Слои не пушатся повторно — imagetools
+      # работает с метаданными, второй -t это просто ещё одно имя.
+      # Дата обязательна: еженедельный schedule пересобирает тот же коммит, и
+      # без неё новый образ перезаписал бы уже существующий <profile>-<sha>.
+      - name: Merge per-arch digests into multi-arch manifests
         run: |
-          docker buildx imagetools create \
-            -t "$IMAGE:full" \
-            "$IMAGE:full-amd64" \
-            "$IMAGE:full-arm64"
+          set -euo pipefail
+          shopt -s nullglob
+          version="$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          for profile in core devops; do
+            refs=()
+            for f in /tmp/digests/digest-"$profile"-*/*; do
+              refs+=("$IMAGE@sha256:$(basename "$f")")
+            done
+            if [[ ${#refs[@]} -ne 2 ]]; then
+              echo "::error::Для профиля $profile найдено ${#refs[@]} digest'ов вместо 2"
+              exit 1
+            fi
+            docker buildx imagetools create \
+              -t "$IMAGE:$profile" \
+              -t "$IMAGE:$profile-$version" \
+              "${refs[@]}"
+          done
+          {
+            echo "## Иммутабельные теги"
+            echo
+            echo "Для пина в \`devcontainer.json\`:"
+            echo
+            for profile in core devops; do
+              echo "- \`$IMAGE:$profile-$version\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

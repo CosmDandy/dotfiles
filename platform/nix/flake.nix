@@ -18,7 +18,7 @@
       # devcontainer-образов, cosmdandy — остальные linux-хосты.
       linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
       users = [ "vscode" "cosmdandy" ];
-      profiles = [ "base" "full" ];
+      profiles = [ "core" "devops" ];
       mkHome = system: user: profile:
         home-manager.lib.homeManagerConfiguration {
           pkgs = import nixpkgs {
@@ -64,7 +64,7 @@
 
       # ===============================
       # Linux user environments (home-manager)
-      # Атрибут: <user>-<profile>-<system>, напр. vscode-full-x86_64-linux
+      # Атрибут: <user>-<profile>-<system>, напр. vscode-devops-x86_64-linux
       # ===============================
       homeConfigurations = lib.listToAttrs (lib.concatMap (system:
         lib.concatMap (user:

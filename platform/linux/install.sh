@@ -12,11 +12,11 @@ source "$PLATFORM_DIR/common.sh"
 # в platform/nix/home/ и применяется одним home-manager switch. Здесь остаётся
 # только неустранимый минимум: nix, flakes, bridge-симлинк и system-уровень.
 #
-# Profiles: base | full (default)
-# Usage: PROFILE=base ./install.sh
-#    or: devpod up --dotfiles-script-env PROFILE=base
+# Profiles: core | devops (default)
+# Usage: PROFILE=core ./install.sh
+#    or: devpod up --dotfiles-script-env PROFILE=core
 # ===============================
-PROFILE="${PROFILE:-full}"
+PROFILE="${PROFILE:-devops}"
 print_section "Profile: ${PROFILE}"
 
 # Установка Nix (--no-channel-add: каналы не нужны — пакеты едут по flake.lock,
