@@ -12,11 +12,17 @@ source "$PLATFORM_DIR/common.sh"
 # в platform/nix/home/ и применяется одним home-manager switch. Здесь остаётся
 # только неустранимый минимум: nix, flakes, bridge-симлинк и system-уровень.
 #
-# Profiles: core | devops (default)
+# Profiles: core | devops
 # Usage: PROFILE=core ./install.sh
 #    or: devpod up --dotfiles-script-env PROFILE=core
+#
+# Без явной переменной профиль берётся из маркера, который пребилт-образ пишет
+# в ~/.dotfiles-profile (platform/linux/Dockerfile). Иначе на :core-образ
+# разворачивался бы devops-профиль: home-manager тянул бы terraform, ansible,
+# kubectl и k9s в персональный слой контейнера — ровно то, от чего уходили
+# (замерено: 5м41с против ~20с). На голом образе без маркера — devops, как было.
 # ===============================
-PROFILE="${PROFILE:-devops}"
+PROFILE="${PROFILE:-$(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo devops)}"
 print_section "Profile: ${PROFILE}"
 
 # Установка Nix (--no-channel-add: каналы не нужны — пакеты едут по flake.lock,
