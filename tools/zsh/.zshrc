@@ -10,9 +10,16 @@ fi
 # EXTERNAL ENVIRONMENT SETUP
 # =============================================================================
 
-if [[ -f "$HOME/.dotfiles/.env" ]]; then
+# Корень репозитория: на маке ~/.dotfiles, на Linux ~/dotfiles. Раньше путь был
+# захардкожен как ~/.dotfiles в трёх местах, из-за чего на Linux молча не
+# грузились conf.d/*.zsh (k9s, kube, lg, tab-title, theme-detect) и .env —
+# glob с (N) и проверка [[ -f ]] просто пропускали их без единого сообщения.
+export DOTFILES_DIR="${HOME}/.dotfiles"
+[[ ! -d "$DOTFILES_DIR" ]] && export DOTFILES_DIR="${HOME}/dotfiles"
+
+if [[ -f "$DOTFILES_DIR/.env" ]]; then
     set -a
-    source "$HOME/.dotfiles/.env"
+    source "$DOTFILES_DIR/.env"
     set +a
 fi
 
@@ -327,13 +334,13 @@ zinit light hlissner/zsh-autopair
 # =============================================================================
 
 # Пер-тул шелл-функции (k9s и пр.). Только определения — на старте лишь парсятся.
-for f in "$HOME/.dotfiles/tools/zsh/conf.d/"*.zsh(N); do source "$f"; done
+for f in "$DOTFILES_DIR/tools/zsh/conf.d/"*.zsh(N); do source "$f"; done
 
 # =============================================================================
 # PRIVATE EXTENSIONS
 # =============================================================================
 
-for f in "$HOME/.dotfiles/private/zsh/"*.sh(N); do source "$f"; done
+for f in "$DOTFILES_DIR/private/zsh/"*.sh(N); do source "$f"; done
 
 # =============================================================================
 # KEY BINDINGS
