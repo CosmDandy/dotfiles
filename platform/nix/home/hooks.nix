@@ -127,7 +127,11 @@ in {
     installClaudeCustom = after ''
       if [ -d "${dotfiles}/.git" ]; then
         if [ ! -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
-          PATH="${lib.makeBinPath [ pkgs.git pkgs.openssh ]}:$PATH:/usr/bin:/bin" \
+          # /usr/bin первым намеренно: git ищет в PATH только ssh, а системная
+          # сборка понимает GSSAPIAuthentication из /etc/ssh/ssh_config, тогда
+          # как nix-openssh собран без GSSAPI и печатает "Unsupported option".
+          # nix-openssh остаётся запасным — на случай образа без системного ssh.
+          PATH="/usr/bin:/bin:${lib.makeBinPath [ pkgs.openssh ]}:$PATH" \
             run ${pkgs.git}/bin/git -C "${dotfiles}" submodule update --init tools/claude/custom \
             || ${warn "claude custom submodule skipped (нет ssh-агента или ключа)"}
         fi
