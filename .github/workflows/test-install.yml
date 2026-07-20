@@ -1,18 +1,28 @@
 # Note: a full end-to-end install.sh run is intentionally NOT executed here —
 # it requires Nix + access to private submodules (deploy keys), which is out of
-# scope for CI. This workflow validates script syntax/lint and the symlink
-# idempotency contract (the part most likely to break on rerun).
+# scope for CI. This workflow validates script syntax and lint.
 name: test-install
 
 on:
   push:
   pull_request:
 
+# Без явного блока job'ам достался бы дефолтный набор прав токена — для
+# workflow, который только читает дерево и гоняет линтеры, это лишнее.
+permissions: {}
+
 jobs:
   syntax-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Дальше только линтеры и git ls-files по локальному дереву —
+          # ни один шаг никуда не пушит, токену в .git/config делать нечего.
+          persist-credentials: false
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y zsh shellcheck yamllint
       - name: Syntax-check all shell scripts
@@ -26,25 +36,114 @@ jobs:
             fi
           done < <(git ls-files '*.sh' '*.bash')
           exit $fail
-      - name: Shellcheck Claude hooks
+      # Раньше проверялись только tools/claude/hooks/*.sh — то есть ровно те
+      # скрипты, которые ничего не мутируют. Установщики и automation/ с их
+      # sudo, rm -rf и sed -i оставались без семантического анализа, хотя цена
+      # ошибки там на порядок выше. Теперь под shellcheck идёт всё, что он
+      # понимает; на момент включения дерево было чистым.
+      # zsh-файлы пропускаются: shellcheck разбирает их как bash и выдаёт
+      # сплошной шум. Их синтаксис проверяет `zsh -n` шагом выше — установщики
+      # написаны на zsh намеренно, потому что на свежем маке `env bash` — это
+      # /bin/bash 3.2 (см. platform/common.sh).
+      - name: Shellcheck (all bash/sh scripts)
         run: |
-          shopt -s nullglob
-          for f in tools/claude/hooks/*.sh; do
+          fail=0
+          while IFS= read -r f; do
             head -1 "$f" | grep -q zsh && continue
-            shellcheck -S warning "$f"
-          done
+            shellcheck -S warning "$f" || fail=1
+          done < <(git ls-files '*.sh' '*.bash')
+          exit $fail
       - name: Yamllint (relaxed)
         run: git ls-files '*.yml' '*.yaml' | xargs -r yamllint -d relaxed
 
-  symlinks-idempotency:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+      # Форматтеры дублируются в CI по той же логике, что и gitleaks ниже:
+      # pre-commit обходится через --no-verify, а CI обойти нельзя.
+      - name: Stylua (nvim config)
+        run: |
+          curl -sSfL -o stylua.zip \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/v${VERSION}/stylua-linux-x86_64.zip"
+          echo "${SHA256}  stylua.zip" | sha256sum -c -
+          unzip -q stylua.zip stylua
+          ./stylua --config-path tools/nvim/.stylua.toml --check tools/nvim/
+        env:
+          VERSION: 2.5.2
+          SHA256: bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
+      - name: Ruff (automation scripts)
+        run: pipx run ruff==0.16.1 check automation/
+
+      # devcontainer.json и settings.json — JSONC: комментарии там законны, а
+      # висячая запятая нет. Именно на ней спотыкался конфиг в рабочем репо:
+      # редакторы такое читают, строгие парсеры — нет.
+      # Срезаем ТОЛЬКО комментарии, занимающие строку целиком: наивное
+      # 's|//.*$||' рубит по «//» внутри строк-значений и объявляет невалидными
+      # файлы с URL и raycast://-ссылками (проверено, два ложных срабатывания).
+      - name: Validate JSON (JSONC-aware)
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            sed -e 's|^[[:space:]]*//.*$||' "$f" | jq empty 2>/dev/null \
+              || { echo "невалидный: $f"; fail=1; }
+          done < <(git ls-files '*.json' | grep -v -e lazy-lock.json -e flake.lock)
+          exit $fail
+
+  # Поведенческие тесты PreToolUse-гарда. Синтаксис и shellcheck выше ловят
+  # «скрипт сломан», но не ловят «скрипт молча перестал что-то запрещать» — а
+  # это единственный гейт, действующий и под bypassPermissions. Прогон на Linux
+  # важен отдельно: разработка идёт на macOS с BSD-userland, и расхождение
+  # BSD/GNU в grep -E или tr здесь проявится как изменившийся вердикт.
+  claude-hook-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - name: Install zsh (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh
-      - name: Run create_symlinks test (backup + double-run idempotency)
-        run: zsh tests/test-create-symlinks.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # Без gitleaks тест пропустит блок проверки порядка ask/deny — а это ровно
+      # тот класс регрессии, ради которого он написан. Версия и сумма те же, что
+      # в job gitleaks ниже.
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          echo "$PWD" >> "$GITHUB_PATH"
+      - name: Guard behaviour tests
+        run: bash tools/claude/hooks/pretooluse-guard.test.sh
+      # Свёртка фрагментов и восстановление после компакта работают с файлами в
+      # корне репозитория. Каждый кейс поднимает свой одноразовый git-репозиторий,
+      # поэтому прогон в CI безопасен и ничего в чекауте не трогает.
+      - name: Session lifecycle hook tests
+        run: bash tools/claude/hooks/session-lifecycle.test.sh
+
+  # Хук pre-commit тоже гоняет gitleaks, но его обходит --no-verify, а репозиторий
+  # публичный — цена пропущенного секрета несоизмерима со стоимостью прогона.
+  # Бинарь берём релизом с проверкой контрольной суммы, а не сторонним экшеном:
+  # меньше доверенных сторон и версия зафиксирована явно.
+  gitleaks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Тем более здесь: сканируем рабочее дерево целиком, и сохранённый
+          # токен оказался бы ровно в той области, по которой ходит сканер.
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: Scan working tree
+        run: ./gitleaks dir . --no-banner --redact
