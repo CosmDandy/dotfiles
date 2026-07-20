@@ -61,5 +61,11 @@ in {
   # CLI home-manager в профиле — для повторных switch (install.sh, cron)
   programs.home-manager.enable = true;
 
+  # "There are 372 unread and relevant news items" в конце каждой активации —
+  # это ченджлог опций home-manager. Читается через `home-manager news`, но
+  # счётчик копится с первой установки и к нашему конфигу отношения не имеет:
+  # в свежем контейнере он тот же самый. Молчим, чтобы не тонула сводка warn'ов.
+  news.display = "silent";
+
   home.stateVersion = "26.05";
 }

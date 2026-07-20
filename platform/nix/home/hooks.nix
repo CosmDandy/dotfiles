@@ -127,8 +127,9 @@ in {
     installClaudeCustom = after ''
       if [ -d "${dotfiles}/.git" ]; then
         if [ ! -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
-          run ${pkgs.git}/bin/git -C "${dotfiles}" submodule update --init tools/claude/custom \
-            || ${warn "claude custom submodule skipped (no ssh key?)"}
+          PATH="${lib.makeBinPath [ pkgs.git pkgs.openssh ]}:$PATH:/usr/bin:/bin" \
+            run ${pkgs.git}/bin/git -C "${dotfiles}" submodule update --init tools/claude/custom \
+            || ${warn "claude custom submodule skipped (нет ssh-агента или ключа)"}
         fi
         if [ -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
           PATH="$HOME/.local/bin:${lib.makeBinPath [ pkgs.git pkgs.uv ]}:$PATH:/usr/bin:/bin" \
