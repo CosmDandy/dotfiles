@@ -9,8 +9,25 @@ let
   # на прежнее поколение, и на стадии devops не нашёл бы go — из-за чего
   # jsonnet-language-server молча не ставился (проверено на собранном образе).
   afterNvim = lib.hm.dag.entryAfter [ "syncNvimPlugins" "installPackages" ];
+
+  # Хуки намеренно не валят активацию при офлайне — иначе сборка образа и
+  # devpod up ломались бы от любой сетевой заминки. Но из-за этого неудачная
+  # установка выглядела как успешная: одинокий "warn:" тонул в сотнях строк
+  # вывода, и узнать о пропаже можно было только открыв nvim. Поэтому каждый
+  # warn дополнительно копится в файле, а последним шагом печатается сводка.
+  # Файл, а не переменная: не зависит от того, выполняются ли записи DAG в
+  # одном шелле, и остаётся доступным после активации для разбора.
+  warnFile = "${config.home.homeDirectory}/.cache/home-manager-warnings";
+  warn = msg: ''{ echo "warn: ${msg}"; echo "${msg}" >> "${warnFile}"; }'';
 in {
   home.activation = {
+    # Обнуляем накопитель до первого хука, иначе сводка показывала бы warn'ы
+    # прошлой активации. entryBefore linkGeneration — раньше всех наших.
+    initWarnings = lib.hm.dag.entryBefore [ "linkGeneration" ] ''
+      run mkdir -p "$(dirname "${warnFile}")"
+      run rm -f "${warnFile}"
+    '';
+
     # Claude Code — сознательно НЕ через nix: официальный бинарь самообновляется,
     # в иммутабельном store это невозможно. Хук лишь ставит его при отсутствии
     # PATH: скачанные инсталлеры зовут curl/tar по имени, а PATH активации минимальный
@@ -22,14 +39,14 @@ in {
           && PATH="${lib.makeBinPath [ pkgs.curl pkgs.coreutils pkgs.gnutar pkgs.gzip pkgs.unzip ]}:$PATH:/usr/bin:/bin" \
              run ${pkgs.bash}/bin/bash /tmp/claude-install.sh \
           && run rm -f /tmp/claude-install.sh \
-          || echo "warn: claude install skipped (offline?)"
+          || ${warn "claude install skipped (offline?)"}
       fi
     '';
 
     installTpm = after ''
       if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
         run ${pkgs.git}/bin/git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" \
-          || echo "warn: tpm clone skipped (offline?)"
+          || ${warn "tpm clone skipped (offline?)"}
       fi
     '';
 
@@ -42,7 +59,7 @@ in {
           && PATH="${lib.makeBinPath [ pkgs.git pkgs.curl pkgs.coreutils ]}:$PATH" NO_INPUT=1 ZSHRC=/dev/null \
              run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
           && run rm -f /tmp/zinit-install.sh \
-          || echo "warn: zinit install skipped (offline?)"
+          || ${warn "zinit install skipped (offline?)"}
       fi
     '';
 
@@ -60,7 +77,8 @@ in {
         if [ ! -f "$SCHEMA_DIR/$rel" ]; then
           run mkdir -p "$SCHEMA_DIR/$(dirname "$rel")"
           run ${pkgs.curl}/bin/curl -fsSL "$CRD_BASE/$rel" -o "$SCHEMA_DIR/$rel" \
-            || echo "warn: schema $rel not cached (yamlls falls back to URL)"
+            || { m="schema $rel not cached (yamlls falls back to URL)"; \
+                 echo "warn: $m"; echo "$m" >> "${warnFile}"; }
         fi
       done
     '';
@@ -78,7 +96,7 @@ in {
       if [ -e "$HOME/.config/nvim/init.lua" ]; then
         PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.tree-sitter ]}:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! sync" +qa \
-          || echo "warn: nvim Lazy sync failed (offline?)"
+          || ${warn "nvim Lazy sync failed (offline?)"}
       fi
     '';
 
@@ -100,7 +118,7 @@ in {
       if [ -e "$HOME/.config/nvim/init.lua" ]; then
         PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.unzip pkgs.nodejs_24 pkgs.python313 pkgs.luarocks pkgs.uv ]}:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
-          || echo "warn: mason tools install failed (offline?)"
+          || ${warn "mason tools install failed (offline?)"}
       fi
     '';
 
@@ -110,13 +128,29 @@ in {
       if [ -d "${dotfiles}/.git" ]; then
         if [ ! -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
           run ${pkgs.git}/bin/git -C "${dotfiles}" submodule update --init tools/claude/custom \
-            || echo "warn: claude custom submodule skipped (no ssh key?)"
+            || ${warn "claude custom submodule skipped (no ssh key?)"}
         fi
         if [ -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
           PATH="$HOME/.local/bin:${lib.makeBinPath [ pkgs.git pkgs.uv ]}:$PATH:/usr/bin:/bin" \
             run "${dotfiles}/tools/claude/custom/install.sh" \
-            || echo "warn: MCP install failed"
+            || ${warn "MCP install failed"}
         fi
+      fi
+    '';
+
+    # Сводка последним шагом: активация всё равно завершается успешно (это
+    # осознанно — офлайн не должен её валить), но теперь пропуски видно сразу,
+    # а не при первом запуске nvim через неделю.
+    reportWarnings = lib.hm.dag.entryAfter [
+      "installClaudeCode" "installTpm" "installZinit" "cacheYamlSchemas"
+      "syncNvimPlugins" "installMasonTools" "installClaudeCustom"
+    ] ''
+      if [ -s "${warnFile}" ]; then
+        echo ""
+        echo "  ВНИМАНИЕ: активация прошла, но $(wc -l < "${warnFile}" | tr -d ' ') шаг(ов) пропущено:"
+        sed 's/^/    - /' "${warnFile}"
+        echo "  подробности: ${warnFile}"
+        echo ""
       fi
     '';
   };

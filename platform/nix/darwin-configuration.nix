@@ -78,6 +78,15 @@
     ];
   };
 
+  # brew оставляет .pkg/.dmg инсталляторы касков после установки и не чистит их
+  # никогда: cleanup=zap трогает только старые версии, а это «текущие». Удаление
+  # касков идёт по pkgutil-receipts, инсталляторы в цепочке не участвуют (790M → 38M).
+  # Директории версий не трогаем — по ним brew определяет установленную версию.
+  system.activationScripts.postActivation.text = ''
+    find /opt/homebrew/Caskroom -type f \
+      \( -name '*.pkg' -o -name '*.dmg' -o -name '*.zip' \) -delete 2>/dev/null || true
+  '';
+
   # ===============================
   # CLI Tools & Development Environment
   # ===============================
@@ -108,6 +117,8 @@
     glab      # GitLab CLI
     lazygit
     lazydocker
+    lima      # декларативные Linux-VM (PXE-стенд)
+    ansible
     gdu
     gitleaks
     direnv
