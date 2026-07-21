@@ -3,9 +3,17 @@ let
   dotfiles = "${config.home.homeDirectory}/.dotfiles";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dotfiles}/${path}";
   after = lib.hm.dag.entryAfter [ "linkGeneration" ];
+  # Хуки, чьи warn'ы должны попасть в сводку, обязаны выполниться ДО неё.
+  # entryAfter здесь мало: reportWarnings объявлен в hooks.nix (общем с Linux)
+  # и перечислить в нём macOS-хуки нельзя — на Linux их не существует.
+  beforeReport = lib.hm.dag.entryBetween [ "reportWarnings" ] [ "linkGeneration" ];
+  w = import ./warn.nix { inherit config; };
+  warn = w.mk;
   # PATH активации минимальный: brew-бинари (devpod, orb) ищем явно,
-  # grep/coreutils — из pkgs
-  hookPath = "/opt/homebrew/bin:/usr/local/bin:${lib.makeBinPath [ pkgs.gnugrep pkgs.coreutils ]}";
+  # grep/coreutils — из pkgs. zsh нужен для apply.sh (шебанг env zsh): на маке
+  # он есть в /bin, но /bin в PATH активации нет, и хук падал с
+  # "env: zsh: No such file or directory"
+  hookPath = "/opt/homebrew/bin:/usr/local/bin:${lib.makeBinPath [ pkgs.gnugrep pkgs.coreutils pkgs.zsh ]}";
 in {
   # macOS-слой: общие файлы/хуки — те же модули, что у Linux (devpod)
   imports = [
@@ -66,34 +74,34 @@ in {
 
     # devpod ставится каской в homebrew-шаге активации nix-darwin, который
     # идёт ДО postActivation (home-manager) — на первом прогоне бинарь уже есть
-    setupDevpod = after ''
+    setupDevpod = beforeReport ''
       export PATH="${hookPath}:$PATH"
       if command -v devpod >/dev/null 2>&1; then
         run devpod context set-options --option DOTFILES_URL=git@github.com:CosmDandy/dotfiles.git --option GIT_SSH_SIGNATURE_FORWARDING=false --option SSH_ADD_PRIVATE_KEYS=true --option SSH_AGENT_FORWARDING=true --option SSH_INJECT_DOCKER_CREDENTIALS=true --option SSH_INJECT_GIT_CREDENTIALS=false \
-          || echo "warn: devpod context set-options failed"
-        run devpod ide use none || echo "warn: devpod ide use failed"
+          || ${warn "devpod context set-options failed"}
+        run devpod ide use none || ${warn "devpod ide use failed"}
         # provider add не идемпотентен («already exists» на повторном запуске)
         if ! devpod provider list 2>/dev/null | grep -q "local-docker"; then
           run devpod provider add docker --name local-docker --use -o INACTIVITY_TIMEOUT=1h \
-            || echo "warn: provider local-docker not added"
+            || ${warn "provider local-docker not added"}
         fi
         # ssh-провайдер требует Host kvt-d-01 из private/ssh/config и доступности
         # хоста — на машине без приватного конфига/VPN не валим активацию
         if ! devpod provider list 2>/dev/null | grep -q "kvt-d-01-ssh"; then
           run devpod provider add ssh --name kvt-d-01-ssh -o HOST=kvt-d-01 \
-            || echo "warn: ssh-провайдер kvt-d-01 не настроен (нет ~/.ssh/config или хост недоступен)"
+            || ${warn "ssh-провайдер kvt-d-01 не настроен (нет ~/.ssh/config или хост недоступен)"}
         fi
-        run devpod provider use local-docker || echo "warn: provider use failed"
+        run devpod provider use local-docker || ${warn "provider use failed"}
       else
-        echo "warn: devpod не найден — настройка providers пропущена"
+        ${warn "devpod не найден — настройка providers пропущена"}
       fi
     '';
 
     # apply.sh сам пропускает всё при отсутствии orb CLI (свежая машина,
     # где OrbStack.app ещё не запускался; VM без nested virt)
-    applyOrbstack = after ''
+    applyOrbstack = beforeReport ''
       PATH="${hookPath}:$PATH" run "${dotfiles}/tools/orbstack/apply.sh" \
-        || echo "warn: orbstack apply failed"
+        || ${warn "orbstack apply failed"}
     '';
   };
 }

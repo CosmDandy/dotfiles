@@ -10,15 +10,12 @@ let
   # jsonnet-language-server молча не ставился (проверено на собранном образе).
   afterNvim = lib.hm.dag.entryAfter [ "syncNvimPlugins" "installPackages" ];
 
-  # Хуки намеренно не валят активацию при офлайне — иначе сборка образа и
-  # devpod up ломались бы от любой сетевой заминки. Но из-за этого неудачная
-  # установка выглядела как успешная: одинокий "warn:" тонул в сотнях строк
-  # вывода, и узнать о пропаже можно было только открыв nvim. Поэтому каждый
-  # warn дополнительно копится в файле, а последним шагом печатается сводка.
+  # Накопитель warn'ов общий с darwin.nix — см. комментарий в warn.nix.
   # Файл, а не переменная: не зависит от того, выполняются ли записи DAG в
   # одном шелле, и остаётся доступным после активации для разбора.
-  warnFile = "${config.home.homeDirectory}/.cache/home-manager-warnings";
-  warn = msg: ''{ echo "warn: ${msg}"; echo "${msg}" >> "${warnFile}"; }'';
+  w = import ./warn.nix { inherit config; };
+  warnFile = w.file;
+  warn = w.mk;
 in {
   home.activation = {
     # Обнуляем накопитель до первого хука, иначе сводка показывала бы warn'ы
@@ -114,11 +111,34 @@ in {
     # доустанавливается на любом switch, где инструмент наконец доступен.
     # PATH: инсталлеры mason тянут пакеты через npm/pip/luarocks и распаковывают;
     # ~/.nix-profile/bin первым — оттуда берётся go на devops-профиле
+    # /run/current-system/sw/bin — системный профиль nix-darwin: на маке go
+    # живёт там, а не в ~/.nix-profile, и jsonnet-language-server молча не
+    # ставился («Could not find executable go in PATH» в mason.log).
+    # На Linux этого пути просто нет — запись безвредна.
+    #
+    # Проверка mason.log обязательна: MasonToolsInstallSync возвращает 0, даже
+    # когда отдельный пакет не установился, поэтому провал не виден ни по коду
+    # возврата, ни в сводке. Сверяем только хвост, дописанный этим запуском.
     installMasonTools = afterNvim ''
       if [ -e "$HOME/.config/nvim/init.lua" ]; then
-        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.unzip pkgs.nodejs_24 pkgs.python313 pkgs.luarocks pkgs.uv ]}:$PATH:/usr/bin:/bin" \
+        MASON_LOG="$HOME/.local/state/nvim/mason.log"
+        LOG_POS=$(wc -c < "$MASON_LOG" 2>/dev/null || echo 0)
+        PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.unzip pkgs.nodejs_24 pkgs.python313 pkgs.luarocks pkgs.uv ]}:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
+        if [ -f "$MASON_LOG" ]; then
+          # || true обязателен: activate работает под `set -eu -o pipefail`, а
+          # grep без совпадений возвращает 1 — то есть УСПЕШНЫЙ прогон mason
+          # обрывал активацию, не доходя до installTpm/installZinit/setupDevpod
+          # и до самой сводки (проверено на живом updm)
+          FAILED=$(tail -c "+$((LOG_POS + 1))" "$MASON_LOG" \
+            | grep -o 'Installation failed for Package(name=[^)]*)' \
+            | sed 's/.*name=//; s/)$//' | sort -u | tr '\n' ' ' || true)
+          if [ -n "$FAILED" ]; then
+            m="mason: не установлено — $FAILED(подробности: $MASON_LOG)"
+            echo "warn: $m"; echo "$m" >> "${warnFile}"
+          fi
+        fi
       fi
     '';
 
