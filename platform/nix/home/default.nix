@@ -47,13 +47,12 @@ let
     fluxcd         # flux GitOps (плагин k9s)
     argocd         # argocd GitOps (плагин k9s)
     trivy          # скан образов (плагин k9s)
-    lnav
     yq-go
   ];
 in {
   imports = [
     ./files.nix   # симлинки dotfiles (бывшие links=() из install.sh)
-    ./hooks.nix   # императивные установщики (claude, ccusage, tpm, zinit, …)
+    ./hooks.nix   # императивные установщики (claude, ccusage, zinit, …)
   ];
 
   home.packages = corePackages ++ lib.optionals (profile == "devops") devopsPackages;

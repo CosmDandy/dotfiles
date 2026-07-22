@@ -40,10 +40,8 @@
       nix-direnv; глобальный full-профиль постепенно худеет до личных
       инструментов, версии проектов перестают конфликтовать
 - [ ] lazysql в full-профиль + конфиг подключений к базам
-- [ ] Ревизия репо: `tools/pandoc` (конфиг неустановленного инструмента),
-      `tools/vscode` (не тронут с февраля; в casks три редактора), дубли
-      casks (chatgpt/claude/lm-studio, utm/orbstack), argocd vs fluxcd,
-      talosctl (есть ли кластеры), iperf3 в base-профиле
+- [ ] Ревизия репо: дубли casks (chatgpt/claude/lm-studio, utm/orbstack),
+      argocd vs fluxcd, talosctl (есть ли кластеры)
 - [x] macOS: перевод `platform/macos/install.sh` на home-manager —
       darwinConfigurations подключает `home/darwin.nix` (общие files/hooks
       с Linux + mac-слой); setup-symlinks.sh и setup-devpod.sh удалены,

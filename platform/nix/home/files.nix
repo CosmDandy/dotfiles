@@ -23,7 +23,6 @@ in {
     # ~/.claude/{agents,commands,skills,rules} НЕ здесь: ими владеет
     # tools/claude/custom/install.sh (хук installClaudeCustom) — сабмодуль
     # может отсутствовать на момент linkGeneration
-    ".lnav/configs/default/config.json".source = link "tools/lnav/config.json";
   };
 
   xdg.configFile = {

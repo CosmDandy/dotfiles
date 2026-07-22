@@ -100,12 +100,9 @@
     eza
     fd
     ripgrep
-    iperf3
     ipmitool  # IPMI-доступ к BMC серверов (IMM/iLO/iDRAC): питание, SOL-консоль, сенсоры
     unzip
-    wget
     curl
-    ffmpeg
     jq
     starship
     neovim
@@ -129,7 +126,6 @@
     pinentry_mac
     yamllint
     shellcheck
-    blueutil
   ];
 
   # ===============================
