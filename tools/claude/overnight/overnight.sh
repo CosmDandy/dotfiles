@@ -17,7 +17,7 @@ REPO="${OVERNIGHT_REPO:-$HOME/dotfiles}"
 MODEL="${OVERNIGHT_MODEL:-opus}"
 QUEUE_DIR="${OVERNIGHT_QUEUE:-$REPO/tools/claude/overnight/queue}"
 LOG_DIR="${OVERNIGHT_LOG_DIR:-$HOME/.local/state/overnight}"
-BASE_BRANCH="${OVERNIGHT_BASE:-master}"
+BASE_BRANCH="${OVERNIGHT_BASE:-main}"
 LOCK_FILE="${OVERNIGHT_LOCK:-$LOG_DIR/.lock}"
 # Белый список инструментов: всё, что вне его, заблокировано даже при skip-permissions.
 ALLOWED_TOOLS="${OVERNIGHT_TOOLS:-Edit Write Read Bash Grep Glob Task TodoWrite WebSearch WebFetch}"

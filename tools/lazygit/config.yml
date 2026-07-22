@@ -25,6 +25,9 @@ git:
   overrideGpg: True
   autoFetch: true
   mainBranches:
+    # master оставлен: конфиг общий для всех репозиториев, а рабочие (kvt-*)
+    # на GitLab по-прежнему живут на master/develop
+    - main
     - master
     - stage
     - develop
