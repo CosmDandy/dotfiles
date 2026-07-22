@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 
-# Secret detection
-if command -v gitleaks &>/dev/null; then
-  gitleaks protect --staged --no-banner || exit 1
+# Отсутствие gitleaks — это отказ, а не повод пропустить проверку. Раньше здесь
+# стоял `if command -v gitleaks`, и на машине без бинаря сканирование исчезало
+# молча: коммиты проходили, выглядя проверенными. Осознанный пропуск возможен,
+# но только явным GITLEAKS_SKIP=1 — чтобы он был виден в истории команд.
+if [ "${GITLEAKS_SKIP:-}" = "1" ]; then
+  echo "pre-commit: сканирование секретов пропущено (GITLEAKS_SKIP=1)" >&2
+  exit 0
 fi
+
+if ! command -v gitleaks &>/dev/null; then
+  echo "pre-commit: gitleaks не найден в PATH — коммит остановлен." >&2
+  echo "  установить: nix profile install nixpkgs#gitleaks" >&2
+  echo "  пропустить разово: GITLEAKS_SKIP=1 git commit ..." >&2
+  exit 1
+fi
+
+gitleaks protect --staged --no-banner || exit 1
