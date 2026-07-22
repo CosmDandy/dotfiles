@@ -40,13 +40,6 @@ in {
       fi
     '';
 
-    installTpm = after ''
-      if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
-        run ${pkgs.git}/bin/git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" \
-          || ${warn "tpm clone skipped (offline?)"}
-      fi
-    '';
-
     # PATH: инсталлер zinit клонирует репо через git по имени.
     # ZSHRC=/dev/null: иначе инсталлер дописывает annex-блок и маркер сквозь
     # симлинк ~/.zshrc прямо в репо — наш .zshrc уже содержит zinit-блок
@@ -129,7 +122,7 @@ in {
         if [ -f "$MASON_LOG" ]; then
           # || true обязателен: activate работает под `set -eu -o pipefail`, а
           # grep без совпадений возвращает 1 — то есть УСПЕШНЫЙ прогон mason
-          # обрывал активацию, не доходя до installTpm/installZinit/setupDevpod
+          # обрывал активацию, не доходя до installZinit/setupDevpod
           # и до самой сводки (проверено на живом updm)
           FAILED=$(tail -c "+$((LOG_POS + 1))" "$MASON_LOG" \
             | grep -o 'Installation failed for Package(name=[^)]*)' \
@@ -167,7 +160,7 @@ in {
     # осознанно — офлайн не должен её валить), но теперь пропуски видно сразу,
     # а не при первом запуске nvim через неделю.
     reportWarnings = lib.hm.dag.entryAfter [
-      "installClaudeCode" "installTpm" "installZinit" "cacheYamlSchemas"
+      "installClaudeCode" "installZinit" "cacheYamlSchemas"
       "syncNvimPlugins" "installMasonTools" "installClaudeCustom"
     ] ''
       if [ -s "${warnFile}" ]; then

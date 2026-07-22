@@ -47,7 +47,7 @@ fi
 
 # ===============================
 # Весь user-space одним switch: пакеты + симлинки + activation-хуки
-# (claude, ccusage, tpm, zinit, nvim-плагины, MCP). Версии пиннятся flake.lock.
+# (claude, ccusage, zinit, nvim-плагины, MCP). Версии пиннятся flake.lock.
 # Атрибут: <user>-<profile>-<arch>, см. platform/nix/flake.nix
 # ===============================
 FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
