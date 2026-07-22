@@ -51,9 +51,7 @@ setopt HIST_IGNORE_DUPS     # Не сохранять дублирующиеся
 setopt HIST_IGNORE_ALL_DUPS # Удалять старые дубликаты при добавлении новых
 setopt HIST_SAVE_NO_DUPS    # Не записывать дубликаты в файл истории
 setopt HIST_FIND_NO_DUPS    # Не показывать дубликаты при поиске
-setopt SHARE_HISTORY        # Делиться историей между сессиями
-setopt APPEND_HISTORY       # Добавлять к истории, а не перезаписывать
-setopt INC_APPEND_HISTORY   # Добавлять команды в историю сразу после выполнения
+setopt SHARE_HISTORY        # Делиться историей между сессиями (включает и инкрементальную запись)
 
 # =============================================================================
 # COMPLETION SYSTEM
@@ -104,7 +102,6 @@ alias lzd='lazydocker'
 
 alias cl='claude --permission-mode bypassPermissions'
 alias cly='claude --dangerously-skip-permissions'
-alias claude-local='ANTHROPIC_BASE_URL=http://localhost:1234 ANTHROPIC_AUTH_TOKEN=lmstudio CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 claude --model qwen/qwen3-coder-next'
 
 claude-memory-init() {
     local dotfiles_dir="${HOME}/.dotfiles"
@@ -156,12 +153,7 @@ alias e='exit'
 
 alias ls='eza'
 alias la='eza -laghm --all --icons --git --color=always'
-alias ll='eza -l --icons --git --color=always' # Длинный формат без скрытых файлов
-alias lt='eza --tree --level=2 --icons'        # Древовидный вид (2 уровня)
-alias lta='eza --tree --level=2 --icons --all' # Древовидный вид с скрытыми файлами
-alias ltr='eza -l --sort=modified --reverse'   # Сортировка по времени изменения
-alias tree='eza --tree --level=2 --icons --color=always'
-alias treed='eza --tree --level=3 --icons --color=always -d'
+alias lt='eza --tree --level=2 --icons' # Древовидный вид (2 уровня)
 
 # Цветные алиасы для лучшего вывода
 alias grep='grep --color=auto'
@@ -173,7 +165,6 @@ alias less='less -R' # Показывать цвета в less
 # Читаемый вывод для различных команд
 alias df='df -h'
 alias du='du -h'
-alias ps='ps aux'
 
 alias t='tmux'
 alias ta='tmux attach'
