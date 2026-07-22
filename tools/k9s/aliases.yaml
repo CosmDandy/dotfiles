@@ -1,31 +1,16 @@
-# k9s resource aliases — короткие имена для :-команды.
+# k9s resource aliases — только кастомные короткие имена для :-команды.
+# Встроенные shortnames kubectl/k9s (sts, ds, cm, sec, pvc, ing, crd, …)
+# k9s понимает и без алиасов.
 aliases:
   # Workloads
   dp: deployments
-  sts: statefulsets
-  ds: daemonsets
-  rs: replicasets
-  cj: cronjobs
-  # Config / storage
-  cm: configmaps
-  sec: secrets
-  pvc: persistentvolumeclaims
-  pv: persistentvolumes
   # Network
-  ing: ingresses
   np: networkpolicies
-  ep: endpoints
-  # Autoscaling
-  hpa: horizontalpodautoscalers
-  pdb: poddisruptionbudgets
-  # RBAC
-  sa: serviceaccounts
+  # RBAC (у kubectl shortnames нет)
   ro: roles
   rb: rolebindings
   cr: clusterroles
   crb: clusterrolebindings
-  # Meta
-  crd: customresourcedefinitions
   # GitOps CRDs (Flux / ArgoCD)
   ks: kustomizations
   hr: helmreleases
