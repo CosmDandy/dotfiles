@@ -152,12 +152,6 @@
 
     // ====== PYTHON SPECIFIC ======
     "python.defaultInterpreterPath": "./venv/bin/python",
-    "python.linting.enabled": true,
-    "python.linting.pylintEnabled": false,
-    "python.linting.flake8Enabled": false,
-    "python.linting.ruffEnabled": true,
-    "python.formatting.provider": "black",
-    "python.sortImports.args": ["--profile", "black"],
     "python.analysis.typeCheckingMode": "basic",
 
     // ====== DEBUG SETTINGS ======
@@ -165,7 +159,6 @@
     "debug.terminal.clearBeforeReusing": true,
 
     // ====== TERMINAL ======
-    "terminal.integrated.shell.linux": "/usr/bin/zsh",
     "terminal.integrated.fontFamily": "'JetBrains Mono Nerd Font', 'JetBrains Mono'",
     "terminal.integrated.fontSize": 13,
     "terminal.integrated.cursorBlinking": true,
@@ -205,7 +198,7 @@
 
     // ====== PERFORMANCE ======
     "extensions.autoUpdate": "on",
-    "telemetry.enableTelemetry": false,
+    "telemetry.telemetryLevel": "off",
     "update.showReleaseNotes": false,
     "workbench.activityBar.location": "hidden",
 
@@ -214,10 +207,8 @@
     "workbench.preferredLightColorTheme": "Solarized Light",
     "workbench.preferredDarkColorTheme": "Solarized Dark",
     "workbench.fontAliasing": "auto",
-    "workbench.editor.tabCloseButton": "right",
     "window.menuBarVisibility": "toggle",
     "breadcrumbs.enabled": true,
-    "redhat.telemetry.enabled": false,
     "workbench.startupEditor": "none",
     "editor.cursorSmoothCaretAnimation": "on",
     "workbench.iconTheme": "material-icon-theme",
@@ -226,23 +217,9 @@
     "editor.cursorBlinking": "smooth",
     "editor.smoothScrolling": true,
     "cursor.composer.shouldChimeAfterChatFinishes": true,
-    "remote.SSH.remotePlatform": {
-      "work-dev.devpod": "linux",
-      "client_7": "linux",
-      "client_3": "linux",
-      "scheduler-local.devpod": "linux",
-      "work-infra-all-local.devpod": "linux",
-      "homelab-local.devpod": "linux",
-      "polytech-parser-local.devpod": "linux",
-      "dev": "linux"
-    },
     "cursor.cpp.enablePartialAccepts": true,
     "cursorpyright.analysis.typeCheckingMode": "basic",
     "diffEditor.ignoreTrimWhitespace": true,
-    "[python]": {
-      "diffEditor.ignoreTrimWhitespace": true
-    },
-    "database-client.autoSync": true,
     "remote.autoForwardPortsSource": "hybrid",
     "workbench.editor.tabActionLocation": "right",
     "workbench.editor.enablePreview": false,

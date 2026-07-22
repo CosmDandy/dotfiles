@@ -29,33 +29,6 @@
           "value": "/Applications/Ghostty.app"
         },
         {
-          "actions": [
-            {
-              "key": "c",
-              "type": "application",
-              "value": "/Applications/Cursor.app"
-            },
-            {
-              "iconPath": "/Applications/Cursor.app",
-              "key": "r",
-              "label": "Recent Projects",
-              "type": "url",
-              "value": "raycast://extensions/degouville/cursor-recent-projects/index"
-            },
-            {
-              "iconPath": "/Applications/Cursor.app",
-              "key": "n",
-              "label": "New Window",
-              "type": "url",
-              "value": "raycast://extensions/degouville/cursor-recent-projects/open-new-window"
-            }
-          ],
-          "iconPath": "/Applications/Cursor.app",
-          "key": "c",
-          "label": "Cursor",
-          "type": "group"
-        },
-        {
           "key": "v",
           "type": "application",
           "value": "/Applications/Visual Studio Code.app"
@@ -84,11 +57,6 @@
           "key": "u",
           "type": "application",
           "value": "/Applications/UTM.app"
-        },
-        {
-          "key": "k",
-          "type": "application",
-          "value": "/Applications/Kaleidoscope.app"
         }
       ],
       "iconPath": "apple.terminal",
@@ -160,11 +128,6 @@
     },
     {
       "actions": [
-        {
-          "key": "g",
-          "type": "application",
-          "value": "/Applications/ChatGPT.app"
-        },
         {
           "key": "c",
           "type": "application",
@@ -335,12 +298,6 @@
               "label": "Netcheck",
               "type": "url",
               "value": "raycast://extensions/tailscale/tailscale/netcheck"
-            },
-            {
-              "key": "s",
-              "label": "Sing Box",
-              "type": "application",
-              "value": "/Applications/SFM.app"
             }
           ],
           "iconPath": "network",
