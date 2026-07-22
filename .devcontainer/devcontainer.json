@@ -7,6 +7,12 @@
   // список: docker buildx imagetools inspect ghcr.io/cosmdandy/devcontainer:devops
   "name": "Dotfiles DevContainer",
   "image": "ghcr.io/cosmdandy/devcontainer:devops",
+  // docker сам НЕ перетягивает уже имеющийся локальный тег — без этого хоста
+  // (сервер/OrbStack) навсегда залипали на первом скачанном образе (ловили
+  // образ 5-дневной давности). initializeCommand бежит на хосте до создания
+  // контейнера: дайджест не изменился — no-op за секунды; офлайн — едем на
+  // локальном (|| true).
+  "initializeCommand": "docker pull ghcr.io/cosmdandy/devcontainer:devops || true",
   "onCreateCommand": "bash .devcontainer/setup.sh",
   // containerEnv против remoteEnv: первый задаёт переменные всему контейнеру,
   // второй — только процессам, которые запускает инструмент. Локаль и таймзона

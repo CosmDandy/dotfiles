@@ -108,10 +108,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Два тега на один манифест: плавающий :<profile> для разовых прогонов
-      # (--devcontainer-image) и иммутабельный :<profile>-<дата>-<sha7>, которым
-      # пинится devcontainer.json. Слои не пушатся повторно — imagetools
-      # работает с метаданными, второй -t это просто ещё одно имя.
+      # Два тега на один манифест: плавающий :<profile> — его тянет
+      # devcontainer.json (initializeCommand: docker pull на каждом up);
+      # иммутабельный :<profile>-<дата>-<sha7> — для отката/пина руками.
+      # Слои не пушатся повторно — imagetools работает с метаданными,
+      # второй -t это просто ещё одно имя.
       # Дата обязательна: еженедельный schedule пересобирает тот же коммит, и
       # без неё новый образ перезаписал бы уже существующий <profile>-<sha>.
       - name: Merge per-arch digests into multi-arch manifests
