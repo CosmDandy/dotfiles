@@ -206,6 +206,9 @@
       BROWSER = "arc";
       LANG = "en_US.UTF-8";
       LC_ALL = "en_US.UTF-8";
+      # brew: без телеметрии и подсказок-нотаций
+      HOMEBREW_NO_ANALYTICS = "1";
+      HOMEBREW_NO_ENV_HINTS = "1";
     };
   };
 
