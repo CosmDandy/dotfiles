@@ -1,7 +1,6 @@
 # Note: a full end-to-end install.sh run is intentionally NOT executed here —
 # it requires Nix + access to private submodules (deploy keys), which is out of
-# scope for CI. This workflow validates script syntax/lint and the symlink
-# idempotency contract (the part most likely to break on rerun).
+# scope for CI. This workflow validates script syntax and lint.
 name: test-install
 
 on:
@@ -35,16 +34,3 @@ jobs:
           done
       - name: Yamllint (relaxed)
         run: git ls-files '*.yml' '*.yaml' | xargs -r yamllint -d relaxed
-
-  symlinks-idempotency:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install zsh (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh
-      - name: Run create_symlinks test (backup + double-run idempotency)
-        run: zsh tests/test-create-symlinks.sh

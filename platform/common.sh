@@ -82,29 +82,3 @@ create_directories() {
     echo "Created directory ${dir}"
   done
 }
-
-create_symlinks() {
-  local items=("$@")
-  for item in "${items[@]}"; do
-    IFS=':' read -r source target <<< "$item"
-
-    if [[ -L "$target" && "$(readlink "$target")" == "$source" ]]; then
-      echo "✓ Symlink up to date: $target"
-      continue
-    fi
-
-    mkdir -p "$(dirname "$target")"
-
-    if [[ -L "$target" || -e "$target" ]]; then
-      if [[ -L "$target" ]]; then
-        rm -f "$target"
-      else
-        mv "$target" "${target}.before-dotfiles"
-        echo "↪ Backed up $target → ${target}.before-dotfiles"
-      fi
-    fi
-
-    ln -sfn "$source" "$target"
-    echo "Created symlink for $source → $target"
-  done
-}
