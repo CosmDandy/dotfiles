@@ -262,13 +262,13 @@ if.app-id = 'org.sil.ukelele'
 run = 'layout floating'
 [[on-window-detected]]
 if.app-id = 'com.sonarworks.soundid.reference.systemwide'
-run = 'layout floating'
+run = ['layout floating', 'move-node-to-workspace 8']
 [[on-window-detected]]
 if.app-id = 'com.daisydiskapp.DaisyDisk'
 run = 'layout floating'
 [[on-window-detected]]
 if.app-id = 'com.panic.Transmit'
-run = 'layout floating'
+run = ['layout floating', 'move-node-to-workspace 7']
 [[on-window-detected]]
 if.app-id = 'e.AmneziaVPN'
 run = 'layout floating'
@@ -280,10 +280,10 @@ if.app-id = 'com.apple.FaceTime'
 run = 'layout floating'
 [[on-window-detected]]
 if.app-id = 'com.utmapp.UTM'
-run = 'layout floating'
+run = ['layout floating', 'move-node-to-workspace 3']
 [[on-window-detected]]
 if.app-id = 'com.mac-attender.Network-Radar'
-run = 'layout floating'
+run = ['layout floating', 'move-node-to-workspace 7']
 [[on-window-detected]]
 if.app-id = 'com.hardcoded-software.dupeguru'
 run = 'layout floating'
@@ -349,9 +349,7 @@ run = 'move-node-to-workspace 3'
 [[on-window-detected]]
 if.app-id = 'com.electron.dockerdesktop'
 run = 'move-node-to-workspace 3'
-[[on-window-detected]]
-if.app-id = 'com.utmapp.UTM'
-run = 'move-node-to-workspace 3'
+# UTM: floating + переезд на 3 — объединено в floating-правиле выше
 
 # 5
 [[on-window-detected]]
@@ -397,12 +395,7 @@ run = 'move-node-to-workspace 7'
 [[on-window-detected]]
 if.app-id = 'com.maxgoedjen.Secretive.Host'
 run = 'move-node-to-workspace 7'
-[[on-window-detected]]
-if.app-id = 'com.panic.Transmit'
-run = 'move-node-to-workspace 7'
-[[on-window-detected]]
-if.app-id = 'com.mac-attender.Network-Radar'
-run = 'move-node-to-workspace 7'
+# Transmit и Network Radar: floating + переезд на 7 — объединено в floating-правилах выше
 [[on-window-detected]]
 if.app-id = 'com.intuitibits.wifiexplorerpro3'
 run = 'move-node-to-workspace 7'
@@ -429,9 +422,7 @@ run = 'move-node-to-workspace 7'
 [[on-window-detected]]
 if.app-id = 'com.apple.Music'
 run = 'move-node-to-workspace 8'
-[[on-window-detected]]
-if.app-id = 'com.sonarworks.soundid.reference.systemwide'
-run = 'move-node-to-workspace 8'
+# SoundID: floating + переезд на 8 — объединено в floating-правиле выше
 
 # 9
 [[on-window-detected]]
