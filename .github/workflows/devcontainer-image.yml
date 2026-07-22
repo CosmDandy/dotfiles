@@ -43,8 +43,8 @@ env:
 # Change visibility), иначе анонимный docker pull в devpod up получит denied.
 jobs:
   build:
-    # guard: workflow_dispatch с не-master ветки не должен перезаписывать прод-теги
-    if: github.ref == 'refs/heads/master'
+    # guard: workflow_dispatch с не-main ветки не должен перезаписывать прод-теги
+    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         profile: [core, devops]
