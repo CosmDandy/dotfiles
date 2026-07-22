@@ -45,6 +45,15 @@ return {
     { '<leader>sC', function() Snacks.picker.lsp_outgoing_calls() end, desc = '[C]alls outgoing' },
     { '<leader>sR', function() Snacks.picker.registers() end, desc = '[R]egisters' },
 
+    -- Символы — в пространстве [s]earch, а не на gd-подобных LspAttach-биндах:
+    -- рука ищет их здесь. lsp_workspace_symbols в live-режиме — запрос уходит на
+    -- сервер по мере ввода, то, ради чего иначе грепаешь имя со знаком '='.
+    { '<leader>so', function() Snacks.picker.lsp_symbols() end, desc = '[o]utline документа' },
+    { '<leader>sS', function() Snacks.picker.lsp_workspace_symbols() end, desc = '[S]ymbols проекта' },
+    -- Символы без LSP: дерево прямо из treesitter — структура там, где сервера
+    -- нет или он символов не отдаёт (hcl, gotmpl, csv).
+    { '<leader>sT', function() Snacks.picker.treesitter() end, desc = '[T]reesitter символы' },
+
     -- notifications (snacks.notifier — заменил :Noice history/dismiss)
     { '<leader>nh', function() Snacks.notifier.show_history() end, desc = 'Notification [h]istory' },
     { '<leader>nd', function() Snacks.notifier.hide() end, desc = '[d]ismiss notifications' },

@@ -155,6 +155,12 @@ return {
         -- call hierarchy — код вызывающей/вызываемой функции в превью справа
         lsp_incoming_calls = { layout = { preset = 'default' } },
         lsp_outgoing_calls = { layout = { preset = 'default' } },
+        -- символы из treesitter — дерево слева, код справа. Нужен там, где LSP
+        -- символов не даёт: hcl, gotmpl, csv
+        treesitter = { layout = { preset = 'default' } },
+        -- регистры — список короткий, содержимое видно в самой строке; дефолтное
+        -- окно с превью под это несоразмерно велико
+        registers = { layout = { preset = 'dropdown' } },
         -- git status/diff — превью диффа снизу (важнее списка файлов)
         git_status = vertical(0.6),
         git_diff = vertical(0.7),

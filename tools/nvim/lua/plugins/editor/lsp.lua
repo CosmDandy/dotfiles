@@ -55,8 +55,8 @@ return {
           map('gI', function() Snacks.picker.lsp_implementations() end, '[G]oto [I]mplementation')
           map('<leader>D', function() Snacks.picker.lsp_type_definitions() end, 'Type [D]efinition')
 
-          map('<leader>ds', function() Snacks.picker.lsp_symbols() end, '[D]ocument [S]ymbols')
-          map('<leader>ws', function() Snacks.picker.lsp_workspace_symbols() end, '[W]orkspace [S]ymbols')
+          -- Символы документа и проекта живут в пространстве [s]earch:
+          -- <leader>so и <leader>sS (snacks-picker.lua)
 
           map('<leader>rn', vim.lsp.buf.rename, '[R]e[n]ame')
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
