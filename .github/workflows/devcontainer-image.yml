@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - 'platform/nix/**'
+      # mac-only файлы: homeConfigurations их не читают, образ от них не меняется
+      - '!platform/nix/darwin-configuration.nix'
+      - '!platform/nix/home/darwin.nix'
       - 'platform/linux/Dockerfile'
       # конфиг nvim запекается в образ (плагины + mason), поэтому его правки
       # тоже требуют пересборки
