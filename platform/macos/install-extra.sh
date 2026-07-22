@@ -164,19 +164,17 @@ setup_app "Karabiner-Elements" \
 setup_app "Flux" \
     "Pick location"
 
-# BetterDisplay: восстановление настроек из кода (tools/betterdisplay/BetterDisplay.plist).
-# Заменяет ручной чек-лист. Настройки дисплеев привязаны к UUID железа — на свежей
-# macOS может понадобиться один раз перелинковать дисплей в app
+# BetterDisplay: plist в репо не держим (EDID, серийники мониторов, маркер
+# лицензии — публичный репозиторий). Настройки восстанавливаются из restic-бэкапа:
+#   restic restore --target / --include "$HOME/Library/Preferences/pro.betterdisplay.BetterDisplay.plist" latest
+# затем перезапустить BetterDisplay. Привязка к дисплеям идёт по UUID железа — на
+# свежей macOS может понадобиться перелинковать дисплей
 # (Settings -> transfer settings of a disconnected display to a connected one).
-echo "Restoring BetterDisplay settings from repo..."
-osascript -e 'quit app "BetterDisplay"' 2>/dev/null || true
-sleep 2
-defaults import pro.betterdisplay.BetterDisplay "$DOTFILES_ROOT/tools/betterdisplay/BetterDisplay.plist"
-open -a BetterDisplay
-
-# Fallback (если import не применил display-специфичное):
-#   Mi Monitor -> HiDPI on, Full EDID match, 59.95Hz, 2560x1440 ; Built-in -> 1280x800
-#   Groups Work/Home + Layout Protection (Mi Monitor left/right of Built-in) + Brightness sync
+setup_app "BetterDisplay" \
+    "Restore plist из бэкапа (см. комментарий) ЛИБО вручную:" \
+    "Mi Monitor -> HiDPI on, Full EDID match, 59.95Hz, 2560x1440" \
+    "Built-in -> 1280x800" \
+    "Groups Work/Home + Layout Protection + Brightness sync"
 
 print_section "All apps configured!"
 

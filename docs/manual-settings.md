@@ -151,12 +151,14 @@ Microsoft Teams · Things Cloud · Telegram (**два** аккаунта, лич
 Привязано к железу, автоматизировать нечем.
 
 ### BetterDisplay
-Настройки восстанавливаются импортом из `tools/betterdisplay/BetterDisplay.plist`
-— это делает `install-extra.sh`. Но привязка к дисплеям идёт по UUID железа,
-поэтому на свежей системе может понадобиться один раз перелинковать монитор:
-Settings → transfer settings of a disconnected display to a connected one.
+Plist в репо не хранится (внутри EDID, серийники мониторов и маркер лицензии,
+а репозиторий публичный). Настройки восстанавливаются из restic-бэкапа —
+`~/Library/Preferences/pro.betterdisplay.BetterDisplay.plist` включён в
+манифест. После restore перезапустить BetterDisplay; привязка к дисплеям идёт
+по UUID железа, поэтому на свежей системе может понадобиться перелинковать
+монитор: Settings → transfer settings of a disconnected display to a connected one.
 
-Если импорт не подхватился, целевое состояние такое: Mi Monitor — HiDPI on,
+Если бэкапа под рукой нет, целевое состояние такое: Mi Monitor — HiDPI on,
 Full EDID match, 59.95 Hz, 2560×1440; встроенный — 1280×800; группы Work/Home
 с Layout Protection и синхронизацией яркости.
 
