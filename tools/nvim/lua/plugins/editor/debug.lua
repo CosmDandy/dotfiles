@@ -12,7 +12,6 @@ return {
     'rcarriga/nvim-dap-ui',
     'nvim-neotest/nvim-nio',
     'mason-org/mason.nvim',
-    'jay-babu/mason-nvim-dap.nvim',
     'theHamsta/nvim-dap-virtual-text',
     {
       'mfussenegger/nvim-dap-python',
@@ -166,18 +165,7 @@ return {
     local dap = require 'dap'
     local dapui = require 'dapui'
 
-    require('mason-nvim-dap').setup {
-      automatic_installation = true,
-      -- You can provide additional configuration to the handlers,
-      -- see mason-nvim-dap README for more information
-      handlers = {},
-
-      -- You'll need to check that you have the required things installed
-      -- online, please don't ask me how to install them :)
-      ensure_installed = {
-        'debugpy',
-      },
-    }
+    -- debugpy ставит mason-tool-installer (lsp.lua), отдельный mason-nvim-dap не нужен
 
     require('nvim-dap-virtual-text').setup {
       -- только отличия от дефолта upstream:

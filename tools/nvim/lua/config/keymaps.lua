@@ -5,7 +5,6 @@ local function map(mode, l, r, opts)
 end
 -- Basic keymaps
 map('n', '<Esc>', '<cmd>nohlsearch<CR>')
-map('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Diagnostics → loclist' })
 
 map('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 

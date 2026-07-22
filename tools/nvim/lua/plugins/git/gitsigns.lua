@@ -77,7 +77,6 @@ return {
       map('n', '<leader>gP', gitsigns.preview_hunk, { desc = '[P]review hunk' })
       map('n', '<leader>gp', gitsigns.preview_hunk_inline, { desc = '[p]review hunk inline' })
       map('n', '<leader>gB', gitsigns.blame, { desc = '[B]lame' })
-      map('n', '<leader>gb', gitsigns.blame_line, { desc = '[b]lame line' })
       map('n', '<leader>gt', gitsigns.toggle_current_line_blame, { desc = '[t]oggle current-line blame' })
       map('n', '<leader>gdi', gitsigns.diffthis, { desc = '[d]iff against [i]ndex' })
       map('n', '<leader>gdc', function()

@@ -33,7 +33,18 @@ return {
     }
 
     -- Add/delete/replace surroundings (brackets, quotes, etc.)
+    -- Префикс gz вместо дефолтного s: s занят flash, быстрый набор s+a/d/r
+    -- срабатывал как surround вместо прыжка
     require('mini.surround').setup {
+      mappings = {
+        add = 'gza',
+        delete = 'gzd',
+        find = 'gzf',
+        find_left = 'gzF',
+        highlight = 'gzh',
+        replace = 'gzr',
+        update_n_lines = 'gzn',
+      },
       n_lines = 100, -- многострочные YAML/блоки
       custom_surroundings = {
         -- обёртки под шаблоны (sa<motion><key>):
@@ -42,6 +53,17 @@ return {
         ['$'] = { output = { left = '${', right = '}' } }, -- Terraform-интерполяция
       },
     }
+
+    -- Автопары (заменил nvim-autopairs; скобки после accept добавляет blink.cmp сам)
+    require('mini.pairs').setup()
+    -- в инпуте пикера snacks пары не нужны
+    vim.api.nvim_create_autocmd('FileType', {
+      pattern = 'snacks_picker_input',
+      group = vim.api.nvim_create_augroup('minipairs-disable', { clear = true }),
+      callback = function(args)
+        vim.b[args.buf].minipairs_disable = true
+      end,
+    })
 
     -- Операторы над текстовыми объектами (gr занят LSP references, поэтому gR)
     require('mini.operators').setup {

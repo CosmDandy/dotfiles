@@ -69,8 +69,6 @@ return {
 
           map(']d', function() vim.diagnostic.jump { count = 1 } end, 'Next [D]iagnostic')
           map('[d', function() vim.diagnostic.jump { count = -1 } end, 'Previous [D]iagnostic')
-          map('<leader>e', vim.diagnostic.open_float, 'Show [E]rror')
-          map('<leader>dw', vim.lsp.buf.workspace_diagnostics, '[D]iagnostics [W]orkspace')
 
           map('<leader>lr', '<cmd>LspRestart<CR>', '[L]SP [R]estart')
 

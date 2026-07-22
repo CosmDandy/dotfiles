@@ -191,13 +191,9 @@ return {
         local ft = vim.bo[buf].filetype
         local excluded = {
           help = true,
-          alpha = true,
           dashboard = true,
           lazy = true,
           mason = true,
-          notify = true,
-          Trouble = true,
-          trouble = true,
           oil = true,
         }
         return vim.g.snacks_indent ~= false and vim.b[buf].snacks_indent ~= false and not excluded[ft]

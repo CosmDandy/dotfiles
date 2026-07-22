@@ -139,24 +139,4 @@ return {
       })
     end,
   },
-  {
-    'nvim-treesitter/nvim-treesitter-context',
-    cmd = { 'TSContextEnable', 'TSContextDisable', 'TSContextToggle' },
-    keys = {
-      {
-        '<leader>tc',
-        function()
-          require('treesitter-context').toggle()
-        end,
-        desc = 'Toggle Treesitter Context',
-      },
-    },
-    opts = {
-      enable = false, -- по умолчанию выкл (дёргал вьюпорт при скролле); включается вручную <leader>tc
-      max_lines = 3,
-      multiline_threshold = 1,
-      trim_scope = 'outer',
-      mode = 'cursor',
-    },
-  },
 }

@@ -45,13 +45,14 @@ return {
     },
     spec = {
       { '<leader>c',  group = 'code',     mode = { 'n', 'x' } },
-      { '<leader>d',  group = 'document' },
+      { '<leader>d',  group = 'debug' },
       { '<leader>r',  group = 'rename' },
       { '<leader>s',  group = 'search' },
       { '<leader>w',  proxy = '<c-w>', group = 'windows' },
       { '<leader>t',  group = 'tools' },
       { '<leader>g',  group = 'git',      mode = { 'n', 'v' } },
       { '<leader>gd', group = 'diff',     mode = { 'n', 'v' } },
+      { 'gz',         group = 'surround', mode = { 'n', 'x' } },
     },
   },
 }

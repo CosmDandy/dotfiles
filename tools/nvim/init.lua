@@ -2,7 +2,6 @@
 require 'config.options'
 require 'config.keymaps'
 require 'config.autocmds'
-require 'config.health'
 
 -- Импорт плагинов
 local lazypath = vim.fn.stdpath 'data' .. '/lazy/lazy.nvim'
