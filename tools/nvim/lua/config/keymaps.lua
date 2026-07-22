@@ -11,6 +11,4 @@ map('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 -- Навигация по сплитам/пейнам — см. plugins/navigation/tmux-navigator.lua
 -- (C-y/C-h/C-a/C-e бесшовно прыгают и по nvim-сплитам, и по tmux-пейнам)
 
-map('n', '<leader>wd', '<cmd>delmarks!<CR>', { desc = '[D]elete marks', noremap = true, silent = true })
-
 map('n', '<leader>cy', ':SetYamlSchema<CR>', { desc = 'Set [Y]AML schema', noremap = true, silent = true })
