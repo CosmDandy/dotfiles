@@ -5,8 +5,7 @@ let
     # Neovim deps
     python313
     nodejs_24
-    lua
-    luarocks
+    luarocks  # нужен mason'у (luacheck); свой lua тащит с собой
     tree-sitter
     # CLI
     eza

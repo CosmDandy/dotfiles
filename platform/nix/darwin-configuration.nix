@@ -24,23 +24,18 @@
       "microsoft-teams"
       "openvpn-connect"
       "amneziavpn"
-      # "sfm"
-      # ----------
       # "secretive"
       "orbstack"
       "leader-key"
       # Браузеры
       "arc"
       "netnewswire"
-      # "yattee"
       # Разработка
       "ghostty"
       # "cursor"
       "visual-studio-code"
       "devpod"
       "postico"
-      # стоит на машине (UTM-тестовая инфраструктура дотфайлов);
-      # вне списка cleanup=zap удалил бы его при rebuild
       "utm"
       # AI инструменты
       # "chatgpt"
@@ -52,15 +47,12 @@
       "raycast"
       # Коммуникации
       "telegram"
-      # "element"
       # Системные утилиты
-      # каск, а не nixpkgs: bitwarden-desktop тянет electron, помеченный insecure
       "bitwarden"
       "onyx"
       "ukelele"
       "betterdisplay"
       # "jordanbaird-ice"
-      # "syncthing-app"
       # Дополнительные утилиты
       "flux-app"
       # Оконный менеджер
@@ -69,12 +61,6 @@
     ];
     taps = [
       "nikitabobko/tap"
-      "jorgelbg/tap"
-    ];
-    brews = [
-      # стоит на машине (эксперимент Touch ID для rbw; с rbw не работает —
-      # docs/secrets.md); вне списка cleanup=zap удалил бы его при rebuild
-      "jorgelbg/tap/pinentry-touchid"
     ];
   };
 
@@ -95,8 +81,7 @@
     python3
     go
     uv
-    lua
-    luarocks
+    luarocks  # нужен mason'у (luacheck); свой lua тащит с собой, отдельный пакет lua не нужен
     eza
     fd
     ripgrep
