@@ -204,7 +204,7 @@
     "cursor.cpp.disabledLanguages": [],
 
     // ====== PERFORMANCE ======
-    "extensions.autoUpdate": true,
+    "extensions.autoUpdate": "on",
     "telemetry.enableTelemetry": false,
     "update.showReleaseNotes": false,
     "workbench.activityBar.location": "hidden",

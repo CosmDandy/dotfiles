@@ -1,4 +1,7 @@
 {
+  "trustedformulae": [
+    "jorgelbg/tap/pinentry-touchid"
+  ],
   "trustedcasks": [
     "nikitabobko/tap/aerospace"
   ]
