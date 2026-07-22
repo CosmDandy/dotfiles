@@ -62,6 +62,27 @@ in {
       run mkdir -p "$HOME/.ssh/sockets"
     '';
 
+    # Раскладка Graphite — копией, а не симлинком через home.file: Text Input
+    # Sources не принимает симлинк-бандлы, а цель в /nix/store вдобавок не
+    # принадлежит пользователю. Тот же довод, по которому копируется known_hosts.
+    # Это не косметика: automation/launchd/config/bt-layout.conf ссылается на
+    # input source org.sil.ukelele.keyboardlayout.graphitenew.russian, и без
+    # установленного бандла демон bt-layout-switch не может вызвать
+    # TISEnableInputSource — переключение при подключении клавиатуры отваливается.
+    # Источник в сабмодуле assets/, которого может не быть: без него — warn.
+    installKeyboardLayout = beforeReport ''
+      SRC="${dotfiles}/assets/keymap/Graphite.bundle"
+      DEST="$HOME/Library/Keyboard Layouts/Graphite.bundle"
+      if [ -d "$SRC" ]; then
+        if ! ${pkgs.diffutils}/bin/diff -rq "$SRC" "$DEST" >/dev/null 2>&1; then
+          run mkdir -p "$HOME/Library/Keyboard Layouts"
+          run cp -R "$SRC/." "$DEST/"
+        fi
+      else
+        ${warn "раскладка Graphite не установлена (сабмодуль assets/ не инициализирован)"}
+      fi
+    '';
+
     # known_hosts сеем копией только при отсутствии: дальше файлом владеет
     # ssh (дописывает/пересоздаёт), а не home-manager
     seedKnownHosts = after ''

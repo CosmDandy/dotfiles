@@ -438,22 +438,22 @@
           "iconPath": "microphone",
           "key": "s",
           "label": "Sound",
-          "type": "url",
-          "value": "com.apple.Sound-Settings.extension"
+          "type": "command",
+          "value": "/usr/bin/open x-apple.systempreferences:com.apple.Sound-Settings.extension"
         },
         {
           "iconPath": "lock",
           "key": "p",
           "label": "Privacy",
-          "type": "url",
-          "value": "com.apple.settings.PrivacySecurity.extension"
+          "type": "command",
+          "value": "/usr/bin/open x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"
         },
         {
           "iconPath": "keyboard",
           "key": "k",
           "label": "Keyboard",
-          "type": "url",
-          "value": "com.apple.Keyboard-Settings.extension"
+          "type": "command",
+          "value": "/usr/bin/open x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
         },
         {
           "iconPath": "trash",
