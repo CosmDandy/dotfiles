@@ -230,7 +230,11 @@ alias gd='git diff'
 alias gdiff='git diff --color-words'
 alias glog='git log --oneline --graph --decorate --color=always'
 alias gblame='git blame -w'
-alias dfu='(cd "$HOME/dotfiles" && git fetch origin && git reset --hard @{u}) && echo "✓ Dotfiles updated" || echo "✗ Failed to update dotfiles"' # Обновление дот-файлов (принудительно из облака)
+# DOTFILES_DIR, а не хардкод: на macOS репозиторий лежит в ~/.dotfiles, и алиас
+# с "$HOME/dotfiles" молча падал в "✗ Failed to update" на каждом запуске.
+# ВНИМАНИЕ: reset --hard стирает незакоммиченное — это и есть смысл алиаса
+# («принудительно из облака»), но перед запуском стоит глянуть git status.
+alias dfu='(cd "$DOTFILES_DIR" && git fetch origin && git reset --hard @{u}) && echo "✓ Dotfiles updated" || echo "✗ Failed to update dotfiles"' # Обновление дот-файлов (принудительно из облака)
 
 # GitHub CLI - Actions / Workflows
 alias gha='gh run list'               # Список последних runs
