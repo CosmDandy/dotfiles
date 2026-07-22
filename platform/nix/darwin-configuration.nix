@@ -121,6 +121,7 @@
     ansible
     gdu
     gitleaks
+    restic    # бэкап в Hetzner Object Storage, automation/backup/backup.sh
     direnv
     nix-direnv
     rbw
