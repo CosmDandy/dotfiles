@@ -122,6 +122,52 @@
   };
 
   # ===============================
+  # Launchd-агенты («кроны») — декларативно, ставятся darwin-rebuild switch.
+  # Лейблы у nix-darwin с префиксом org.nixos.*; старые com.cosmdandy.*
+  # выгружает миграционный хук removeLegacyLaunchAgents (home/darwin.nix).
+  # timing-mcp не здесь — им владеет tools/claude/custom/install.sh.
+  # ===============================
+  launchd.user.agents = {
+    # Ежедневно в 13:00. Днём, а не ночью: ноутбук ночью спит, а launchd,
+    # в отличие от systemd с Persistent=true, пропущенный календарный
+    # запуск не догоняет.
+    backup.serviceConfig = {
+      ProgramArguments = [ "/bin/bash" "/Users/${config.system.primaryUser}/.dotfiles/automation/backup/backup.sh" ];
+      StartCalendarInterval = [ { Hour = 13; Minute = 0; } ];
+      RunAtLoad = false;
+      # Бэкап не должен конкурировать за диск с интерактивной работой
+      LowPriorityIO = true;
+      Nice = 5;
+      StandardOutPath = "/tmp/backup.log";
+      StandardErrorPath = "/tmp/backup.log";
+    };
+
+    cleanup-mac.serviceConfig = {
+      ProgramArguments = [ "/bin/bash" "/Users/${config.system.primaryUser}/.dotfiles/automation/launchd/scripts/cleanup-mac.sh" ];
+      StartCalendarInterval = [ { Weekday = 0; Hour = 12; Minute = 0; } ];
+      RunAtLoad = false;
+      StandardOutPath = "/tmp/cleanup-mac.log";
+      StandardErrorPath = "/tmp/cleanup-mac.log";
+    };
+
+    # Демон переключения раскладки при подключении BT-клавиатуры. Бинарь
+    # собирает platform/macos/install-bt-layout.sh; TCC-права привязаны к
+    # bundle-id бинаря (com.cosmdandy.bt-layout-switch) — смена launchd-лейбла
+    # их не сбрасывает.
+    bt-layout-switch.serviceConfig = {
+      ProgramArguments = [ "/Users/${config.system.primaryUser}/.dotfiles/automation/launchd/scripts/bt-layout-switch.app/Contents/MacOS/bt-layout-switch" ];
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin";
+        BT_LAYOUT_CONF = "/Users/${config.system.primaryUser}/.dotfiles/automation/launchd/config/bt-layout.conf";
+      };
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/tmp/bt-layout-switch.log";
+      StandardErrorPath = "/tmp/bt-layout-switch.log";
+    };
+  };
+
+  # ===============================
   # Fonts
   # ===============================
   fonts.packages = with pkgs; [

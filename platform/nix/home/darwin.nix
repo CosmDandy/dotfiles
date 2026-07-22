@@ -62,6 +62,20 @@ in {
       run mkdir -p "$HOME/.ssh/sockets"
     '';
 
+    # Одноразовая миграция: агенты переехали в launchd.user.agents
+    # (darwin-configuration.nix) с лейблами org.nixos.* — старые
+    # com.cosmdandy.* выгружаем и сносим их симлинки. timing-mcp не трогаем:
+    # им владеет tools/claude/custom/install.sh.
+    removeLegacyLaunchAgents = after ''
+      for _label in com.cosmdandy.backup com.cosmdandy.cleanup-mac com.cosmdandy.bt-layout-switch; do
+        _plist="$HOME/Library/LaunchAgents/$_label.plist"
+        if [ -e "$_plist" ] || [ -L "$_plist" ]; then
+          run /bin/launchctl bootout "gui/$(id -u)/$_label" 2>/dev/null || true
+          run rm -f "$_plist"
+        fi
+      done
+    '';
+
     # Раскладка Graphite — копией, а не симлинком через home.file: Text Input
     # Sources не принимает симлинк-бандлы, а цель в /nix/store вдобавок не
     # принадлежит пользователю. Тот же довод, по которому копируется known_hosts.
