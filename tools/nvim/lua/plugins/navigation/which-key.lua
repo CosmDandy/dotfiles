@@ -3,7 +3,7 @@ return {
   event = 'VeryLazy',
   opts = {
     preset = 'modern',
-    delay = 1000,
+    delay = 300,
     -- прятать из попапа маппинги без описания (безымянный плагинный шум)
     filter = function(mapping)
       return mapping.desc and mapping.desc ~= ''
@@ -44,14 +44,15 @@ return {
       },
     },
     spec = {
-      { '<leader>c',  group = 'code',     mode = { 'n', 'x' } },
-      { '<leader>d',  group = 'document' },
-      { '<leader>r',  group = 'rename' },
-      { '<leader>s',  group = 'search' },
-      { '<leader>w',  proxy = '<c-w>', group = 'windows' },
-      { '<leader>t',  group = 'tools' },
-      { '<leader>g',  group = 'git',      mode = { 'n', 'v' } },
-      { '<leader>gd', group = 'diff',     mode = { 'n', 'v' } },
+      { '<leader>c', group = 'code', mode = { 'n', 'x' } },
+      { '<leader>d', group = 'debug' },
+      { '<leader>r', group = 'rename' },
+      { '<leader>s', group = 'search' },
+      { '<leader>w', proxy = '<c-w>', group = 'windows' },
+      { '<leader>t', group = 'tools' },
+      { '<leader>g', group = 'git', mode = { 'n', 'v' } },
+      { '<leader>gd', group = 'diff', mode = { 'n', 'v' } },
+      { 'gz', group = 'surround', mode = { 'n', 'x' } },
     },
   },
 }

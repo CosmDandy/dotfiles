@@ -1,6 +1,7 @@
 return {
   'folke/flash.nvim',
-  event = 'BufReadPre',
+  -- event не нужен: полный keys-спек ниже сам подтягивает плагин по s/S/r/R/<c-s>,
+  -- как это сделано у folke в LazyVim
   ---@type Flash.Config
   opts = {
     search = { multi_window = true },
@@ -16,7 +17,7 @@ return {
       char = {
         -- f/t/F/T получают jump-labels: после мотиона прыжок на любое совпадение
         jump_labels = true,
-        label = { exclude = 'hjkliardc' }, -- не занимать лейблами ходовые motion-клавиши
+        label = { exclude = 'yhaeirdc' }, -- не занимать лейблами nav-клавиши Graphite (y/h/a/e) и операторы i/r/d/c
         -- не показывать лейблы при счётчике (3f) и во время записи/проигрывания макроса
         config = function(opts)
           opts.jump_labels = opts.jump_labels and vim.v.count == 0 and vim.fn.reg_executing() == '' and vim.fn.reg_recording() == ''

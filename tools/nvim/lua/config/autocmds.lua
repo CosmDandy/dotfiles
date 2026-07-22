@@ -69,7 +69,7 @@ vim.api.nvim_create_autocmd({ 'FocusGained', 'TermClose', 'TermLeave' }, {
 vim.api.nvim_create_autocmd('FileType', {
   desc = 'Close utility buffers with q',
   group = vim.api.nvim_create_augroup('q-close', { clear = true }),
-  pattern = { 'help', 'qf', 'man', 'lspinfo', 'checkhealth', 'startuptime', 'query', 'dap-float' },
+  pattern = { 'help', 'qf', 'man', 'lspinfo', 'checkhealth', 'query', 'dap-float' },
   callback = function(args)
     vim.bo[args.buf].buflisted = false
     vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = args.buf, silent = true, desc = 'Close' })

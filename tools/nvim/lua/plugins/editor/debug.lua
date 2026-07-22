@@ -12,7 +12,6 @@ return {
     'rcarriga/nvim-dap-ui',
     'nvim-neotest/nvim-nio',
     'mason-org/mason.nvim',
-    'jay-babu/mason-nvim-dap.nvim',
     'theHamsta/nvim-dap-virtual-text',
     {
       'mfussenegger/nvim-dap-python',
@@ -100,14 +99,14 @@ return {
     {
       '<leader>dv',
       function()
-        require('dapui').float_element('scopes')
+        require('dapui').float_element 'scopes'
       end,
       desc = '[d]ebug [v]ariables',
     },
     {
       '<leader>df',
       function()
-        require('dapui').float_element('stacks')
+        require('dapui').float_element 'stacks'
       end,
       desc = '[d]ebug [f]rames',
     },
@@ -166,59 +165,47 @@ return {
     local dap = require 'dap'
     local dapui = require 'dapui'
 
-    require('mason-nvim-dap').setup {
-      automatic_installation = true,
-      -- You can provide additional configuration to the handlers,
-      -- see mason-nvim-dap README for more information
-      handlers = {},
-
-      -- You'll need to check that you have the required things installed
-      -- online, please don't ask me how to install them :)
-      ensure_installed = {
-        'debugpy',
-      },
-    }
+    -- debugpy ставит mason-tool-installer (lsp.lua), отдельный mason-nvim-dap не нужен
 
     require('nvim-dap-virtual-text').setup {
       -- только отличия от дефолта upstream:
       highlight_new_as_changed = true, -- новые переменные подсвечивать как изменённые
-      commented = true,                -- виртуальный текст в виде комментария
-      only_first_definition = false,   -- показывать у всех вхождений, не только первого
-      all_references = true,           -- показывать все ссылки
-      virt_text_pos = 'eol',           -- на 0.10+ дефолт 'inline', нам нужен eol
+      commented = true, -- виртуальный текст в виде комментария
+      only_first_definition = false, -- показывать у всех вхождений, не только первого
+      all_references = true, -- показывать все ссылки
+      virt_text_pos = 'eol', -- на 0.10+ дефолт 'inline', нам нужен eol
     }
 
     dapui.setup {
       -- icons: пустые строки = без глифов сворачивания (НЕ дефолт; дефолт — глифы-треугольники)
       icons = {
-        collapsed = "",
-        current_frame = "",
-        expanded = "",
+        collapsed = '',
+        current_frame = '',
+        expanded = '',
       },
       -- кастомные доли панелей (дефолт — равные 0.25)
       layouts = {
         {
           elements = {
-            { id = "scopes", size = 0.4 },
-            { id = "breakpoints", size = 0.15 },
-            { id = "stacks", size = 0.25 },
-            { id = "watches", size = 0.2 },
+            { id = 'scopes', size = 0.4 },
+            { id = 'breakpoints', size = 0.15 },
+            { id = 'stacks', size = 0.25 },
+            { id = 'watches', size = 0.2 },
           },
-          position = "left",
+          position = 'left',
           size = 40,
         },
         {
           elements = {
-            { id = "repl", size = 0.5 },
-            { id = "console", size = 0.5 },
+            { id = 'repl', size = 0.5 },
+            { id = 'console', size = 0.5 },
           },
-          position = "bottom",
+          position = 'bottom',
           size = 15,
         },
       },
       render = { max_value_lines = 100 }, -- остальное (controls/floating/mappings/expand_lines) = дефолт
     }
-
 
     -- .vscode/launch.json читается автоматически on-demand (:help dap-providers) —
     -- ручной load_launchjs больше не нужен (deprecated).
@@ -232,7 +219,7 @@ return {
     vim.api.nvim_set_hl(0, 'DapLogPoint', { fg = '#00bfff' })
     local breakpoint_icons = vim.g.have_nerd_font
         and { Breakpoint = '', BreakpointCondition = '', BreakpointRejected = '', LogPoint = '', Stopped = '' }
-        or { Breakpoint = '●', BreakpointCondition = '⊜', BreakpointRejected = '⊘', LogPoint = '◆', Stopped = '⭔' }
+      or { Breakpoint = '●', BreakpointCondition = '⊜', BreakpointRejected = '⊘', LogPoint = '◆', Stopped = '⭔' }
     for type, icon in pairs(breakpoint_icons) do
       local tp = 'Dap' .. type
       local hl = (type == 'Stopped') and 'DapStop' or 'DapBreak'

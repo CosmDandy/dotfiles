@@ -33,7 +33,18 @@ return {
     }
 
     -- Add/delete/replace surroundings (brackets, quotes, etc.)
+    -- Префикс gz вместо дефолтного s: s занят flash, быстрый набор s+a/d/r
+    -- срабатывал как surround вместо прыжка
     require('mini.surround').setup {
+      mappings = {
+        add = 'gza',
+        delete = 'gzd',
+        find = 'gzf',
+        find_left = 'gzF',
+        highlight = 'gzh',
+        replace = 'gzr',
+        update_n_lines = 'gzn',
+      },
       n_lines = 100, -- многострочные YAML/блоки
       custom_surroundings = {
         -- обёртки под шаблоны (sa<motion><key>):
@@ -43,6 +54,17 @@ return {
       },
     }
 
+    -- Автопары (заменил nvim-autopairs; скобки после accept добавляет blink.cmp сам)
+    require('mini.pairs').setup()
+    -- в инпуте пикера snacks пары не нужны
+    vim.api.nvim_create_autocmd('FileType', {
+      pattern = 'snacks_picker_input',
+      group = vim.api.nvim_create_augroup('minipairs-disable', { clear = true }),
+      callback = function(args)
+        vim.b[args.buf].minipairs_disable = true
+      end,
+    })
+
     -- Операторы над текстовыми объектами (gr занят LSP references, поэтому gR)
     require('mini.operators').setup {
       replace = { prefix = 'gR' }, -- заменить объект содержимым регистра
@@ -51,6 +73,29 @@ return {
 
     -- Улучшенная навигация по тексту [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-bracketed.md]
     require('mini.bracketed').setup()
+
+    -- Выравнивание в столбик по разделителю [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-align.md]
+    -- ga{motion} + разделитель, gA — то же с интерактивным превью. Ради этого и
+    -- ставилось: хвостовые `-- комментарий` и таблицы значений встают по одной
+    -- колонке. Перекрывает встроенный ga (код символа под курсором) — если
+    -- понадобится, то же самое дают :ascii и g8.
+    require('mini.align').setup()
+
+    -- Анимация курсора [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-animate.md]
+    -- На прыжках (}, G, gg, результат поиска) рисуется след от старой позиции к новой —
+    -- глаз не теряет, откуда курсор приехал. Остальные модули выключены намеренно:
+    -- скролл анимирует snacks.scroll, а open/close/resize дерутся с плавающими
+    -- окнами snacks (picker, input, notifier) и мигают на каждом их открытии.
+    local animate = require 'mini.animate'
+    animate.setup {
+      cursor = {
+        timing = animate.gen_timing.linear { duration = 80, unit = 'total' },
+      },
+      scroll = { enable = false },
+      resize = { enable = false },
+      open = { enable = false },
+      close = { enable = false },
+    }
 
     -- Статуслайн снизу [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-statusline.md]
     local statusline = require 'mini.statusline'
@@ -123,11 +168,7 @@ return {
         warnings = get_severity(vim.diagnostic.severity.WARN),
       }
 
-      return string.format(
-        ' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ',
-        result.errors,
-        result.warnings
-      )
+      return string.format(' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ', result.errors, result.warnings)
     end
 
     local function get_fileinfo()

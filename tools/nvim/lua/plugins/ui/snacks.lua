@@ -62,6 +62,10 @@ return {
     quickfile = { enabled = true },
     -- плавающий vim.ui.input (rename и пр.) вместо строки внизу — в стиле остального snacks
     input = { enabled = true },
+    -- Плавный скролл. Мгновенный прыжок на полэкрана заставляет заново искать, где ты;
+    -- анимация ведёт взгляд. Дефолтный фильтр не трогает buftype=terminal
+    -- (lazygit, claude-code) — там прокрутку рисует само приложение.
+    scroll = { enabled = true },
     -- подсветка вхождений символа под курсором (LSP document_highlight) + прыжки ]]/[[
     words = { enabled = true },
     -- текст-объекты по области: ii/ai + прыжки [i/]i
@@ -109,7 +113,7 @@ return {
       formatters = {
         file = {
           filename_first = true,
-          truncate = 60,
+          truncate = 80,
         },
       },
       sources = {
@@ -122,7 +126,7 @@ return {
         grep_word = with_exclude(vertical(0.6)),
         diagnostics = vertical(0.6),
         git_log = vertical(0.6),
-        git_log_file = vertical(0.6),
+        git_log_file = vertical(0.8),
         git_branches = vertical(0.6),
         -- marks — с превью (видно контекст метки), компактно по центру
         marks = { layout = { preset = 'dropdown' } },
@@ -130,12 +134,40 @@ return {
         -- preset 'select' имеет встроенное hidden={'preview'}
         buffers = select(),
         recent = select(),
-        lines = select(),
         pickers = select(),
         keymaps = select(),
         search_history = select(),
-        help = select(),
-        lsp_symbols = select(),
+        -- поиск по строкам буфера — превью снизу (длинные строки видны целиком)
+        lines = vertical(0.6),
+        -- :help — превью справа (текст статьи виден до прыжка)
+        help = { layout = { preset = 'default' } },
+        -- символы документа — список слева во всю высоту, превью кода справа.
+        -- filter=true для конфиг-ФТ: их структуру LSP размечает как Object/Key/Variable,
+        -- а дефолтный фильтр snacks эти типы прячет (оттого <leader>ds там пустой)
+        lsp_symbols = {
+          layout = { preset = 'default' },
+          filter = {
+            yaml = true,
+            json = true,
+            terraform = true,
+            helm = true,
+            dockerfile = true,
+          },
+        },
+        -- символы воркспейса — вертикально: список во всю ширину, видны пути к файлам
+        lsp_workspace_symbols = vertical(0.5),
+        -- call hierarchy — код вызывающей/вызываемой функции в превью справа
+        lsp_incoming_calls = { layout = { preset = 'default' } },
+        lsp_outgoing_calls = { layout = { preset = 'default' } },
+        -- символы из treesitter — дерево слева, код справа. Нужен там, где LSP
+        -- символов не даёт: hcl, gotmpl, csv
+        treesitter = { layout = { preset = 'default' } },
+        -- регистры — список короткий, содержимое видно в самой строке; дефолтное
+        -- окно с превью под это несоразмерно велико
+        registers = { layout = { preset = 'dropdown' } },
+        -- git status/diff — превью диффа снизу (важнее списка файлов)
+        git_status = vertical(0.6),
+        git_diff = vertical(0.7),
       },
     },
     indent = {
@@ -163,13 +195,9 @@ return {
         local ft = vim.bo[buf].filetype
         local excluded = {
           help = true,
-          alpha = true,
           dashboard = true,
           lazy = true,
           mason = true,
-          notify = true,
-          Trouble = true,
-          trouble = true,
           oil = true,
         }
         return vim.g.snacks_indent ~= false and vim.b[buf].snacks_indent ~= false and not excluded[ft]
