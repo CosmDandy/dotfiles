@@ -173,7 +173,6 @@ alias less='less -R' # Показывать цвета в less
 # Читаемый вывод для различных команд
 alias df='df -h'
 alias du='du -h'
-alias free='free -h'
 alias ps='ps aux'
 
 alias t='tmux'
@@ -274,8 +273,6 @@ alias kns='kubectl config set-context --current --namespace'
 alias psa='source .venv/bin/activate'
 alias psd='deactivate'
 
-alias jn='jupyter notebook'
-alias jl='jupyter lab'
 alias uvr='uv run'
 alias uvs='uv sync'
 
@@ -306,12 +303,6 @@ source "${ZINIT_HOME}/zinit.zsh"
 # PLUGIN CONFIGURATIONS
 # =============================================================================
 
-HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_FOUND='bg=green,fg=white,bold'
-HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_NOT_FOUND='bg=red,fg=white,bold'
-HISTORY_SUBSTRING_SEARCH_GLOBBING_FLAGS='i'
-HISTORY_SUBSTRING_SEARCH_ENSURE_UNIQUE=true # Показывать только уникальные результаты
-HISTORY_SUBSTRING_SEARCH_FUZZY=true         # Нечеткий поиск
-
 export ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#586e75" # Цвет предложений (solarized base01)
 
 # =============================================================================
@@ -323,9 +314,6 @@ zinit light zsh-users/zsh-completions
 
 zinit ice wait lucid atload'_zsh_autosuggest_start'
 zinit light zsh-users/zsh-autosuggestions
-
-zinit ice wait lucid
-zinit light zsh-users/zsh-history-substring-search
 
 zinit ice wait lucid
 zinit light zdharma-continuum/fast-syntax-highlighting
@@ -347,16 +335,6 @@ for f in "$DOTFILES_DIR/tools/zsh/conf.d/"*.zsh(N); do source "$f"; done
 for f in "$DOTFILES_DIR/private/zsh/"*.sh(N); do source "$f"; done
 
 # =============================================================================
-# KEY BINDINGS
-# =============================================================================
-
-bindkey '^[[A' history-beginning-search-backward
-bindkey '^[[B' history-beginning-search-forward
-
-bindkey '^[OA' history-substring-search-up
-bindkey '^[OB' history-substring-search-down
-
-# =============================================================================
 # COMPLETION ENHANCEMENTS
 # =============================================================================
 
@@ -375,14 +353,13 @@ eval "$(atuin init zsh)"
 
 # Direnv - автозагрузка окружения из .envrc при входе в каталог
 (($+commands[direnv])) && eval "$(direnv hook zsh)"
-export PATH="$HOME/.local/bin:/Users/cosmdandy/.npm-global/bin:$PATH"
 
 autoload -U +X bashcompinit && bashcompinit
 # terraform: динамический путь (переживает обновление через nix)
 (($+commands[terraform])) && complete -o nospace -C "$(command -v terraform)" terraform
 
 # ansible: автодополнение через argcomplete (кэшируем в файл, чтобы не дёргать python на каждый старт)
-if (($+commands[register - python - argcomplete])); then
+if (($+commands[register-python-argcomplete])); then
     _af="$HOME/.zsh/completions/ansible-argcomplete.zsh"
     if [[ ! -f "$_af" ]]; then
         for _acmd in ansible ansible-playbook ansible-vault ansible-galaxy ansible-config ansible-doc ansible-inventory; do
