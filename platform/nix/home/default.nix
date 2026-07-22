@@ -32,20 +32,15 @@ let
   # --- DevOps: core + IaC/K8s/container tools ---
   devopsPackages = with pkgs; [
     go
-    gdu
     terraform
     ansible
     kubectl
     kubernetes-helm
     kubectx        # переключение context/namespace (kubectx/kubens, с fzf — интерактивно)
-    talosctl       # управление Talos Linux кластерами
+    talosctl       # управление Talos Linux кластерами (local-lab: talos на Proxmox)
     k9s
-    dive
-    stern          # мультипод-логи (плагин k9s)
-    kubectl-neat   # чистый YAML (плагин k9s)
-    fluxcd         # flux GitOps (плагин k9s)
-    argocd         # argocd GitOps (плагин k9s)
-    trivy          # скан образов (плагин k9s)
+    dive           # анализ слоёв образа (и плагин k9s)
+    argocd         # argocd GitOps (плагин k9s, local-lab на ArgoCD)
     yq-go
   ];
 in {
