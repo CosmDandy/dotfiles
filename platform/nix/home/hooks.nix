@@ -115,7 +115,9 @@ in {
     installMasonTools = afterNvim ''
       if [ -e "$HOME/.config/nvim/init.lua" ]; then
         MASON_LOG="$HOME/.local/state/nvim/mason.log"
-        LOG_POS=$(wc -c < "$MASON_LOG" 2>/dev/null || echo 0)
+        # guard: на девственной машине лога ещё нет — редирект < падал бы с
+        # шумной ошибкой в стдерр активации (сам хук выживал через || echo 0)
+        LOG_POS=$([ -f "$MASON_LOG" ] && wc -c < "$MASON_LOG" || echo 0)
         PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.unzip pkgs.nodejs_24 pkgs.python313 pkgs.luarocks pkgs.uv ]}:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
