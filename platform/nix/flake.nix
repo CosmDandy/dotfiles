@@ -15,9 +15,10 @@
     let
       lib = nixpkgs.lib;
       # Linux user-env (DevPod/devcontainers): vscode — стандартный юзер
-      # devcontainer-образов, cosmdandy — остальные linux-хосты.
+      # devcontainer-образов, cosmdandy — остальные linux-хосты,
+      # cluster — рабочий сервер kvt-d-01.
       linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
-      users = [ "vscode" "cosmdandy" ];
+      users = [ "vscode" "cosmdandy" "cluster" ];
       profiles = [ "core" "devops" ];
       mkHome = system: user: profile:
         home-manager.lib.homeManagerConfiguration {
