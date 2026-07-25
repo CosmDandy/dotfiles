@@ -268,7 +268,15 @@ alias psd='deactivate'
 alias uvr='uv run'
 alias uvs='uv sync'
 
-alias updm='nix flake update --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo nix-collect-garbage -d'
+# determinate-nixd первым: сам nix живёт вне nix-darwin (nix.enable = false,
+# демоном владеет Determinate) и иначе не обновляется вообще — отставал на шесть
+# минорных версий, пока не заметили.
+# Гашение ворнинга о грязном дереве (flake.lock правится тут же, шагом выше):
+# у nix это --no-warn-dirty, а darwin-rebuild своих флагов не знает и такой
+# отвергает — ему то же самое передаём как --option warn-dirty false.
+# sudo -H для GC: без него root наследует $HOME=/Users/cosmdandy и ругается
+# «$HOME не принадлежит вам, откат на /var/root» дважды за прогон.
+alias updm='sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage -d'
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
 # Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
 # поэтому git pull + home-manager switch, а не flake update в контейнере
