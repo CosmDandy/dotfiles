@@ -193,6 +193,16 @@
   # ===============================
   # Additional System Settings
   # ===============================
+  # sudo по отпечатку: /etc/pam.d/sudo_local уже под управлением nix-darwin
+  # (симлинк в /etc/static), опция дописывает в него pam_tid.so.
+  # reattach обязателен для tmux/screen: там процесс отвязан от Aqua-сессии,
+  # без pam_reattach.so запрос TouchID просто не всплывает и sudo падает в
+  # пароль. Пароль остаётся рабочим фолбэком (по Enter или при закрытой крышке).
+  security.pam.services.sudo_local = {
+    touchIdAuth = true;
+    reattach = true;
+  };
+
   documentation = {
     enable = false;
     doc.enable = false;
