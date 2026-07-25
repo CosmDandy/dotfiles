@@ -60,5 +60,11 @@ in {
   # в свежем контейнере он тот же самый. Молчим, чтобы не тонула сводка warn'ов.
   news.display = "silent";
 
+  # options.json собирается на КАЖДОМ switch (отдельный деривейшн) и нужен
+  # только `home-manager option` — CLI-справочнику по опциям, которым не
+  # пользуемся. Он же источник ворнинга «builtins.derivation ... options.json
+  # ... without a proper context» в выводе updm.
+  manual.json.enable = false;
+
   home.stateVersion = "26.05";
 }
