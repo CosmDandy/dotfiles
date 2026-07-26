@@ -46,6 +46,16 @@ at '(curl|wget)\b[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)\b' && deny 
 has '>[[:space:]]*/dev/tcp/'                          && deny "reverse shell"
 has '(\.ssh/[^[:space:]]*(id_|key)|\.config/sops/age|\bage-keygen\b)' && deny "touching private keys"
 
+# ---- DENY: committing a secret (staged diff scanned by gitleaks) ----
+# Fires only on a real `git commit` at command position, and only if gitleaks
+# is installed. Exit 1 == leak found; any other code (git failure / gitleaks
+# error) is treated as "nothing to block" so we never false-deny.
+if at 'git[[:space:]]+commit\b' && command -v gitleaks >/dev/null 2>&1; then
+  git diff --cached --no-color 2>/dev/null | gitleaks stdin --no-banner --redact >/dev/null 2>&1
+  [[ ${PIPESTATUS[1]} -eq 1 ]] \
+    && deny "gitleaks flagged a secret in the staged diff — review it, then commit by hand or add a .gitleaksignore entry if it is a false positive"
+fi
+
 # ---- ASK: mutating infrastructure (confirm in the moment) ----
 at 'terraform[[:space:]]+apply\b'           && ask "terraform apply — confirm?"
 at 'ansible-playbook\b'                      && ask "ansible-playbook — confirm?"
@@ -53,5 +63,9 @@ at 'kubectl[[:space:]]+apply\b'             && ask "kubectl apply — confirm?"
 at 'helm[[:space:]]+(install|upgrade)\b'    && ask "helm install/upgrade — confirm?"
 at 'nomad[[:space:]]+job[[:space:]]+run\b'  && ask "nomad job run — confirm?"
 at 'chmod[^|]*\b777\b'                        && ask "chmod 777 — confirm?"
+
+# ---- ASK: broad git-add sweeps everything, incl. the private submodule ----
+at 'git[[:space:]]+add[[:space:]]+([^;&|]*[[:space:]])?(-A|--all|\.)([[:space:]]|$)' \
+                                              && ask "git add -A/./--all stages everything — prefer explicit paths?"
 
 exit 0
