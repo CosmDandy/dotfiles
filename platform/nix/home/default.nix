@@ -60,11 +60,15 @@ in {
   # в свежем контейнере он тот же самый. Молчим, чтобы не тонула сводка warn'ов.
   news.display = "silent";
 
-  # options.json собирается на КАЖДОМ switch (отдельный деривейшн) и нужен
-  # только `home-manager option` — CLI-справочнику по опциям, которым не
-  # пользуемся. Он же источник ворнинга «builtins.derivation ... options.json
-  # ... without a proper context» в выводе updm.
-  manual.json.enable = false;
+  # Мануал home-manager: `man home-configuration.nix`. Не пользуемся, а собирать
+  # его дорого — он тянет прогон nixosOptionsDoc по всем опциям HM и деривейшн
+  # options.json на КАЖДОМ switch (видно в логе активации).
+  # Он же источник ворнинга «builtins.derivation ... options.json ... without a
+  # proper context»: документация подставляет путь nixpkgs строкой без контекста
+  # (docs/default.nix, там же TODO про негибкость nixosOptionsDoc).
+  # Ключ именно manpages: manual.json.enable и html.enable по умолчанию уже
+  # false, выключать их смысла нет — проверено, drvPath не меняется.
+  manual.manpages.enable = false;
 
   home.stateVersion = "26.05";
 }

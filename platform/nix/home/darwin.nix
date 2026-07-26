@@ -21,6 +21,11 @@ in {
     ./hooks.nix
   ];
 
+  # Дубль из default.nix: мак его не импортирует (только files/hooks), а без
+  # этого мануал HM собирается на каждом darwin-rebuild и тянет ворнинг про
+  # options.json без контекста. Подробности — в комментарии в default.nix.
+  manual.manpages.enable = false;
+
   home.stateVersion = "26.05";
 
   home.file = {
