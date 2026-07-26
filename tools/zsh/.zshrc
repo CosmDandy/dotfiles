@@ -316,6 +316,11 @@ alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
 # повседневной работы — кэш сборки Go, pip, прогретый код VS Code, — и терять их
 # в начале рабочей сессии незачем. Так решение остаётся за тем, кто запускает.
 alias updmc='updm && clean'
+# Arc теряет привязку Space → Chrome-профиль после переустановки .app: рабочий
+# Space открывается на личном профиле, без расширений и паролей. Кнопки сменить
+# профиль у Space в интерфейсе нет — правим состояние. `arcs status` покажет
+# расхождение, `arcs apply` починит (Arc должен быть закрыт).
+alias arcs='python3 ~/.dotfiles/automation/arc/arc-profiles.py'
 # Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
 # поэтому git pull + home-manager switch, а не flake update в контейнере
 alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo devops)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage --delete-older-than 3d'
