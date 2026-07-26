@@ -111,6 +111,7 @@
     pinentry_mac
     sops
     age
+    zizmor    # статический анализ GitHub Actions workflow (pre-commit + CI)
     yamllint
     shellcheck
   ];

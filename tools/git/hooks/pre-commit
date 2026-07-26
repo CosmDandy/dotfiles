@@ -17,3 +17,74 @@ if ! command -v gitleaks &>/dev/null; then
 fi
 
 gitleaks protect --staged --no-banner || exit 1
+
+# Расшифрованный sops-файл выглядит как обычный YAML, и gitleaks его не ловит:
+# токен Proxmox или пароль сервиса не подходят под известные паттерны. Забыть
+# `sops -e` после ручной правки — самый дешёвый способ закоммитить секреты в
+# открытом виде, поэтому проверяем явно: у зашифрованного файла есть блок
+# `sops:` с метаданными.
+sops_plaintext=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  git show ":$f" 2>/dev/null | grep -q '^sops:' || sops_plaintext="$sops_plaintext $f"
+done < <(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '\.sops\.(yaml|yml|json)$' \
+  | grep -vE '(^|/)\.sops\.(yaml|yml)$' || true)  # сам конфиг .sops.yaml не шифруется
+
+if [ -n "$sops_plaintext" ]; then
+  echo "pre-commit: sops-файл не зашифрован — коммит остановлен:" >&2
+  for f in $sops_plaintext; do echo "  $f" >&2; done
+  echo "  зашифровать: sops -e -i <файл> && git add <файл>" >&2
+  exit 1
+fi
+
+# Файлы, которых не должно быть в git ни при каких обстоятельствах. gitleaks
+# ищет паттерны в содержимом и такое пропускает: terraform.tfstate — обычный
+# JSON, где токены лежат значениями полей, а приватный ключ распознаётся не
+# всегда. Хук глобальный (~/.git-hooks), поэтому он же прикрывает свежие репо,
+# куда .gitignore из шаблона ещё не приехал, и случаи `git add -f`.
+unsafe=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    *.example|*.sample|*.tpl|*.j2|*.tmpl) continue ;;  # шаблоны без значений
+  esac
+  case "${f##*/}" in
+    *.tfstate|*.tfstate.*|*.tfplan|tfplan) unsafe="$unsafe $f" ;;
+    kubeconfig|*.kubeconfig|talosconfig|*.ovpn) unsafe="$unsafe $f" ;;
+    *.pem|*.p12|*.pfx|*.jks|*.keystore) unsafe="$unsafe $f" ;;
+    id_rsa|id_dsa|id_ecdsa|id_ed25519) unsafe="$unsafe $f" ;;
+    .env|.env.*|.envrc.local) unsafe="$unsafe $f" ;;
+    .vault-pass|.vault_pass|vault_password.txt) unsafe="$unsafe $f" ;;
+    keys.txt) unsafe="$unsafe $f" ;;                   # age-ключ sops
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACM || true)
+
+if [ -n "$unsafe" ]; then
+  echo "pre-commit: файлы с секретами/состоянием — коммит остановлен:" >&2
+  for f in $unsafe; do echo "  $f" >&2; done
+  echo "  убрать из индекса: git restore --staged <файл> и добавить в .gitignore" >&2
+  echo "  осознанно закоммитить: UNSAFE_FILES_OK=1 git commit ..." >&2
+  [ "${UNSAFE_FILES_OK:-}" = "1" ] || exit 1
+  echo "  → пропущено (UNSAFE_FILES_OK=1)" >&2
+fi
+
+# zizmor разбирает сами workflow: непиннутые uses:, template injection,
+# pwn-request, избыточные permissions. В CI он тоже стоит, здесь — чтобы
+# проблема не попадала в историю. Запускается только когда workflow затронуты.
+staged_workflows=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
+
+if [ -n "$staged_workflows" ]; then
+  if command -v zizmor &>/dev/null; then
+    # shellcheck disable=SC2086
+    zizmor --offline --quiet $staged_workflows || {
+      echo "pre-commit: zizmor нашёл проблемы в workflow — коммит остановлен." >&2
+      echo "  часть чинится автоматически: zizmor --fix $staged_workflows" >&2
+      exit 1
+    }
+  else
+    echo "pre-commit: zizmor не найден, workflow не проверены (CI поймает)." >&2
+    echo "  установить: nix profile install nixpkgs#zizmor" >&2
+  fi
+fi
