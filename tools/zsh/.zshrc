@@ -101,8 +101,18 @@ alias v='nvim'
 alias b='btop'
 alias lzd='lazydocker'
 
-alias cl='claude --permission-mode bypassPermissions'
-alias cly='claude --dangerously-skip-permissions'
+# Ежедневный: промптов нет, но поверх deny-правил и хуков работает классификатор
+# auto-режима — он блокирует по смыслу (подмена remote/эндпоинта, снос чужих
+# stateful-ресурсов, пуш секретов) и слушает границы, сказанные словами: «не пушь».
+alias cl='claude --permission-mode auto'
+# Всё разрешено, проверок по смыслу нет. По докам — только изолированные
+# контейнеры и VM: «Isolated containers and VMs only».
+alias cly='claude --permission-mode bypassPermissions'
+# Исследования в песочнице: запись только в рабочий каталог, сеть по белому
+# списку, ~/.ssh и токены закрыты. Строгий режим — фолбэка наружу нет.
+alias cls='claude --settings ~/.dotfiles/tools/claude/settings.sandbox.json --permission-mode auto'
+# Без CLAUDE.md, правил, скиллов, хуков и MCP — проверить, не конфиг ли виноват.
+alias clx='claude --safe-mode'
 
 claude-memory-init() {
     local dotfiles_dir="${HOME}/.dotfiles"
