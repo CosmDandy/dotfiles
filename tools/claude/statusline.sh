@@ -50,12 +50,18 @@ WEEK_SLACK=10
 WEEK_SECONDS=604800
 LIMIT_WINDOW=300     # окно усреднения для ETA, сек: короче — быстрее ловит разгон
 
-# Nerd Font есть не везде: в контейнере терминал может быть с обычным шрифтом,
-# и глифы выродятся в квадратики. Переопределяется CLAUDE_STATUSLINE_GLYPHS.
+# Глифы рисует ТЕРМИНАЛ, а не машина, на которой выполняется код: в devcontainer
+# заходят из того же Ghostty с Nerd Font, поэтому детект контейнера здесь был бы
+# ответом не на тот вопрос. Надёжно определить наличие шрифта нельзя, так что по
+# умолчанию считаем, что он есть, и отключаемся только там, где графики заведомо
+# нет (голая консоль, dumb-терминал) или когда сказали явно.
 case "${CLAUDE_STATUSLINE_GLYPHS:-}" in
   nerd)  glyphs=nerd ;;
   ascii) glyphs=ascii ;;
-  *)     if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then glyphs=ascii; else glyphs=nerd; fi ;;
+  *)     case "${TERM:-}" in
+           dumb|linux|vt[0-9]*|ansi|cons25|sun*) glyphs=ascii ;;
+           *) glyphs=nerd ;;
+         esac ;;
 esac
 
 if [ "$glyphs" = nerd ]; then
