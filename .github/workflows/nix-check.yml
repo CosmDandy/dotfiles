@@ -1,0 +1,57 @@
+# Проверка nix-конфигураций до того, как они доедут до живой машины. Раньше
+# сломанный коммит обнаруживался на updm/updl — посреди работы, на устройстве,
+# которое в этот момент нужно.
+#
+# Триггер по platform/nix/**: всё, что оценивается и собирается, лежит там,
+# а прогон на каждый пуш стоил бы пять минут ради ничего.
+#
+# Свой кэш (cachix/attic) не нужен: своих деривейшнов у нас нет, всё приходит
+# готовым из cache.nixos.org, так что «сборка» здесь — это скачивание.
+name: nix-check
+
+on:
+  push:
+    paths:
+      - 'platform/nix/**'
+      - '.github/workflows/nix-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-darwin:
+    # Мак-конфиг ОЦЕНИВАЕТСЯ на linux-раннере: system = "aarch64-darwin" задан
+    # в flake.nix явно, а вычисление целевой платформы не требует — нужна она
+    # только для сборки. Так ловятся опечатки в опциях, несуществующие пакеты и
+    # сломанные модули за секунды и без macos-раннера.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      - name: Eval darwin configuration
+        run: |
+          nix eval --raw \
+            'path:./platform/nix#darwinConfigurations.macbook-cosmdandy.config.system.build.toplevel.drvPath'
+          echo
+
+  build-linux:
+    # Сборка ловит то, чего не видит оценка: пакет исчез из нового nixpkgs,
+    # переименовался или не собирается. Матрица по профилям — наборы пакетов
+    # у них разные, и ломается обычно devops.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - vscode-core
+          - vscode-devops
+          - cosmdandy-devops
+          - cluster-devops
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      - name: Build ${{ matrix.config }}
+        run: |
+          nix build --no-link --print-out-paths \
+            "path:./platform/nix#homeConfigurations.\"${{ matrix.config }}-x86_64-linux\".activationPackage"
