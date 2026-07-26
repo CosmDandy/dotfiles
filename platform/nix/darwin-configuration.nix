@@ -101,6 +101,7 @@
     lazygit
     lazydocker
     lima      # декларативные Linux-VM (PXE-стенд)
+    iperf3    # замеры пропускной способности (PXE-стенд, будущий 10G)
     ansible
     gdu
     gitleaks
