@@ -59,7 +59,7 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v5
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
       - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
         with:
@@ -72,7 +72,7 @@ jobs:
       # результатом, и именно из-за них требовалась сериализация ранов.
       # Профиль выбирается стадией Dockerfile (target), а не build-arg: devops
       # наследует core, поэтому нижние слои у образов общие.
-      - uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         id: build
         with:
           context: .
