@@ -109,6 +109,8 @@
     nix-direnv
     rbw
     pinentry_mac
+    sops
+    age
     yamllint
     shellcheck
   ];
