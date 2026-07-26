@@ -48,7 +48,8 @@ BURN_YELLOW_SEC=7200
 WEEK_SHOW=90         # абсолютный порог: близко к стене — показать в любой день недели
 WEEK_SLACK=10
 WEEK_SECONDS=604800
-LIMIT_WINDOW=300     # окно усреднения для ETA, сек: короче — быстрее ловит разгон
+LIMIT_WINDOW=900     # окно усреднения для ETA, сек
+IDLE_WINDOW=300      # тишина дольше этого = расход прекратился, прогноз убираем
 
 # Глифы рисует ТЕРМИНАЛ, а не машина, на которой выполняется код: в devcontainer
 # заходят из того же Ghostty с Nerd Font, поэтому детект контейнера здесь был бы
@@ -70,6 +71,7 @@ if [ "$glyphs" = nerd ]; then
   G_THINK=$'\363\260\247\221'    # U+F09D1 md-brain
   G_FIVEH=$'\363\260\246\226'    # U+F0996 md-progress_clock
   G_WEEK=$'\363\260\250\263'     # U+F0A33 md-calendar_week
+  G_SESSIONS=$'\363\260\204\241'   # U+F0121 md-tab
   CAP_L=''
   CAP_R=''
   # Иконки Nerd Font занимают ДВЕ колонки в вариантах шрифта без суффикса Mono
@@ -80,6 +82,7 @@ else
   G_THINK='*'
   G_FIVEH='5h'
   G_WEEK='7d'
+  G_SESSIONS='x'
   CAP_L=''
   CAP_R=''
   GLYPH_COLS=1
@@ -125,7 +128,7 @@ input=$(cat)
 # позицию и все следующие значения уезжали на одно влево.
 IFS=$'\037' read -r used_pct model ctx_size cache_read input_tokens cache_creation \
   style_name effort thinking agent cost_usd \
-  five_pct100 five_reset week_pct week_reset <<EOF
+  five_pct100 five_reset week_pct week_reset sid <<EOF
 $(echo "$input" | jq -r '[
   (.context_window.used_percentage // 0 | floor),
   (.model.display_name // "Claude"),
@@ -143,7 +146,8 @@ $(echo "$input" | jq -r '[
   (.rate_limits.five_hour.resets_at // ""),
   (if .rate_limits.seven_day.used_percentage == null then ""
    else (.rate_limits.seven_day.used_percentage | floor) end),
-  (.rate_limits.seven_day.resets_at // "")
+  (.rate_limits.seven_day.resets_at // ""),
+  (.session_id // "")
 ] | map(tostring) | join("")')
 EOF
 
@@ -202,37 +206,120 @@ fmt_duration() {
   fi
 }
 
+# Момент времени как "4pm". BSD date (macOS) и GNU date (Linux) читают epoch
+# разными флагами, локаль фиксируем — иначе %p может оказаться пустым.
+# Регистр правим подстановкой, а не tr: ${x,,} требует bash 4, а здесь 3.2.
+fmt_clock() {
+  local ts=$1 s
+  s=$(LC_ALL=C date -r "$ts" +'%-I%p' 2>/dev/null) \
+    || s=$(LC_ALL=C date -d "@$ts" +'%-I%p' 2>/dev/null)
+  s=${s/AM/am}
+  printf '%s' "${s/PM/pm}"
+}
+
+# Сколько осталось при текущем темпе: до часа — минутами, дальше — моментом,
+# когда упрёмся. Рядом со временем сброса два момента сравниваются глазом
+# быстрее, чем длительность с моментом.
+fmt_eta() {
+  local eta=$1 now=$2
+  if [ "$eta" -lt 3600 ]; then
+    fmt_duration "$eta"
+  else
+    fmt_clock "$((now + eta))"
+  fi
+}
+
 # Через сколько при текущем темпе упрёмся в 5h-лимит. Пусто, если темпа нет
 # или окно сбросится раньше — тогда предупреждать не о чем. Проценты держим
 # в сотых (целочисленная арифметика), файл сэмплов общий на все сессии:
 # лимит аккаунтный, а не сессионный.
+# Печатает «процент reset [eta]» — вызывается через $(...), то есть в подоболочке,
+# поэтому отдать значения наружу можно только через stdout. Процент и reset могут
+# отличаться от переданных: у отставшей сессии берём общие, из истории.
 five_hour_eta() {
   local pct100=$1 reset=$2 now=$3
-  local dir f last first_ts first_pct last_ts last_pct span rate eta
+  local dir f wf prev_reset last first_ts first_pct last_ts last_pct idle_pct span rate eta
   dir="${TMPDIR:-/tmp}/claude-limit"
-  mkdir -p "$dir" 2>/dev/null || return 0
+  mkdir -p "$dir" 2>/dev/null || { printf '%s %s' "$pct100" "$reset"; return 0; }
   f="$dir/five_hour"
-  # процент упал — окно сбросилось, базлайн заново
-  if [ -f "$f" ]; then
-    last=$(tail -1 "$f" | cut -d' ' -f2)
-    [ "${pct100:-0}" -lt "${last:-0}" ] 2>/dev/null && : >| "$f"
+  [ -n "$reset" ] || { printf '%s %s' "$pct100" "$reset"; return 0; }
+  # Смену окна определяем по resets_at, а НЕ по падению процента. Сессии
+  # обновляют payload вразнобой: простаивающая держит снимок часами, и разрыв
+  # с активной легко доходит до десятков пунктов — любой порог на падении
+  # срабатывает ложно и стирает историю. resets_at меняется ровно при сбросе
+  # окна и только вперёд, поэтому меньший reset — заведомо протухший снимок.
+  wf="$f.window"
+  prev_reset=0
+  [ -f "$wf" ] && read -r prev_reset < "$wf"
+  prev_reset=${prev_reset:-0}
+  if [ "$reset" -gt "$prev_reset" ] 2>/dev/null; then
+    printf '%s\n' "$reset" >| "$wf"
+    printf '%s %s\n' "$now" "$pct100" >| "$f"      # новое окно — базлайн заново
+    printf '%s %s' "$pct100" "$reset"; return 0
   fi
-  echo "$now $pct100" >> "$f"
-  # оставить сэмплы окна + один базлайн старше него (для полной дельты)
-  awk -v now="$now" -v w="$LIMIT_WINDOW" '
-    $1 < now-w { base=$0; next } { if (base != "") { print base; base="" } print }
-  ' "$f" >| "$f.tmp" && mv "$f.tmp" "$f"
-  [ -n "$reset" ] || return 0
-  first_ts=$(head -1 "$f" | cut -d' ' -f1); first_pct=$(head -1 "$f" | cut -d' ' -f2)
-  last_ts=$(tail -1 "$f" | cut -d' ' -f1);  last_pct=$(tail -1 "$f" | cut -d' ' -f2)
+  last=0
+  [ -f "$f" ] && last=$(tail -1 "$f" | cut -d' ' -f2)
+  last=${last:-0}
+  # Протухший снимок в историю не пишем, но расчёт продолжаем: лимит аккаунтный,
+  # и простаивающая сессия обязана показывать ту же картину, что активная.
+  # Раньше здесь стоял ранний выход, и в отставших окнах прогноза не было.
+  if [ "$reset" -lt "$prev_reset" ] 2>/dev/null; then
+    reset=$prev_reset      # своё время сброса тоже из прошлого окна — берём общее
+    pct100=$last
+  elif [ "${pct100:-0}" -lt "$last" ] 2>/dev/null; then
+    pct100=$last
+  else
+    # Только дописываем. Раньше файл на каждом тике перечитывался, фильтровался
+    # и перекладывался через mv — при нескольких открытых сессиях они затирали
+    # записи друг друга, история жила секунды и до span >= 60 не доживала.
+    # Короткий append атомарен, поэтому окно теперь отбирается при ЧТЕНИИ.
+    printf '%s %s\n' "$now" "$pct100" >> "$f"
+  fi
+  # Базлайн — последний сэмпл старше окна, иначе самый ранний внутри него.
+  # Отдельно берём процент на границе последних IDLE_WINDOW секунд: по нему
+  # видно, идёт расход прямо сейчас или окно тянет след давнего всплеска.
+  read -r first_ts first_pct last_ts last_pct idle_pct <<EOF
+$(awk -v now="$now" -v w="$LIMIT_WINDOW" -v iw="$IDLE_WINDOW" '
+    $1 < now-w { b_ts=$1; b_pct=$2; next }
+    {
+      if (f_ts == "") { f_ts=$1; f_pct=$2 }
+      if ($1 < now-iw) { i_pct=$2 }
+      l_ts=$1; l_pct=$2
+    }
+    END {
+      if (b_ts == "") { b_ts=f_ts; b_pct=f_pct }
+      if (i_pct == "") { i_pct=b_pct }
+      if (b_ts == "" || l_ts == "") exit
+      print b_ts, b_pct, l_ts, l_pct, i_pct
+    }' "$f")
+EOF
+  [ -n "$last_pct" ] || { printf '%s %s' "$pct100" "$reset"; return 0; }
+  # держим файл в разумных пределах; редкая операция, гонка не страшна
+  if [ "$(wc -l < "$f")" -gt 600 ] 2>/dev/null; then
+    tail -100 "$f" >| "$f.tmp" && mv "$f.tmp" "$f"
+  fi
+  # Процент приходит с шагом в целый пункт, поэтому на коротком плече дельта в
+  # один шаг меняет темп кратно — прогноз прыгал и мигал. Считаем только когда
+  # накопились и время, и заметное изменение: MIN_SPAN секунд и MIN_DELTA сотых.
   span=$((last_ts - first_ts))
-  [ "$span" -ge 60 ] || return 0
-  rate=$(( (last_pct - first_pct) * 60 / span ))   # сотых процента в минуту
-  [ "$rate" -gt 0 ] || return 0
-  eta=$(( (10000 - pct100) * 60 / rate ))
-  # сброс раньше, чем упрёмся — молчим
-  [ "$eta" -lt "$((reset - now))" ] || return 0
-  printf '%s' "$eta"
+  rate=0
+  # Простой: за последние IDLE_WINDOW секунд процент не сдвинулся. Окно в 15
+  # минут само по себе этого не замечает — оно продолжает делить давний всплеск
+  # на своё полное плечо и показывать бодрый темп, когда всё уже остановилось.
+  if [ "$((last_pct - idle_pct))" -gt 0 ] 2>/dev/null \
+     && [ "$span" -ge 180 ] && [ "$((last_pct - first_pct))" -ge 100 ]; then
+    rate=$(( (last_pct - first_pct) * 60 / span ))   # сотых %/мин
+  fi
+  if [ "$rate" -gt 0 ]; then
+    eta=$(( (10000 - pct100) * 60 / rate ))
+    # Сброс раньше, чем упрёмся — предупреждать не о чем. Сравниваем с запасом
+    # в 15%: без мёртвой зоны на границе eta ≈ время до сброса прогноз мигал,
+    # появляясь и пропадая от каждого пересчёта.
+    [ "$((eta * 100))" -lt "$(( (reset - now) * 85 ))" ] || eta=""
+  else
+    eta=""
+  fi
+  printf '%s %s %s' "$pct100" "$reset" "$eta"
 }
 
 # Лимиты подписки Claude Code кладёт прямо в payload — своей сети и кеша не
@@ -247,9 +334,12 @@ compute_limits() {
   local five_pct eta color elapsed_pct show five_seg="" week_seg="" segs=""
 
   if [ -n "$five_pct100" ]; then
+    # функция возвращает актуальные (общие для всех сессий) процент и время
+    # сброса плюс прогноз; eta пустой, когда темпа нет или сброс наступит раньше
+    read -r five_pct100 five_reset eta <<EOF2
+$(five_hour_eta "$five_pct100" "$five_reset" "$now")
+EOF2
     five_pct=$((five_pct100 / 100))
-    # сэмпл пишем всегда, иначе история рвётся, пока сегмент скрыт
-    eta=$(five_hour_eta "$five_pct100" "$five_reset" "$now")
     if [ "$five_pct" -ge "$FIVEH_SHOW" ] || [ -n "$DEBUG_ALL" ]; then
       color="$GREEN"
       [ "$five_pct" -ge "$FIVEH_YELLOW" ] && color="$YELLOW"
@@ -264,8 +354,11 @@ compute_limits() {
           color="$YELLOW"
         fi
       fi
+      # Порядок: процент, затем прогноз упора, и справа — когда окно сбросится.
+      # Прогноз стоит между ними, чтобы сравнивать «упрусь в X» с «сброс в Y».
       five_seg="${color}${G_FIVEH} ${five_pct}%"
-      [ -n "$eta" ] && [ "$want_eta" -eq 1 ] && five_seg="${five_seg} ⇢ $(fmt_duration "$eta")"
+      [ -n "$eta" ] && [ "$want_eta" -eq 1 ] && five_seg="${five_seg} ⇢ $(fmt_eta "$eta" "$now")"
+      [ -n "$five_reset" ] && five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
       five_seg="${five_seg}${R}"
     fi
   fi
@@ -301,7 +394,7 @@ vis_width() {
   s=$(printf '%s' "$1" | sed "s/${ESC}\\[[0-9;]*m//g")
   n=${#s}
   if [ "$GLYPH_COLS" -gt 1 ]; then
-    for g in "$G_THINK" "$G_FIVEH" "$G_WEEK"; do
+    for g in "$G_THINK" "$G_FIVEH" "$G_WEEK" "$G_SESSIONS"; do
       [ -n "$g" ] || continue
       t=${s//"$g"/}
       n=$(( n + (${#s} - ${#t}) * (GLYPH_COLS - 1) ))
@@ -324,6 +417,8 @@ join_edges() {
 }
 
 # --- сборка сегментов --------------------------------------------------------
+
+now=$(date +%s)
 
 # Блок модели: [мозг] Модель [1M] [· effort] [▸ кастомный агент].
 # display_name у моделей с расширенным контекстом выглядит как
@@ -368,10 +463,40 @@ if [ "$total_input" -gt 0 ]; then
   fi
 fi
 
-# Стоимость сессии — единственный по-настоящему накопительный счётчик в payload
+fmt_money() { printf '$%d.%02d' "$(($1 / 100))" "$(($1 % 100))"; }
+
+# Деньги и сессии одним блоком: «сколько нас, сколько я, сколько все».
+# Лимиты 5h/7d аккаунтные сами по себе, а стоимость в payload сессионная — при
+# нескольких окнах видна только своя доля. Каждая сессия кладёт свою цифру в
+# отдельный файл; живыми считаем обновлявшиеся за последние SESSION_TTL секунд.
+# Долю от общего отделяем слэшем, а не скобками: скобки в правом блоке уже
+# заняты временем сброса окна.
+SESSION_TTL=90
+alive=0
+total=0
+if [ -n "$sid" ]; then
+  sdir="${TMPDIR:-/tmp}/claude-sessions"
+  if mkdir -p "$sdir" 2>/dev/null; then
+    printf '%s\n' "${cost_usd:-0}" >| "$sdir/$sid"
+    for sf in "$sdir"/*; do
+      [ -f "$sf" ] || continue
+      mtime=$(stat -f %m "$sf" 2>/dev/null || stat -c %Y "$sf" 2>/dev/null || echo 0)
+      if [ "$((now - mtime))" -gt "$SESSION_TTL" ]; then
+        rm -f "$sf"          # сессия закрыта или давно молчит
+        continue
+      fi
+      alive=$((alive + 1))
+      read -r c < "$sf" 2>/dev/null || c=0
+      total=$((total + ${c:-0}))
+    done
+  fi
+fi
+
 cost_seg=""
-if [ "${cost_usd:-0}" -gt 0 ] 2>/dev/null; then
-  cost_seg="${GRAY}\$$((cost_usd / 100)).$(printf '%02d' $((cost_usd % 100)))${R}"
+if [ "$alive" -gt 1 ]; then
+  cost_seg="${GRAY}${G_SESSIONS} ${alive} $(fmt_money "${cost_usd:-0}")/$(fmt_money "$total")${R}"
+elif [ "${cost_usd:-0}" -gt 0 ] 2>/dev/null; then
+  cost_seg="${GRAY}$(fmt_money "$cost_usd")${R}"   # одна сессия — общее равно своему
 fi
 
 style_seg=""
@@ -379,7 +504,6 @@ style_seg=""
 
 # --- рендер ------------------------------------------------------------------
 
-now=$(date +%s)
 sep="${DIM}·${R}"
 
 add() {  # $1=аккумулятор $2=сегмент -> склейка через разделитель
