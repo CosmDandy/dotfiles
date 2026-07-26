@@ -24,9 +24,10 @@ on:
     - cron: '0 0 * * 0'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+# Пусто на уровне workflow — packages: write здесь означал бы «любой шаг любой
+# job может писать в ghcr». Право на публикацию запрашивают явно только те две
+# job, которые реально пушат.
+permissions: {}
 
 # С push-by-digest гонки за промежуточные теги больше нет — части адресуются
 # по содержимому. Но финальный imagetools create всё ещё пишет изменяемые
@@ -58,8 +59,16 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read   # checkout исходников для docker build
+      packages: write  # push-by-digest слоёв в ghcr
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # Джоба только читает дерево и собирает образ; в ghcr логинимся
+          # отдельным шагом. Без этого checkout оставил бы токен в .git/config,
+          # а дерево целиком уезжает в docker build context.
+          persist-credentials: false
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
       - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
         with:
@@ -97,6 +106,11 @@ jobs:
   manifest:
     needs: build
     runs-on: ubuntu-24.04
+    # Джоба без checkout: digest'ы приезжают артефактами текущего рана, а их
+    # download-artifact берёт runtime-токеном. contents: read оставлен полом.
+    permissions:
+      contents: read
+      packages: write  # imagetools create пишет :<profile> и :<profile>-<версия>
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:

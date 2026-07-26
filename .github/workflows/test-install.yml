@@ -7,11 +7,21 @@ on:
   push:
   pull_request:
 
+# Без явного блока job'ам достался бы дефолтный набор прав токена — для
+# workflow, который только читает дерево и гоняет линтеры, это лишнее.
+permissions: {}
+
 jobs:
   syntax-lint:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # Дальше только линтеры и git ls-files по локальному дереву —
+          # ни один шаг никуда не пушит, токену в .git/config делать нечего.
+          persist-credentials: false
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y zsh shellcheck yamllint
       - name: Syntax-check all shell scripts
@@ -56,8 +66,14 @@ jobs:
   # меньше доверенных сторон и версия зафиксирована явно.
   gitleaks:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # Тем более здесь: сканируем рабочее дерево целиком, и сохранённый
+          # токен оказался бы ровно в той области, по которой ходит сканер.
+          persist-credentials: false
       - name: Install gitleaks
         env:
           VERSION: 8.30.1

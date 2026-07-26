@@ -34,9 +34,10 @@ on:
         type: string
         default: '8'
 
-permissions:
-  contents: read
-  packages: write
+# Пусто на уровне workflow. packages: write здесь был мёртвым правом: удаляет
+# версии classic PAT (GHCR_CLEANUP_TOKEN), GITHUB_TOKEN к пользовательским
+# пакетам не допускают вовсе — см. шапку. Джобе нужно только читать репо.
+permissions: {}
 
 env:
   PACKAGE: devcontainer
@@ -45,8 +46,14 @@ env:
 jobs:
   cleanup:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read  # нужен только .devcontainer/devcontainer.json
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with:
+          # Дальше работает только gh api с отдельным PAT из GH_TOKEN; токен
+          # checkout'а в .git/config никому не нужен.
+          persist-credentials: false
 
       # Штатно devcontainer.json держит плавающий тег и digest здесь пуст —
       # тогда защищать нечего. Но если образ временно запинен ради отката,
