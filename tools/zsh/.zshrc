@@ -290,8 +290,32 @@ alias uvs='uv sync'
 # активации (так укусил blueutil). --all-systems — иначе тихо пропускаются Linux-конфиги.
 # GC: --delete-older-than вместо -d. `-d` сносит все старые генерации всех профилей
 # ("makes rollbacks impossible") — после него откатываться некуда.
-alias updm='sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && nix flake check --no-build --all-systems --no-warn-dirty ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage --delete-older-than 3d'
+# Command Line Tools живут вне nix и brew — обновляются только через softwareupdate,
+# а потому отстают молча: на машине стояла 26.2, когда доступны были 26.5 и 26.6.
+# Ставим ТОЧЕЧНО по метке: `-i --all` затянул бы и macOS Tahoe с перезагрузкой прямо
+# посреди updm. Побочный эффект — система сама выносит скачанные .pkg из
+# /Library/Updates, которые заперты флагом SIP restricted и не удаляются даже под root.
+clt-update() {
+  local label
+  label=$(softwareupdate --list 2>/dev/null \
+    | grep -o 'Command Line Tools for Xcode [0-9.]*-[0-9.]*' \
+    | tail -1)
+  if [[ -z $label ]]; then
+    echo "Command Line Tools: обновлений нет"
+    return 0
+  fi
+  echo "Command Line Tools: ставлю $label"
+  sudo softwareupdate -i "$label"
+}
+
+alias updm='sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && nix flake check --no-build --all-systems --no-warn-dirty ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage --delete-older-than 3d && clt-update'
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
+# Обновиться и сразу прибраться. Отдельной связкой, а НЕ чисткой внутри updm:
+# всё, что порождает само обновление (brew, Caskroom, поколения nix), уже чистится
+# в onActivation/postActivation и хвосте updm. cleanup-mac.sh сносит кэши от
+# повседневной работы — кэш сборки Go, pip, прогретый код VS Code, — и терять их
+# в начале рабочей сессии незачем. Так решение остаётся за тем, кто запускает.
+alias updmc='updm && clean'
 # Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
 # поэтому git pull + home-manager switch, а не flake update в контейнере
 alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo devops)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage --delete-older-than 3d'
