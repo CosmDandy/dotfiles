@@ -308,7 +308,29 @@ clt-update() {
   sudo softwareupdate -i "$label"
 }
 
-alias updm='sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && nix flake check --no-build --all-systems --no-warn-dirty ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage --delete-older-than 3d && clt-update'
+# Сабмодули к пину из основного репо, но только безопасные для перемотки:
+# грязные (незакоммиченные правки) и ушедшие вперёд пина (локальные коммиты,
+# ещё не влитые в dotfiles) пропускаются с warn — иначе submodule update увёз
+# бы локальную работу в detached HEAD, откуда её искать только по reflog.
+# Пин может указывать на ещё не скачанный коммит (pull привёз новый gitlink) —
+# тогда сперва fetch, иначе merge-base ложно посчитает сабмодуль «впереди».
+upds() {
+  git -C ~/.dotfiles submodule foreach --quiet '
+    expected=$(git -C "$toplevel" rev-parse "HEAD:$sm_path")
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+      echo "warn: $sm_path грязный — пропущен, обнови руками"
+    else
+      git cat-file -e "$expected^{commit}" 2>/dev/null || git fetch --quiet origin
+      if ! git merge-base --is-ancestor HEAD "$expected" 2>/dev/null; then
+        echo "warn: $sm_path впереди пина (локальные коммиты) — пропущен"
+      elif [ "$(git rev-parse HEAD)" != "$expected" ]; then
+        git -C "$toplevel" submodule update --init -- "$sm_path" \
+          && echo "$sm_path → $(git rev-parse --short "$expected")"
+      fi
+    fi'
+}
+
+alias updm='git -C ~/.dotfiles pull --ff-only --no-recurse-submodules && upds && sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && nix flake check --no-build --all-systems --no-warn-dirty ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && zinit cclear && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage --delete-older-than 3d && clt-update'
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
 # Обновиться и сразу прибраться. Отдельной связкой, а НЕ чисткой внутри updm:
 # всё, что порождает само обновление (brew, Caskroom, поколения nix), уже чистится
@@ -323,7 +345,7 @@ alias updmc='updm && clean'
 alias arcs='python3 ~/.dotfiles/automation/arc/arc-profiles.py'
 # Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
 # поэтому git pull + home-manager switch, а не flake update в контейнере
-alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo devops)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage --delete-older-than 3d'
+alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo devops)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && zinit cclear && home-manager expire-generations "-7 days" && nix-collect-garbage --delete-older-than 3d'
 
 alias ttyh='ghostty +list-keybinds --default'
 
