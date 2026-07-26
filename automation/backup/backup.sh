@@ -114,6 +114,9 @@ fi
 # --- итог -------------------------------------------------------------------
 
 if [ -z "$DRY_RUN" ]; then
-  log "снапшотов в репозитории: $(restic snapshots --json 2>/dev/null | grep -c '"time"' || echo '?')"
+  # Считаем разбором JSON, а не grep по '"time"': это поле встречается и во
+  # вложенных объектах, из-за чего счётчик врал (показывал 1 при двух снапшотах).
+  log "снапшотов в репозитории: $(restic snapshots --json 2>/dev/null \
+    | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo '?')"
   log "готово"
 fi
