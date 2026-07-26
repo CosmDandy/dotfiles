@@ -1,5 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 365,
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
     "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
@@ -81,7 +82,6 @@
       "Bash(touch:*)",
       "Bash(cp:*)",
       "Bash(mv:*)",
-      "Bash(rm:*)",
       "Bash(ln:*)",
       "Bash(which:*)",
       "Bash(type:*)",
@@ -213,9 +213,6 @@
       "Bash(tmux list-sessions:*)",
       "Bash(tmux show-options:*)",
       "Bash(go version:*)",
-      "Bash(git push:*)",
-      "Bash(gh:*)",
-      "Bash(glab:*)",
       "Bash(devpod context options:*)"
     ],
     "deny": [
@@ -327,11 +324,18 @@
       "Bash(docker compose restart:*)",
       "Bash(docker-compose up:*)",
       "Bash(docker-compose down:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(glab mr create:*)",
+      "Bash(rm:*)",
+      "Bash(kubectl * --context=*prod*)",
+      "Bash(helm * --kube-context=*prod*)",
+      "Bash(terraform workspace select prod*)"
     ]
   },
-  "model": "opus[1m]",
   "fallbackModel": [
+    "opus",
     "sonnet"
   ],
   "hooks": {
@@ -353,6 +357,10 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/pretooluse-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/pretooluse-opsctx.sh"
           }
         ]
       }
@@ -365,6 +373,17 @@
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/posttooluse-lint.sh",
             "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sessionstart-state.sh"
           }
         ]
       }

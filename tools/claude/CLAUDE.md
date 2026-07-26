@@ -61,6 +61,19 @@ Per-task overrides: "быстро" / "сделай молча" / "just do it" �
   when the command is technically permitted.
 - Know the rollback path before you apply.
 
+## Ops domains (work without files: ssh, network, bare metal, VMs)
+
+- Load the matching skill — `ops-remote`, `ops-net`, `ops-metal`, `ops-vm` — before the
+  second command in that domain. Do it yourself; don't wait to be told.
+- All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`. Never interactive, never a command
+  that can prompt.
+- Anything over ~60s on a remote host (upgrade, dd, firmware) runs detached under
+  `tmux new -d` or `systemd-run --unit`, then gets polled. Never in the foreground.
+- Before changing link/addr/route/firewall/sshd on a host you reached over that same path:
+  capture state to a file and arm a rollback timer first.
+- Never overwrite a remote config without `cp -a f f.bak-$(date +%s)`.
+- BMC: no power, boot-order or BIOS change until you have SEEN live console output.
+
 ## Workflow (INTERACTIVE)
 
 - Work in blocks of 2-3 related changes, then show what changed and stop.
