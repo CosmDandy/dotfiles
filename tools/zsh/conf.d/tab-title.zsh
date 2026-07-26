@@ -1,7 +1,8 @@
 # Автопереименование вкладки терминала БЕЗ tmux (в tmux рулит pane-title.sh — там молчим).
 # Отражает тип машины: контейнер -> 󰆧 , виртуалка -> 󰒋 , Mac/железо -> без иконки.
 # SSH не трогаем: уходя по ssh, локальный шелл блокируется, удалёнка сама ставит свой заголовок.
-# Имя вкладки = басенейм каталога; во время команды дописывает "| <cmd>".
+# Имя вкладки = басенейм каталога; во время команды дописывает "· <cmd>".
+# Разделитель точкой — как в statusline Claude Code и status-right tmux.
 
 _tabtitle_in_container() {
     [[ "$OSTYPE" == linux* ]] || return 1
@@ -27,7 +28,7 @@ _tabtitle_set() {
     emulate -L zsh
     local extra="$1" name
     name="${${PWD/#$HOME/~}:t}"
-    _tabtitle_emit "${_tabtitle_icon}${name}${extra:+ | $extra}"
+    _tabtitle_emit "${_tabtitle_icon}${name}${extra:+ · $extra}"
 }
 
 _tabtitle_precmd()  { [[ -n "$TMUX" ]] && return; _tabtitle_set }

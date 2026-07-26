@@ -46,4 +46,4 @@ node | [0-9]*)
     ;;
 esac
 
-echo "$prefix | $label"
+echo "$prefix · $label"
