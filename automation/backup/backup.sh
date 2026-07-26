@@ -30,7 +30,21 @@ DRY_RUN=""
 
 log()  { echo "[backup] $*"; }
 warn() { echo "[backup] ВНИМАНИЕ: $*" >&2; }
-die()  { echo "[backup] ОШИБКА: $*" >&2; exit 1; }
+
+# Уведомление в Центр уведомлений macOS. Молчащий бэкап — худший вид сломанного:
+# лог в /tmp никто не читает, и через полгода тишины кажется, что всё работает.
+# Из launchd-агента (user session) osascript доступен; вне GUI просто не сработает.
+notify() {
+  [ -n "${BACKUP_NO_NOTIFY:-}" ] && return 0
+  osascript -e "display notification \"$1\" with title \"Бэкап\" subtitle \"$2\" sound name \"Basso\"" \
+    >/dev/null 2>&1 || true
+}
+
+die() {
+  echo "[backup] ОШИБКА: $*" >&2
+  notify "$*" "бэкап не выполнен"
+  exit 1
+}
 
 command -v restic >/dev/null || die "restic не найден в PATH (добавлен в platform/nix, примени darwin-rebuild switch)"
 
@@ -78,6 +92,12 @@ restic backup $DRY_RUN \
   "${exclude_args[@]}" \
   "${existing[@]}" \
   || die "restic backup завершился с ошибкой"
+
+# Пропущенный путь не роняет бэкап, но означает, что что-то из ценного не
+# сохранилось — про это надо знать, а не находить в логе через полгода.
+if [ ${#existing[@]} -lt ${#BACKUP_PATHS[@]} ]; then
+  notify "сохранено путей: ${#existing[@]} из ${#BACKUP_PATHS[@]}" "часть путей пропущена"
+fi
 
 # --- ротация версий ---------------------------------------------------------
 # forget с --prune чистит и метаданные, и данные за один проход. dry-run её

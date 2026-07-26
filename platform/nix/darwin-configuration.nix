@@ -146,6 +146,24 @@
       StandardErrorPath = "/tmp/backup.log";
     };
 
+    # Сторож бэкапа, через два часа после него. Отдельным агентом, а не хвостом
+    # backup.sh: тот жалуется, когда упал, но молчит, когда его вообще не
+    # запустили — а это и есть типичный отказ. Сторож смотрит на возраст
+    # последнего снапшота, поэтому ловит и такой случай, и сломанные доступы.
+    backup-check.serviceConfig = {
+      ProgramArguments = [
+        "/bin/bash"
+        "/Users/${config.system.primaryUser}/.dotfiles/automation/backup/backup-check.sh"
+        "--quiet"
+      ];
+      StartCalendarInterval = [ { Hour = 15; Minute = 0; } ];
+      RunAtLoad = false;
+      LowPriorityIO = true;
+      Nice = 5;
+      StandardOutPath = "/tmp/backup-check.log";
+      StandardErrorPath = "/tmp/backup-check.log";
+    };
+
     cleanup-mac.serviceConfig = {
       ProgramArguments = [ "/bin/bash" "/Users/${config.system.primaryUser}/.dotfiles/automation/launchd/scripts/cleanup-mac.sh" ];
       StartCalendarInterval = [ { Weekday = 0; Hour = 12; Minute = 0; } ];
