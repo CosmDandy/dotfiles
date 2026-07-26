@@ -138,7 +138,9 @@ in {
     '';
 
     # Приватный submodule (ssh) + установка MCP-серверов; без ключей — мягкий skip.
-    # PATH: install.sh зовёт claude (в ~/.local/bin), uv (deps MCP-серверов)
+    # PATH: install.sh зовёт claude (в ~/.local/bin), uv (deps MCP-серверов +
+    # uv tool install), npm (context7-mcp ставится глобально) — в PATH активации
+    # их нет, поэтому добавляем явно, иначе context7 молча пропускается.
     installClaudeCustom = after ''
       if [ -d "${dotfiles}/.git" ]; then
         if [ ! -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
@@ -151,7 +153,7 @@ in {
             || ${warn "claude custom submodule skipped (нет ssh-агента или ключа)"}
         fi
         if [ -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
-          PATH="$HOME/.local/bin:${lib.makeBinPath [ pkgs.git pkgs.uv ]}:$PATH:/usr/bin:/bin" \
+          PATH="$HOME/.local/bin:${lib.makeBinPath [ pkgs.git pkgs.uv pkgs.nodejs_24 ]}:$PATH:/usr/bin:/bin" \
             run "${dotfiles}/tools/claude/custom/install.sh" \
             || ${warn "MCP install failed"}
         fi
