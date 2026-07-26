@@ -69,7 +69,7 @@
   # касков идёт по pkgutil-receipts, инсталляторы в цепочке не участвуют (790M → 38M).
   # Директории версий не трогаем — по ним brew определяет установленную версию.
   system.activationScripts.postActivation.text = ''
-    find /opt/homebrew/Caskroom -type f \
+    find /opt/homebrew/Caskroom -maxdepth 3 -type f \
       \( -name '*.pkg' -o -name '*.dmg' -o -name '*.zip' \) -delete 2>/dev/null || true
   '';
 
@@ -77,7 +77,7 @@
   # CLI Tools & Development Environment
   # ===============================
   environment.systemPackages = with pkgs; [
-    nodejs
+    nodejs_24   # явная мажорная версия: hooks.nix уже на nodejs_24, иначе разъедутся
     python3
     go
     uv

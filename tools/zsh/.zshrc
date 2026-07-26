@@ -276,11 +276,15 @@ alias uvs='uv sync'
 # отвергает — ему то же самое передаём как --option warn-dirty false.
 # sudo -H для GC: без него root наследует $HOME=/Users/cosmdandy и ругается
 # «$HOME не принадлежит вам, откат на /var/root» дважды за прогон.
-alias updm='sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage -d'
+# flake check между update и switch: ловит сломанный на свежем nixpkgs пакет до
+# активации (так укусил blueutil). --all-systems — иначе тихо пропускаются Linux-конфиги.
+# GC: --delete-older-than вместо -d. `-d` сносит все старые генерации всех профилей
+# ("makes rollbacks impossible") — после него откатываться некуда.
+alias updm='sudo determinate-nixd upgrade && nix flake update --no-warn-dirty --flake ~/.dotfiles/platform/nix && nix flake check --no-build --all-systems --no-warn-dirty ~/.dotfiles/platform/nix && sudo darwin-rebuild switch --option warn-dirty false --flake ~/.dotfiles/platform/nix#macbook-cosmdandy && zinit self-update && zinit update && sudo nix-env -p /nix/var/nix/profiles/system --delete-generations +3 && sudo -H nix-collect-garbage --delete-older-than 3d'
 alias clean='bash ~/.dotfiles/automation/launchd/scripts/cleanup-mac.sh'
 # Linux: версии следуют за flake.lock репо (bump — на маке через updm + commit),
 # поэтому git pull + home-manager switch, а не flake update в контейнере
-alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo devops)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage -d'
+alias updl='git -C ~/dotfiles pull --ff-only --no-recurse-submodules && home-manager switch --flake ~/dotfiles/platform/nix#"$(whoami)-$(cat ~/.dotfiles-profile 2>/dev/null || echo devops)-$(uname -m)-linux" -b hm-backup && sudo apt-get update && sudo apt-get upgrade -y && zinit self-update && zinit update && home-manager expire-generations "-7 days" && nix-collect-garbage --delete-older-than 3d'
 
 alias ttyh='ghostty +list-keybinds --default'
 
