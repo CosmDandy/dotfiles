@@ -10,6 +10,7 @@ let
     # CLI
     eza
     fd
+    jq             # statusline.sh парсит им payload — без jq строка пустая
     ripgrep
     starship
     neovim
