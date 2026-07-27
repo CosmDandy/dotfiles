@@ -72,6 +72,7 @@ if [ "$glyphs" = nerd ]; then
   G_FIVEH=$'\363\260\246\226'    # U+F0996 md-progress_clock
   G_WEEK=$'\363\260\250\263'     # U+F0A33 md-calendar_week
   G_SESSIONS=$'\363\260\204\241'   # U+F0121 md-tab
+  G_DEAD=$'\360\237\222\200'      # U+1F480 череп: окно выбрано до конца
   CAP_L=''
   CAP_R=''
   # Иконки Nerd Font занимают ДВЕ колонки в вариантах шрифта без суффикса Mono
@@ -83,6 +84,7 @@ else
   G_FIVEH='5h'
   G_WEEK='7d'
   G_SESSIONS='x'
+  G_DEAD='!!'
   CAP_L=''
   CAP_R=''
   GLYPH_COLS=1
@@ -354,12 +356,20 @@ EOF2
           color="$YELLOW"
         fi
       fi
-      # Порядок: процент, затем прогноз упора, и справа — когда окно сбросится.
-      # Прогноз стоит между ними, чтобы сравнивать «упрусь в X» с «сброс в Y».
-      five_seg="${color}${G_FIVEH} ${five_pct}%"
-      [ -n "$eta" ] && [ "$want_eta" -eq 1 ] && five_seg="${five_seg} ⇢ $(fmt_eta "$eta" "$now")"
-      [ -n "$five_reset" ] && five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
-      five_seg="${five_seg}${R}"
+      if [ "$five_pct" -ge 100 ]; then
+        # Окно выбрано до конца: проценты и прогноз больше ничего не решают,
+        # важно только когда отпустит.
+        five_seg="${RED}${G_DEAD} you lose"
+        [ -n "$five_reset" ] && five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
+        five_seg="${five_seg}${R}"
+      else
+        # Порядок: процент, затем прогноз упора, и справа — когда окно сбросится.
+        # Прогноз стоит между ними, чтобы сравнивать «упрусь в X» с «сброс в Y».
+        five_seg="${color}${G_FIVEH} ${five_pct}%"
+        [ -n "$eta" ] && [ "$want_eta" -eq 1 ] && five_seg="${five_seg} ⇢ $(fmt_eta "$eta" "$now")"
+        [ -n "$five_reset" ] && five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
+        five_seg="${five_seg}${R}"
+      fi
     fi
   fi
 
@@ -394,7 +404,7 @@ vis_width() {
   s=$(printf '%s' "$1" | sed "s/${ESC}\\[[0-9;]*m//g")
   n=${#s}
   if [ "$GLYPH_COLS" -gt 1 ]; then
-    for g in "$G_THINK" "$G_FIVEH" "$G_WEEK" "$G_SESSIONS"; do
+    for g in "$G_THINK" "$G_FIVEH" "$G_WEEK" "$G_SESSIONS" "$G_DEAD"; do
       [ -n "$g" ] || continue
       t=${s//"$g"/}
       n=$(( n + (${#s} - ${#t}) * (GLYPH_COLS - 1) ))
