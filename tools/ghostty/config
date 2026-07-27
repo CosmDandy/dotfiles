@@ -24,7 +24,11 @@ macos-option-as-alt = true
 desktop-notifications = true
 notify-on-command-finish = unfocused
 notify-on-command-finish-after = 10s
-bell-features = system,attention,title,border
+# audio + путь: озвучиваем BEL здесь, на хосте, а не в tmux — тогда сигнал
+# из dev-контейнера (где нет afplay) слышен так же, как локальный.
+bell-features = system,attention,title,border,audio
+bell-audio-path = /System/Library/Sounds/Submarine.aiff
+bell-audio-volume = 0.4
 keybind = shift+enter=text:\x1b\r
 
 # Quick Terminal (Quake-стиль): выезжает сверху по глобальному Option+F5, поверх любого приложения.
