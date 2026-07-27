@@ -74,8 +74,11 @@ Per-task overrides: "быстро" / "сделай молча" / "just do it" �
   second command in that domain. Do it yourself; don't wait to be told.
 - All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`. Never interactive, never a command
   that can prompt.
-- Anything over ~60s on a remote host (upgrade, dd, firmware) runs detached under
+- Anything over ~45s on a remote host (upgrade, dd, firmware) runs detached under
   `tmux new -d` or `systemd-run --unit`, then gets polled. Never in the foreground.
+  The 45s clock backgrounds the local ssh client, which is NOT the same as detaching
+  the remote job: it stays tied to that channel, so a dropped link or a stopped task
+  SIGHUPs it mid-write. Detach on the remote side, then poll over fresh connections.
 - Before changing link/addr/route/firewall/sshd on a host you reached over that same path:
   capture state to a file and arm a rollback timer first.
 - Never overwrite a remote config without `cp -a f f.bak-$(date +%s)`.

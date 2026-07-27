@@ -39,7 +39,7 @@ latch="${state}/${sid}.${domain}"
 
 case "$domain" in
 remote)
-  msg='Ops domain: REMOTE (ssh). Load the ops-remote skill now. Non-negotiable: BatchMode=yes + ConnectTimeout + -T so a prompt fails fast instead of eating the tool timeout; reuse one connection (ControlMaster/ControlPath/ControlPersist); anything over ~60s runs detached under tmux/systemd-run and is polled, never in the foreground; back up any remote file before editing it in place; no sudo (the guard denies it) — ask the user to run privileged steps.' ;;
+  msg='Ops domain: REMOTE (ssh). Load the ops-remote skill now. Non-negotiable: BatchMode=yes + ConnectTimeout + -T so a prompt fails fast instead of eating the tool timeout; reuse one connection (ControlMaster/ControlPath/ControlPersist); anything over ~45s runs detached under tmux/systemd-run and is polled, never in the foreground — the 45s tool clock only backgrounds the local ssh client, the remote job stays tied to that channel and dies on SIGHUP if it drops; back up any remote file before editing it in place; no sudo (the guard denies it) — ask the user to run privileged steps.' ;;
 net)
   msg='Ops domain: NETWORK. Load the ops-net skill now. Non-negotiable: dump a baseline to a file first (ip -br a; ip r; ip n; ss -tulpn; nft list ruleset); read-only tools before any change; change ONE thing at a time and re-measure in the order link -> addr -> route -> neigh -> DNS -> firewall -> app; if the change touches the path you are connected through, arm a rollback BEFORE applying; check DNS with getent/resolvectl rather than dig alone; bound every capture (-nn, explicit BPF filter, -c N).' ;;
 metal)
