@@ -56,6 +56,11 @@ Per-task overrides: "быстро" / "сделай молча" / "just do it" �
   build, terraform apply, a full test suite, a big clone) start it with
   `run_in_background` instead of burning 45s in the foreground first. Raise
   `timeout` above 45s only when you need the whole output inline and know it fits.
+- Never poll by hand in a loop of tool calls — every "is it done yet" re-sends the
+  entire context and usually learns nothing. One signal (a port opens, a build
+  finishes) → `run_in_background` with an `until` condition that exits by itself.
+  A stream of events (errors in a log, CI steps landing) → the Monitor tool. Both
+  come to you; waiting is not something you should pay turns for.
 - For a multi-section report or review meant to be read — build an Artifact
   instead of a wall of terminal markdown.
 

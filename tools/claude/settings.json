@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "cleanupPeriodDays": 365,
   "env": {
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
     "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
     "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
     "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": "1",
@@ -374,6 +374,18 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/sessionstart-state.sh"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v afplay >/dev/null 2>&1 && afplay /System/Library/Sounds/Blow.aiff 2>/dev/null || printf '\\a'",
+            "async": true
           }
         ]
       }
