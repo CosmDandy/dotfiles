@@ -384,7 +384,43 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v afplay >/dev/null 2>&1 && afplay /System/Library/Sounds/Blow.aiff 2>/dev/null || printf '\\a'",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Glass",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Blow",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
             "async": true
           }
         ]
