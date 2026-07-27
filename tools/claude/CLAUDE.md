@@ -49,6 +49,13 @@ Per-task overrides: "быстро" / "сделай молча" / "just do it" �
   calls, and prefer them over MCP); jq/yq for JSON/YAML; rg/fd for search;
   kubectl/helm/terraform/nomad for infra inspection.
 - If a command fails — read the error, adjust, retry.
+- Every command is on a 45s clock (`BASH_DEFAULT_TIMEOUT_MS`). At 45s it is NOT
+  killed — it moves to the background with an ID, and checking on it is then your
+  job: poll it, report what it did, never leave it dangling.
+- When you already know the work exceeds 45s (nix build, darwin-rebuild, docker
+  build, terraform apply, a full test suite, a big clone) start it with
+  `run_in_background` instead of burning 45s in the foreground first. Raise
+  `timeout` above 45s only when you need the whole output inline and know it fits.
 - For a multi-section report or review meant to be read — build an Artifact
   instead of a wall of terminal markdown.
 

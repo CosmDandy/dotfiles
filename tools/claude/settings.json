@@ -8,6 +8,7 @@
     "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": "1",
     "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "10",
     "CLAUDE_CODE_FORK_SUBAGENT": "1",
+    "BASH_DEFAULT_TIMEOUT_MS": "45000",
     "EDITOR": "nvim",
     "VISUAL": "nvim"
   },
@@ -322,6 +323,7 @@
       "Bash(terraform workspace select prod*)"
     ]
   },
+  "model": "opus[1m]",
   "fallbackModel": [
     "opus",
     "sonnet"
@@ -388,13 +390,13 @@
   "effortLevel": "high",
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
+  "voice": {
+    "enabled": true
+  },
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
   "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true,
-  "voice": {
-    "enabled": true
-  }
+  "agentPushNotifEnabled": true
 }
