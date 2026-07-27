@@ -1,0 +1,12 @@
+# Оверлей для тёмного фона терминала (см. обёртку lg в tools/zsh/conf.d/lg.zsh).
+gui:
+  theme:
+    selectedLineBgColor:
+      - '#073642'
+git:
+  # pagers, не paging: ключ сменился в lazygit (0.63.1 печатает `pagers: []`).
+  # Строка повторяется целиком — lazygit подменяет ключ при наложении
+  # конфигов, а не сливает. Отличие от config.yml — только тёмная палитра.
+  diffRenderers:
+    - colorArg: always
+      command: "delta --paging=never --wrap-max-lines 0 --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --hunk-header-style=omit --hyperlinks --dark --syntax-theme='Solarized (dark)' --minus-style='syntax #4a2a24' --plus-style='syntax #24482e'"

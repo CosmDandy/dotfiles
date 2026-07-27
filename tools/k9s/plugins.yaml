@@ -1,56 +1,6 @@
 # k9s plugins. Шорткаты на Ctrl-*, чтобы не конфликтовать с сортировкой (Shift-*)
 # и встроенными клавишами k9s. Бинарники ставятся через nix (darwin/linux).
 plugins:
-  # Мультипод-логи через stern
-  stern:
-    shortCut: Ctrl-L
-    description: Stern logs
-    scopes:
-      - pods
-    command: stern
-    background: false
-    args:
-      - --tail
-      - "50"
-      - --context
-      - $CONTEXT
-      - -n
-      - $NAMESPACE
-      - $NAME
-
-  # Чистый YAML без managedFields/status (kubectl-neat)
-  neat:
-    shortCut: Ctrl-N
-    description: Neat YAML
-    scopes:
-      - pods
-      - deployments
-      - statefulsets
-      - daemonsets
-      - services
-      - configmaps
-      - secrets
-      - ingresses
-      - jobs
-      - cronjobs
-    command: bash
-    background: false
-    args:
-      - -c
-      - "kubectl get $RESOURCE_NAME $NAME -n $NAMESPACE --context $CONTEXT -o yaml | kubectl neat | less -R"
-
-  # Скан уязвимостей образа (trivy). Из вью контейнеров — $COL-IMAGE.
-  trivy:
-    shortCut: Ctrl-T
-    description: Trivy scan
-    scopes:
-      - containers
-    command: bash
-    background: false
-    args:
-      - -c
-      - "trivy image $COL-IMAGE | less -R"
-
   # Анализ слоёв образа (dive). Нужен docker (OrbStack).
   dive:
     shortCut: Ctrl-Y
@@ -62,7 +12,8 @@ plugins:
     args:
       - $COL-IMAGE
 
-  # Flux-плагины отключены: local-lab на ArgoCD (GitOps), не Flux. Раскомментируй при переходе на Flux.
+  # Flux-плагины отключены: local-lab на ArgoCD (GitOps), не Flux. При переходе
+  # на Flux: раскомментировать + вернуть fluxcd в devops-профиль (home/default.nix).
   # flux-reconcile-ks:
   #   shortCut: Ctrl-R
   #   description: Flux reconcile

@@ -5,11 +5,66 @@ cursor-color = 2aa198
 fullscreen = true
 
 mouse-hide-while-typing = true
-clipboard-paste-protection = false
+clipboard-paste-protection = true
+# OSC 52: приложения (nvim/tmux/Claude Code) читают буфер без запроса-диалога.
+clipboard-read = allow
+
+# Заголовок вкладки отдаём скрипту tab-title.zsh (иконки VM/контейнера).
+# Список мержится с дефолтом, а не заменяет его: cursor/path остаются.
+# ssh-* по умолчанию выключены. ssh-terminfo при первом заходе на хост заливает
+# туда xterm-ghostty через infocmp|tic и запоминает его (ghostty +ssh-cache) —
+# без этого ncurses на серверах не знает такого типа терминала. ssh-env —
+# фолбэк на xterm-256color для хостов, где tic недоступен.
+shell-integration-features = no-title,ssh-env,ssh-terminfo
+
+# keyboard-first: нейтрализуем мышь, но оставляем живой скролл
+# (Claude Code/nvim/TUI листаются колесом через mouse-reporting)
+# выделение мышью ничего не копирует
+copy-on-select = false
+# клик в промпте не двигает курсор
+cursor-click-to-move = false
 
 macos-option-as-alt = true
 desktop-notifications = true
-notify-on-command-finish = unfocused
+# Выключено намеренно. Дефолтный notify-on-command-finish-action = bell,no-notify,
+# то есть Ghostty на каждую команду дольше порога звонил (а с bell-features audio
+# это стало Submarine) и при этом НЕ показывал уведомление. Показать он его и не
+# может: уведомления Ghostty на macOS не работают (ghostty-org/ghostty#10151).
+# Сигналы о своих событиях даёт сам Claude через hooks/sound.sh, дубль не нужен.
+notify-on-command-finish = never
 notify-on-command-finish-after = 10s
-bell-features = system,attention,title,border
+# audio + путь: озвучиваем BEL здесь, на хосте, а не в tmux — тогда сигнал
+# из dev-контейнера (где нет afplay) слышен так же, как локальный.
+bell-features = system,attention,title,border,audio
+bell-audio-path = /System/Library/Sounds/Submarine.aiff
+bell-audio-volume = 0.4
 keybind = shift+enter=text:\x1b\r
+
+# Quick Terminal (Quake-стиль): выезжает сверху по глобальному Option+F5, поверх любого приложения.
+quick-terminal-position = top
+keybind = global:alt+f5=toggle_quick_terminal
+
+font-family = "JetBrainsMono Nerd Font"
+
+minimum-contrast = 1.1
+alpha-blending = linear-corrected
+# window-padding-color = extend
+
+# Отступы убраны совсем: дефолтные 2px оставляют у стекла полоску фона, 0 — впритык.
+# balance — при fullscreen ширина не делится на ячейки нацело, и остаток без него
+# уходит одной полосой вправо/вниз; с ним разносится симметрично по обеим сторонам.
+window-padding-x = 0
+window-padding-y = 0
+window-padding-balance = true
+
+# blueprint, chalkboard, microchip, gclass, holographic, paper, retro, xray
+macos-icon = xray
+
+unfocused-split-opacity = 0.8
+
+split-preserve-zoom = navigation
+
+keybind = super+alt+y=goto_split:left
+keybind = super+alt+h=goto_split:down
+keybind = super+alt+a=goto_split:up
+keybind = super+alt+e=goto_split:right

@@ -18,7 +18,7 @@ in_container() {
 }
 
 if in_container; then
-    prefix="⬢ $session"
+    prefix="󰆧  $session"
 else
     prefix="$session"
 fi
@@ -46,4 +46,4 @@ node | [0-9]*)
     ;;
 esac
 
-echo "$prefix | $label"
+echo "$prefix · $label"

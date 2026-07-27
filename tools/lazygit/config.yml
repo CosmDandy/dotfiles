@@ -9,10 +9,43 @@ gui:
   border: rounded
   showBottomLine: false
   showCommandLog: false
+  nerdFontsVersion: "3"
+  showFileIcons: false
+  theme:
+    # cyan, а не blue: «где сейчас ввод» во всём стеке помечено бирюзовым —
+    # тем же цветом, что курсор ghostty (#2aa198). Синий тут выбивался из
+    # общей схемы. (Раньше в этот же ряд входила рамка активного окна от
+    # jankyborders — её убрали вместе с отступами aerospace.)
+    activeBorderColor:
+      - '#2aa198'
+      - bold
+    inactiveBorderColor:
+      - '#586e75'
+    optionsTextColor:
+      - '#268bd2'
+    unstagedChangesColor:
+      - '#dc322f'
 git:
   overrideGpg: True
   autoFetch: true
+  # Один рендерер — delta. difftastic пробовали вторым на клавише `|` и убрали:
+  # синтаксическое сравнение выигрывает на диффах, где форматтер сдвинул
+  # соседние строки, но платить за это двумя разными представлениями одного
+  # диффа (в панели и в терминале) оказалось дороже, чем выигрыш.
+  #
+  # Настройки delta выверены под узкую панель: номера строк выключены (на 13"
+  # и во float внутри nvim колонки съедали ширину), --paging=never (свой пейджер
+  # сломал бы прокрутку панели), --wrap-max-lines 0 (обрезать длинные строки,
+  # а не переносить с маркером ↵).
+  # Яркость под фон терминала — в theme-{light,dark}.yml (обёртка lg в
+  # conf.d/lg.zsh, внутри nvim — snacks-git.lua по vim.o.background).
+  diffRenderers:
+    - colorArg: always
+      command: "delta --paging=never --wrap-max-lines 0 --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --hunk-header-style=omit --hyperlinks"
   mainBranches:
+    # master оставлен: конфиг общий для всех репозиториев, а рабочие (kvt-*)
+    # на GitLab по-прежнему живут на master/develop
+    - main
     - master
     - stage
     - develop
