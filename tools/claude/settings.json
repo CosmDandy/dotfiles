@@ -336,6 +336,11 @@
           {
             "type": "command",
             "command": "printf '\\a'"
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/progress.sh reset",
+            "async": true
           }
         ]
       }
@@ -365,6 +370,16 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/progress.sh maybe-start",
+            "async": true
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -374,18 +389,6 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/sessionstart-state.sh"
-          }
-        ]
-      }
-    ],
-    "TaskCompleted": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Glass",
-            "async": true
           }
         ]
       }
@@ -409,6 +412,11 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/progress.sh error",
             "async": true
           }
         ]

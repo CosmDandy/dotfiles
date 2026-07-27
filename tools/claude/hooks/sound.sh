@@ -8,9 +8,11 @@
 #   Glass     — фоновая задача завершилась (TaskCompleted).
 #   Basso     — упало (PostToolUseFailure, StopFailure).
 #
-# Внутри контейнера своего afplay нет, и все четыре тембра там неизбежно
-# сходятся в один BEL. Различие сохраняем текстом: OSC 9 показывает на Маке
-# всплывашку с названием состояния (ghostty desktop-notifications = true).
+# В контейнере своего afplay нет, и все четыре тембра там неизбежно сходятся
+# в один BEL — его озвучит Ghostty на хосте. Различать события текстом не
+# получается: уведомления Ghostty на macOS не работают (ghostty-org/ghostty#10151),
+# ни OSC 9, ни OSC 777. Визуальную часть поэтому несёт progress.sh — полоса
+# прогресса работает надёжно и локально, и из контейнера.
 set -u
 
 snd="${1:-Glass}"
@@ -22,27 +24,12 @@ if command -v afplay >/dev/null 2>&1 && [ -r "$f" ]; then
     exit 0
 fi
 
-case "$snd" in
-Basso) label="упало" ;;
-Blow) label="нужен ответ" ;;
-Glass) label="фоновая задача готова" ;;
-*) label="$snd" ;;
-esac
-
-# Писать строго в терминал: в фоновых сессиях stdout перехвачен, и BEL,
-# отправленный в него, до Ghostty не доедет. Проверять правами нельзя —
-# у фоновой сессии /dev/tty существует и выглядит доступным, но не открывается
-# («Device not configured»), поэтому пробуем открыть и молча уходим при отказе.
-if ! { exec 3>/dev/tty; } 2>/dev/null; then
-    exit 0
+# Иначе (контейнер) — BEL в терминал. Не в stdout: у хуков он перехвачен.
+# Открываем tty попыткой, а не проверкой прав: в фоновых сессиях /dev/tty
+# выглядит доступным, но не открывается («Device not configured»).
+if { exec 3>/dev/tty; } 2>/dev/null; then
+    printf '\a' >&3
+    exec 3>&-
 fi
 
-if [ -n "${TMUX:-}" ]; then
-    # tmux не пропускает OSC наружу сам — нужен passthrough (allow-passthrough on)
-    printf '\033Ptmux;\033\033]9;Claude: %s\007\033\\\a' "$label" >&3
-else
-    printf '\033]9;Claude: %s\007\a' "$label" >&3
-fi
-
-exec 3>&-
 exit 0

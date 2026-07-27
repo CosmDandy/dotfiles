@@ -22,7 +22,12 @@ cursor-click-to-move = false
 
 macos-option-as-alt = true
 desktop-notifications = true
-notify-on-command-finish = unfocused
+# Выключено намеренно. Дефолтный notify-on-command-finish-action = bell,no-notify,
+# то есть Ghostty на каждую команду дольше порога звонил (а с bell-features audio
+# это стало Submarine) и при этом НЕ показывал уведомление. Показать он его и не
+# может: уведомления Ghostty на macOS не работают (ghostty-org/ghostty#10151).
+# Сигналы о своих событиях даёт сам Claude через hooks/sound.sh, дубль не нужен.
+notify-on-command-finish = never
 notify-on-command-finish-after = 10s
 # audio + путь: озвучиваем BEL здесь, на хосте, а не в tmux — тогда сигнал
 # из dev-контейнера (где нет afplay) слышен так же, как локальный.
