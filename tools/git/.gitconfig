@@ -27,6 +27,13 @@
 	rebase = true
 [push]
 	autoSetupRemote = true
+	# Родитель хранит сабмодуль как gitlink — 20 байт хеша, и по умолчанию push
+	# не проверяет, достижим ли этот объект на remote сабмодуля. Запушенный
+	# указатель на незапушенный коммит ломает клоны: fetch падает с
+	# "upload-pack: not our ref". Случалось трижды (35f30a2, 155b0c0, abe813b).
+	# on-demand сам пушит сабмодуль перед родителем; при detached HEAD пушить
+	# ему некуда — тогда он не молчит, а падает, как check.
+	recurseSubmodules = on-demand
 [rerere]
 	enabled = true
 [diff]
