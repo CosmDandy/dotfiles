@@ -46,7 +46,8 @@ in {
 
   xdg.configFile = {
     "ghostty/config".source = link "tools/ghostty/config";
-    "direnv/direnvrc".source = link "tools/direnv/direnvrc";
+    # direnvrc переехал в files.nix: use_sops нужен и в dev-контейнере,
+    # а не только на маке
   };
 
   home.activation = {

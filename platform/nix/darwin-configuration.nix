@@ -85,6 +85,7 @@
     eza
     fd
     ripgrep
+    fzf       # интерактивный выбор: dpkey (воркспейс devpod), kubectx/kubens. В Linux-профиле уже есть (home/default.nix)
     ipmitool  # IPMI-доступ к BMC серверов (IMM/iLO/iDRAC): питание, SOL-консоль, сенсоры
     unzip
     curl

@@ -28,6 +28,14 @@ let
     gh
     glab
     iperf3
+    # Секреты: sops+age расшифровывают проектные секреты прямо в контейнере,
+    # direnv раскладывает их по переменным (use_sops в tools/direnv/direnvrc).
+    # rbw сюда НЕ ставится сознательно — Bitwarden живёт только на маке,
+    # см. docs/secrets.md, «В dev-контейнере».
+    direnv
+    nix-direnv
+    sops
+    age
   ];
 
   # --- DevOps: core + IaC/K8s/container tools ---

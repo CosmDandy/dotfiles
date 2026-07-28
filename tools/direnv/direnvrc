@@ -1,4 +1,26 @@
-# nix-direnv: кэширует nix-окружения (use flake / use nix), делает вход в каталог мгновенным
-if [[ -f /run/current-system/sw/share/nix-direnv/direnvrc ]]; then
-  source /run/current-system/sw/share/nix-direnv/direnvrc
-fi
+# nix-direnv: кэширует nix-окружения (use flake / use nix), делает вход в каталог мгновенным.
+# Два пути: nix-darwin кладёт в /run/current-system (мак), home-manager —
+# в ~/.nix-profile (контейнер). Без второго в контейнере молча работал бы
+# некэширующий use flake.
+for _nd in /run/current-system/sw/share/nix-direnv/direnvrc \
+           "$HOME/.nix-profile/share/nix-direnv/direnvrc"; do
+  [[ -f $_nd ]] && { source "$_nd"; break; }
+done
+unset _nd
+
+# use_sops <файл> — загрузить все пары из sops-файла в окружение.
+# Одна расшифровка на файл вместо расшифровки на каждое значение (`sops -d --extract`),
+# что заметно при вложенных .envrc: там обращение к хранилищу должно быть одно, наверху.
+# watch_file — direnv перечитает окружение, когда sops-файл изменится.
+use_sops() {
+  local path="${1:-$PWD/secrets.sops.yaml}"
+  if [[ ! -f $path ]]; then
+    log_error "use_sops: файл не найден: $path"
+    return 1
+  fi
+  # sops расшифровывает файл, кладёт пары в окружение и запускает в нём `direnv dump`;
+  # тот печатает получившееся окружение, а direnv_load его накатывает. Кавычки вокруг
+  # `direnv dump` обязательны — это команда для exec-env, а не её вывод.
+  direnv_load sops exec-env "$path" 'direnv dump'
+  watch_file "$path"
+}

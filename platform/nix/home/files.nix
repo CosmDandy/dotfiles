@@ -26,6 +26,8 @@ in {
   };
 
   xdg.configFile = {
+    # Общий для обеих платформ: use_sops нужен и на маке, и в dev-контейнере
+    "direnv/direnvrc".source = link "tools/direnv/direnvrc";
     "lazygit/config.yml".source = link "tools/lazygit/config.yml";
     "lazygit/theme-light.yml".source = link "tools/lazygit/theme-light.yml";
     "lazygit/theme-dark.yml".source = link "tools/lazygit/theme-dark.yml";
