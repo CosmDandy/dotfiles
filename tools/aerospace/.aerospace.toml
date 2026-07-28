@@ -33,6 +33,13 @@ default-root-container-orientation = 'vertical'
 on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 # on-focus-changed = 'move-mouse window-lazy-center'
 
+# Рамку активного окна гасим, когда окно на воркспейсе одно — подсвечивать
+# нечего. Условия «сколько окон» у JankyBorders нет, поэтому считает скрипт.
+# Два колбэка, потому что закрытие окна отдельного события не даёт: смену
+# 2→1 ловим через фокус, а приход на пустой воркспейс — через смену воркспейса.
+on-focus-changed = ['exec-and-forget $HOME/.dotfiles/tools/aerospace/borders-solo.sh']
+exec-on-workspace-change = ['/bin/bash', '-c', '$HOME/.dotfiles/tools/aerospace/borders-solo.sh']
+
 # You can effectively turn off macOS "Hide application" (cmd-h) feature by toggling this flag
 # Useful if you don't use this macOS feature, but accidentally hit cmd-h or cmd-alt-h key
 # Also see: https://nikitabobko.github.io/AeroSpace/goodies#disable-hide-app
