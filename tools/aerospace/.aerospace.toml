@@ -55,13 +55,17 @@ preset = 'qwerty'
 #                 In this example, 24 is a default value when there is no match.
 #                 Monitor pattern is the same as for 'workspace-to-monitor-force-assignment'.
 #                 See: https://nikitabobko.github.io/AeroSpace/guide#assign-workspaces-to-monitors
+# outer не нули: рамка активного окна (jankyborders) центрирована по его
+# контуру, наружу торчит половина ширины. Без отступа от края экрана эта
+# половина обрезается, и подсветка фокуса пропадает ровно там, где окно
+# развёрнуто на весь экран. 4px хватает с запасом при width=3.
 [gaps]
 inner.horizontal = 8
 inner.vertical =   8
-outer.left =       0
-outer.bottom =     0
-outer.top =        0
-outer.right =      0
+outer.left =       4
+outer.bottom =     4
+outer.top =        4
+outer.right =      4
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
