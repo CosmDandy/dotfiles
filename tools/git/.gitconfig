@@ -36,8 +36,19 @@
 	recurseSubmodules = on-demand
 [rerere]
 	enabled = true
+[submodule]
+	# Зеркало push.recurseSubmodules, только на входящей стороне: pull и checkout
+	# сами доводят сабмодуль до указателя родителя. Без этого новый указатель
+	# приезжает, а содержимое остаётся старым — и git status показывает " m private",
+	# будто правил руками. Побочно влияет на checkout: смена ветки двигает сабмодуль.
+	recurse = true
+[status]
+	# Вместо голого " m private" — какие именно коммиты разъехались
+	submoduleSummary = true
 [diff]
 	algorithm = histogram
+	# Сообщения коммитов сабмодуля вместо пары сырых хешей
+	submodule = log
 [includeIf "gitdir:/workspaces/"]
 	path = ~/.gitconfig-work
 [includeIf "gitdir:~/Work/"]
