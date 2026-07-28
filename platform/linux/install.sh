@@ -54,9 +54,20 @@ FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
 HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 
 print_section "Activating home-manager configuration: ${HM_CONFIG}"
+# В пребилт-образе home-manager уже в профиле (programs.home-manager.enable), и
+# CLI — тонкая обёртка: он строит "<flake>#…activationPackage", то есть модули и
+# пакеты приезжают из flake.lock, а не из бинаря. А `nix run` пересобирал бы сам
+# пакет home-manager со всем замыканием (nix, nixos-option, man-db) — его вымел
+# nix-collect-garbage при сборке образа (Dockerfile:99,110), поэтому оно качалось
+# заново на КАЖДЫЙ devpod up: 106 путей, 66.8 MiB, ~50 секунд.
+# Голый образ без профиля уходит в else — там `nix run` единственный способ.
 # --inputs-from: home-manager резолвится по flake.lock репо, а не по свежему master;
 # -b: файлы, которые HM отказался бы перезаписать, уезжают в *.hm-backup
-nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+if command -v home-manager &> /dev/null; then
+  home-manager switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+else
+  nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+fi
 
 # Маркер профиля — читает cron-обновление (automation/cron/devpod-update.sh)
 echo "$PROFILE" > "$HOME/.dotfiles-profile"
