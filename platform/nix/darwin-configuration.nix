@@ -126,6 +126,21 @@
   };
 
   # ===============================
+  # Подсветка активного окна (JankyBorders).
+  # Aerospace фокус визуально никак не отмечает, а menu bar скрыт — рамка
+  # остаётся единственным индикатором «где ввод». Цвета из solarized-osaka,
+  # той же палитры, что nvim и ghostty.
+  # ===============================
+  services.jankyborders = {
+    enable = true;
+    style = "round";        # повторяет скругление окон macOS
+    width = 4.0;
+    hidpi = true;           # рамка без лесенки на retina
+    active_color = "0xff268bd2";   # sol_blue
+    inactive_color = "0x40586e75"; # muted, 25% альфы — только контур, без шума
+  };
+
+  # ===============================
   # Launchd-агенты («кроны») — декларативно, ставятся darwin-rebuild switch.
   # Лейблы у nix-darwin с префиксом org.nixos.*; старые com.cosmdandy.*
   # выгружает миграционный хук removeLegacyLaunchAgents (home/darwin.nix).
