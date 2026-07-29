@@ -496,7 +496,9 @@ if [ -n "$sid" ]; then
     printf '%s\n' "${cost_usd:-0}" >| "$sdir/$sid"
     for sf in "$sdir"/*; do
       [ -f "$sf" ] || continue
-      mtime=$(stat -f %m "$sf" 2>/dev/null || stat -c %Y "$sf" 2>/dev/null || echo 0)
+      # GNU-синтаксис первым: BSD не знает -c и падает молча, GNU же на `-f %m`
+      # печатает блок про файловую систему прямо в stdout.
+      mtime=$(stat -c %Y "$sf" 2>/dev/null || stat -f %m "$sf" 2>/dev/null || echo 0)
       if [ "$((now - mtime))" -gt "$SESSION_TTL" ]; then
         rm -f "$sf"          # сессия закрыта или давно молчит
         continue

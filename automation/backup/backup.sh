@@ -57,7 +57,9 @@ source "$SCRIPT_DIR/manifest.conf"
 if [ ! -f "$ENV_FILE" ]; then
   die "нет файла доступов $ENV_FILE — создай по образцу automation/backup/env.example"
 fi
-perms=$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE" 2>/dev/null)
+# GNU-синтаксис первым: BSD не знает -c и падает молча, а GNU знает -f как
+# --file-system и печатает в stdout блок про ФС вместо режима доступа.
+perms=$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE" 2>/dev/null)
 [ "$perms" = "600" ] || warn "$ENV_FILE с правами $perms — должно быть 600 (chmod 600 $ENV_FILE)"
 # shellcheck disable=SC1090
 source "$ENV_FILE"

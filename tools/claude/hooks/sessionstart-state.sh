@@ -40,7 +40,9 @@ if [[ -d "$proj" ]]; then
   # maxdepth 2: deeper paths are subagent transcripts, not sessions of mine.
   # 500k is the rough floor for "something actually happened in here".
   if [[ -f "$marker" ]]; then
-    mtime="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+    # GNU-синтаксис первым: `stat -f %m` под GNU печатает в stdout блок про
+    # файловую систему, и мусор попадает в переменную.
+    mtime="$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)"
     days=$(( ( $(date +%s) - mtime ) / 86400 ))
     since="$(find "$proj" -maxdepth 2 -name '*.jsonl' -size +500k -newer "$marker" 2>/dev/null | grep -c .)"
     ago="${days}d ago"

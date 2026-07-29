@@ -29,7 +29,10 @@ changed="$(git status --porcelain 2>/dev/null | grep -c .)"
 # PROGRESS.md в gitignore, поэтому судим по mtime, а не по git.
 if [[ -f "$root/PROGRESS.md" ]]; then
   now="$(date +%s)"
-  m="$(stat -f %m "$root/PROGRESS.md" 2>/dev/null || stat -c %Y "$root/PROGRESS.md" 2>/dev/null || echo 0)"
+  # GNU-синтаксис ПЕРВЫМ: BSD не знает -c и падает молча, а GNU знает -f как
+  # --file-system и на `-f %m` печатает в stdout блок про файловую систему —
+  # мусор попадает в переменную и роняет арифметику ниже.
+  m="$(stat -c %Y "$root/PROGRESS.md" 2>/dev/null || stat -f %m "$root/PROGRESS.md" 2>/dev/null || echo 0)"
   (( now - m < 3600 )) && exit 0
 fi
 
