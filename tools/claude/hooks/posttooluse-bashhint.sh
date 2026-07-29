@@ -23,6 +23,9 @@ cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)"
 hint=""
 
 case "$out" in
+  *"control characters that would be hidden"*)
+    hint="Управляющий символ попал в команду литералом. Отклоняется валидацией ДО исполнения, поэтому предотвратить это хуком нельзя — только не писать так. Собирай символ через printf в переменную: SEP=\$(printf '\\037') и дальше передавай \"\$SEP\"."
+    ;;
   *"Illegal byte sequence"*)
     hint="BSD-утилита споткнулась о многобайтный UTF-8. Либо \`LC_ALL=C\` перед командой (если байты и нужны как байты), либо не гонять текст с не-ASCII через cut/sed/tr — python или awk справятся."
     ;;
@@ -49,6 +52,10 @@ esac
 
 [[ -n "$hint" ]] || exit 0
 
-jq -nc --arg ctx "Знакомая грабля: $hint" \
-  '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+# Хук висит на двух событиях (PostToolUse и PostToolUseFailure) — имя должно совпадать
+# с тем, что пришло, иначе вывод рискует быть отброшенным.
+event="$(printf '%s' "$input" | jq -r '.hook_event_name // "PostToolUse"' 2>/dev/null)"
+
+jq -nc --arg ctx "Знакомая грабля: $hint" --arg ev "$event" \
+  '{hookSpecificOutput:{hookEventName:$ev,additionalContext:$ctx}}'
 exit 0

@@ -158,6 +158,8 @@ any single session long enough to reach a compact:
   lost — what we tried, what it did instead, what finally made it work. Not a
   narration of what you did — git already has that.
 - Before ending the turn, update PROGRESS.md so the next session can continue.
+- In DELEGATED mode it is the only channel out: nobody reads the chat summary and
+  nobody can be asked. Anything that isn't in the file didn't happen.
 
 ## Compact Instructions
 

@@ -439,6 +439,11 @@
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/progress.sh error",
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
+            "async": true
           }
         ]
       }
