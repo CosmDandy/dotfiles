@@ -17,6 +17,7 @@
     "pr": ""
   },
   "permissions": {
+    "defaultMode": "auto",
     "allow": [
       "Read",
       "Edit",

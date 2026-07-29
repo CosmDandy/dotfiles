@@ -126,8 +126,19 @@ Each of these cost real turns; they are the mistakes I actually repeat.
   failing the same way and you have no new hypothesis, say what you ruled out and
   ask. While each attempt narrows the problem, keep going. Diagnostics are the wide
   exception — with logs, status, ssh, network, keep digging regardless.
+- Before calling non-trivial work done, have a subagent review the diff in a fresh
+  context — it sees the change and the criteria, not the reasoning that produced it.
+  Tell it to report only gaps that affect correctness or a stated requirement: a
+  reviewer asked to find gaps will always find some, and chasing all of them is how
+  plain code grows defensive layers and tests for cases that can't happen.
+- For work with a checkable end that I won't be watching, offer a `/goal` condition
+  before starting — I run it, you can't. Phrase it so a separate evaluator can judge
+  it from the transcript: name the command and the result it must produce, never
+  "works". Put the turn limit inside the condition text.
 - 5+ files, or a plan with 5+ steps — start in plan mode, get the list approved.
   (INTERACTIVE)
+- For a feature big enough that we'd otherwise discover the requirements mid-way,
+  `/spec` first: interview, write SPEC.md, then implement in a fresh session.
 
 ## Long runs and PROGRESS.md
 
