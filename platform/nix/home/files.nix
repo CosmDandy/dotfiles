@@ -20,6 +20,7 @@ in {
     ".claude/CLAUDE.md".source = link "tools/claude/CLAUDE.md";
     ".claude/settings.json".source = link "tools/claude/settings.json";
     ".claude/statusline.sh".source = link "tools/claude/statusline.sh";
+    ".claude/keybindings.json".source = link "tools/claude/keybindings.json";
     # ~/.claude/{agents,commands,skills,rules} НЕ здесь: ими владеет
     # tools/claude/custom/install.sh (хук installClaudeCustom) — сабмодуль
     # может отсутствовать на момент linkGeneration

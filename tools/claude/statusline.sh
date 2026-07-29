@@ -334,7 +334,7 @@ EOF
 #   7d — когда расход опережает равномерный по неделе на WEEK_SLACK п.п.
 #        (само подстраивается: 30% в понедельник — тревога, 60% в воскресенье — нет)
 compute_limits() {
-  local now=$1 want_eta=$2
+  local now=$1 want_eta=$2 want_week=${3:-1}
   local five_pct eta color elapsed_pct show five_seg="" week_seg="" segs=""
 
   if [ -n "$five_pct100" ]; then
@@ -375,7 +375,7 @@ EOF2
     fi
   fi
 
-  if [ -n "$week_pct" ]; then
+  if [ -n "$week_pct" ] && [ "$want_week" -eq 1 ]; then
     show=0
     color="$YELLOW"
     [ "$week_pct" -ge "$WEEK_SHOW" ] && show=1 && color="$RED"
@@ -440,6 +440,9 @@ model_str="${model%% (*}"
 [ "${ctx_size:-0}" -ge 1000000 ] 2>/dev/null && model_str="${model_str} 1M"
 model_seg="${BLUE}${model_str}${R}"
 [ -n "$thinking" ] && model_seg="${BLUE}${G_THINK} ${model_str}${R}"
+# Узкий вариант того же блока: без effort. На тесной строке важнее увидеть, какая
+# модель и сколько осталось окна, чем каким усилием она думает.
+model_seg_slim="$model_seg"
 if [ -n "$effort" ]; then
   set_effort_parts "$effort"
   if [ -n "$eff_glyph" ]; then
@@ -451,7 +454,8 @@ fi
 # базовый агент называется "claude" — это не информация, показываем только свои
 case "$agent" in
   ""|claude|Claude) ;;
-  *) model_seg="${model_seg}${GRAY} ▸ ${agent}${R}" ;;
+  *) model_seg="${model_seg}${GRAY} ▸ ${agent}${R}"
+     model_seg_slim="${model_seg_slim}${GRAY} ▸ ${agent}${R}" ;;
 esac
 
 # Контекст
@@ -525,14 +529,23 @@ add() {  # $1=аккумулятор $2=сегмент -> склейка чер�
   fi
 }
 
+# Порядок выбывания при сужении, от наименее нужного: кеш → цена и число сессий →
+# 7-дневное окно → effort. Модель, контекст и 5-часовое окно остаются до конца:
+# первое отвечает «кто работает», второе «сколько осталось до компакта», третье
+# «сколько осталось до упора в лимит» — без них строка перестаёт быть полезной.
 if [ "$cols" -lt 60 ]; then
-  # узко: только кто и где по контексту
-  limits=$(compute_limits "$now" 0)   # вызываем ради накопления сэмплов ETA
-  out=$(add "$model_seg" "$ctx_seg")
-elif [ "$cols" -lt 90 ]; then
-  # средне: без ETA и без кеша
-  limits=$(compute_limits "$now" 0)
-  left=$(add "$model_seg" "$ctx_seg")
+  # только кто и где по контексту
+  limits=$(compute_limits "$now" 0 0)   # вызываем ради накопления сэмплов ETA
+  out=$(add "$model_seg_slim" "$ctx_seg")
+elif [ "$cols" -lt 80 ]; then
+  # + 5-часовое окно: оно важнее и цены, и effort
+  limits=$(compute_limits "$now" 0 0)
+  left=$(add "$model_seg_slim" "$ctx_seg")
+  out=$(join_edges "$left" "$limits")
+elif [ "$cols" -lt 100 ]; then
+  # + недельное окно и цена; effort и кеш всё ещё режем
+  limits=$(compute_limits "$now" 0 1)
+  left=$(add "$model_seg_slim" "$ctx_seg")
   right=$(add "$cost_seg" "$limits")
   out=$(join_edges "$left" "$right")
 else
