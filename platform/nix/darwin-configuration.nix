@@ -213,6 +213,27 @@
       StandardOutPath = "/tmp/bt-layout-switch.log";
       StandardErrorPath = "/tmp/bt-layout-switch.log";
     };
+
+    # Саммари созвонов из anarlog через Claude (claude -p, подписка Max):
+    # штатная кнопка anarlog даёт ~40/100 против ручного разбора, этот путь — 86/100
+    # ценой $0 сверх подписки. Раз в 15 минут вместо watcher'а на файлы — саммари
+    # доступно не сразу после созвона, а разница не критична, и не нужно гадать,
+    # в какой момент anarlog допишет транскрипт в базу. Не требует закрытия anarlog:
+    # запись в session_documents переживает и работу, и выход приложения (проверено).
+    meeting-summary.serviceConfig = {
+      ProgramArguments = [
+        "/Users/${config.system.primaryUser}/.dotfiles/automation/meeting/summarize-meeting.py"
+        "--save-to"
+        "/Users/${config.system.primaryUser}/Recordings/calls"
+      ];
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/Users/${config.system.primaryUser}/.local/bin:/usr/bin:/bin";
+      };
+      StartInterval = 900;
+      RunAtLoad = false;
+      StandardOutPath = "/tmp/meeting-summary.log";
+      StandardErrorPath = "/tmp/meeting-summary.log";
+    };
   };
 
   # ===============================
