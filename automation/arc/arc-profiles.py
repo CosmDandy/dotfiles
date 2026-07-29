@@ -21,12 +21,16 @@ lastChangeDate; при старте Arc сверяется с облаком и,
 поэтому эталон для них хранится отдельно и восстанавливается точечно, не
 откатывая остальное состояние.
 
-Вернуть их через файл, однако, удаётся не всегда: сами контейнеры в облаке не
-хранятся, а вот их содержимое — обычные элементы, которые синхронизируются.
-Те, которых на сервере нет, при первом же обмене считаются удалёнными, и Arc
-сносит их через десяток секунд после старта — свежая дата тут не спасает,
-удаление сильнее правки. Тогда остаётся закрепить иконки руками и снять новый
-эталон через pins-save.
+Восстанавливаются они переносом, а не вставкой. Сами контейнеры в облаке не
+хранятся, а вот их содержимое — обычные элементы, которые синхронизируются:
+всё, чего сервер не знает, при первом же обмене считается удалённым, и Arc
+сносит это через десяток секунд после старта. Поэтому эталон нужен только как
+список адресов — по ним ищется уже существующая вкладка и ей меняется родитель,
+ровно как при перетаскивании мышкой. Такие иконки синхронизация не трогает.
+
+Чего в сайдбаре нет, того и не перенести: Arc дедуплицирует по адресу и второй
+вкладки с тем же URL не создаёт. Про такие apply говорит отдельной строкой —
+их закрепляют руками, после чего pins-save обновляет эталон.
 
     arcs status            что сейчас: Spaces, профили, наполнение
     arcs snapshot          снять копию состояния
@@ -185,6 +189,51 @@ def item_title(item):
     return item.get("title") or tab.get("savedTitle") or tab.get("savedURL", "?")
 
 
+def item_url(item):
+    return ((item.get("data", {}) or {}).get("tab") or {}).get("savedURL") or ""
+
+
+def pinned_urls(ref):
+    """Адреса из эталона, в том же порядке, в каком они стояли в сайдбаре."""
+    saved = {i["id"]: i for i in ref["items"]}
+    return [item_url(saved[k]) for k in ref["childrenIds"] if k in saved]
+
+
+def synced_items(data):
+    return data["firebaseSyncState"]["syncData"]["items"]
+
+
+def sync_touch(data, item, stamp, mid):
+    """Объявить элемент изменённым здесь и сейчас, иначе облако вернёт своё."""
+    synced = synced_items(data)
+    record = {"value": item, "lastChangeDate": stamp, "lastChangedDevice": mid}
+    for n, x in enumerate(synced):
+        if isinstance(x, dict) and x.get("value", {}).get("id") == item["id"]:
+            synced[n] = record
+            return
+    synced.extend([item["id"], record])
+
+
+def find_tab(items, url, fav_ids):
+    """Самая свежая вкладка с таким адресом среди тех, что уже есть в сайдбаре.
+
+    Берём именно существующую: выдуманный элемент сервер не знает и при первом
+    же обмене сносит как удалённый, а настоящий переживает синхронизацию, даже
+    если ещё не попал в локальный кэш.
+    """
+    best = None
+    for it in items:
+        if not isinstance(it, dict) or "id" not in it:
+            continue
+        if it.get("parentID") in fav_ids or it["id"] in fav_ids:
+            continue
+        if item_url(it).rstrip("/") != url.rstrip("/"):
+            continue
+        if best is None or it.get("createdAt", 0) > best.get("createdAt", 0):
+            best = it
+    return best
+
+
 def cmd_status():
     data = load()
     items = {
@@ -323,23 +372,36 @@ def cmd_apply():
     # месте, значит пользователь мог их поменять — эталон тут не хозяин.
     pins = load_pins()
     restored = []
+    missing = []
     if pins:
         items = sidebar_items(data)
-        have = {i["id"] for i in items if isinstance(i, dict) and "id" in i}
+        by_id = {i["id"]: i for i in items if isinstance(i, dict) and "id" in i}
+        fav_ids = {c["id"] for c, _ in top_containers(data)}
         for cont, who in top_containers(data):
             ref = pins.get(who)
             if not ref or cont.get("childrenIds"):
                 continue
-            for saved in ref["items"]:
-                item = json.loads(json.dumps(saved))
-                item["parentID"] = cont["id"]
-                if item["id"] not in have:
-                    items.append(item)
-                    have.add(item["id"])
-            cont["childrenIds"] = list(ref["childrenIds"])
-            restored.append((who, len(ref["childrenIds"])))
+            kept = []
+            for url in pinned_urls(ref):
+                tab = find_tab(items, url, fav_ids)
+                if tab is None:
+                    missing.append((who, url))
+                    continue
+                # Перенос, а не копия: у копии новый id, которого нет на сервере,
+                # и синхронизация снесёт её через десяток секунд после старта.
+                old = by_id.get(tab.get("parentID"))
+                if old and tab["id"] in (old.get("childrenIds") or []):
+                    old["childrenIds"].remove(tab["id"])
+                    sync_touch(data, old, stamp, mid)
+                tab["parentID"] = cont["id"]
+                kept.append(tab["id"])
+                sync_touch(data, tab, stamp, mid)
+            if kept:
+                cont["childrenIds"] = kept
+                sync_touch(data, cont, stamp, mid)
+                restored.append((who, len(kept)))
 
-    if not changed and not restored:
+    if not changed and not restored and not missing:
         print("всё на месте, чинить нечего")
         return
     save(data)
@@ -348,9 +410,9 @@ def cmd_apply():
     for title in sorted(set(changed)):
         print(f"  профиль: {title} → {BINDINGS[title] or 'Default'}")
     for who, n in restored:
-        print(f"  Favorites: {who} ← {n} шт. из эталона")
-    if restored:
-        print("  Favorites может снести синхронизацией — сверься со status после старта")
+        print(f"  Favorites: {who} ← {n} шт. перенесено")
+    for who, url in missing:
+        print(f"  Favorites: {who} — нет вкладки {url}, закрепи руками")
     print("готово, запускай Arc")
 
 
