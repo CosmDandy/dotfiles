@@ -10,10 +10,23 @@ Arc теряет связь Space → профиль после переуста
 Привязка машино-специфична: в ней хранится machineID, поэтому облако её не
 подхватывает и на других устройствах она не ломается.
 
+Одного исправленного значения мало. У каждой записи в кэше синхронизации есть
+lastChangeDate; при старте Arc сверяется с облаком и, не увидев у правки более
+свежей даты, разворачивает облачную версию поверх. Поэтому вместе со значением
+проставляется текущая дата — тогда Arc публикует нашу версию, а не забирает
+чужую.
+
 Отдельно теряются Favorites — иконки в самом верху сайдбара. Они лежат в
 контейнерах topApps, по одному на профиль, и обнуляются независимо от привязок,
 поэтому эталон для них хранится отдельно и восстанавливается точечно, не
 откатывая остальное состояние.
+
+Вернуть их через файл, однако, удаётся не всегда: сами контейнеры в облаке не
+хранятся, а вот их содержимое — обычные элементы, которые синхронизируются.
+Те, которых на сервере нет, при первом же обмене считаются удалёнными, и Arc
+сносит их через десяток секунд после старта — свежая дата тут не спасает,
+удаление сильнее правки. Тогда остаётся закрепить иконки руками и снять новый
+эталон через pins-save.
 
     arcs status            что сейчас: Spaces, профили, наполнение
     arcs snapshot          снять копию состояния
@@ -31,6 +44,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 # Какой Space к какому профилю. None — профиль по умолчанию («Your Arc»).
@@ -111,6 +125,7 @@ def spaces_of(data):
 
 
 def synced_spaces_of(data):
+    """Записи Spaces в кэше синхронизации — целиком, вместе с датой изменения."""
     models = (
         data.get("firebaseSyncState", {}).get("syncData", {}).get("spaceModels", [])
     )
@@ -120,7 +135,12 @@ def synced_spaces_of(data):
             and isinstance(m.get("value"), dict)
             and m["value"].get("title")
         ):
-            yield m["value"]
+            yield m
+
+
+def apple_now():
+    """Даты в состоянии Arc отсчитываются от 2001-01-01, а не от эпохи Unix."""
+    return time.time() - 978307200
 
 
 def profile_name(space):
@@ -274,15 +294,29 @@ def cmd_apply():
             return {"default": True}
         return {"custom": {"_0": {"machineID": mid, "directoryBasename": profile}}}
 
+    # Дата в будущем: Arc успевает стартовать и сверить версии, и наша правка
+    # всё ещё выглядит для него более свежей, чем то, что лежит в облаке.
+    stamp = apple_now() + 60
+
     changed = []
     # Правим и рабочее состояние, и кэш синхронизации — иначе Arc может
     # развернуть в sidebar облачную версию и затереть привязку обратно.
-    for space in list(spaces_of(data)) + list(synced_spaces_of(data)):
+    for space in spaces_of(data):
         title = space.get("title")
         if title in BINDINGS:
             want = binding_for(title)
             if space.get("profile") != want:
                 space["profile"] = want
+                changed.append(title)
+
+    for record in synced_spaces_of(data):
+        title = record["value"].get("title")
+        if title in BINDINGS:
+            want = binding_for(title)
+            if record["value"].get("profile") != want:
+                record["value"]["profile"] = want
+                record["lastChangeDate"] = stamp
+                record["lastChangedDevice"] = mid
                 changed.append(title)
 
     # Favorites восстанавливаем только в опустевший контейнер: если они на
@@ -315,6 +349,8 @@ def cmd_apply():
         print(f"  профиль: {title} → {BINDINGS[title] or 'Default'}")
     for who, n in restored:
         print(f"  Favorites: {who} ← {n} шт. из эталона")
+    if restored:
+        print("  Favorites может снести синхронизацией — сверься со status после старта")
     print("готово, запускай Arc")
 
 
