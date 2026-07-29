@@ -214,18 +214,36 @@ def sync_touch(data, item, stamp, mid):
     synced.extend([item["id"], record])
 
 
-def find_tab(items, url, fav_ids):
-    """Самая свежая вкладка с таким адресом среди тех, что уже есть в сайдбаре.
+def own_containers(data, who):
+    """Контейнеры тех Spaces, что открываются в этом профиле."""
+    result = set()
+    for space in spaces_of(data):
+        if (profile_name(space) or "Default") != who:
+            continue
+        result.update(
+            x
+            for x in (space.get("containerIDs") or [])
+            if isinstance(x, str) and x not in ("pinned", "unpinned")
+        )
+    return result
+
+
+def find_tab(items, url, allowed):
+    """Самая свежая вкладка с таким адресом из Spaces этого профиля.
 
     Берём именно существующую: выдуманный элемент сервер не знает и при первом
     же обмене сносит как удалённый, а настоящий переживает синхронизацию, даже
     если ещё не попал в локальный кэш.
+
+    Ищем только среди своих. Один и тот же адрес нередко стоит в Favorites обоих
+    профилей, а вкладка на него одна — без этого ограничения её забирает тот
+    контейнер, что обработался первым, и второй остаётся ни с чем.
     """
     best = None
     for it in items:
         if not isinstance(it, dict) or "id" not in it:
             continue
-        if it.get("parentID") in fav_ids or it["id"] in fav_ids:
+        if it.get("parentID") not in allowed:
             continue
         if item_url(it).rstrip("/") != url.rstrip("/"):
             continue
@@ -376,14 +394,14 @@ def cmd_apply():
     if pins:
         items = sidebar_items(data)
         by_id = {i["id"]: i for i in items if isinstance(i, dict) and "id" in i}
-        fav_ids = {c["id"] for c, _ in top_containers(data)}
         for cont, who in top_containers(data):
             ref = pins.get(who)
             if not ref or cont.get("childrenIds"):
                 continue
             kept = []
+            allowed = own_containers(data, who)
             for url in pinned_urls(ref):
-                tab = find_tab(items, url, fav_ids)
+                tab = find_tab(items, url, allowed)
                 if tab is None:
                     missing.append((who, url))
                     continue
