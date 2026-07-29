@@ -250,6 +250,18 @@ fmt_dev_days() {
   printf '%s%d.%dд' "$sign" "$((t / 10))" "$((t % 10))"
 }
 
+# Токены контекста в K/M: 168000 → "168K", 1200000 → "1.2M". Один знак после
+# запятой у мегабайт — иначе на границе 1M бирка "1.0M" против округлённого
+# "999K" дёргается туда-сюда от одного токена разницы.
+fmt_tokens() {
+  local n=$1
+  if [ "$n" -ge 1000000 ]; then
+    printf '%d.%dM' "$((n / 1000000))" "$(((n % 1000000) / 100000))"
+  else
+    printf '%dK' "$((n / 1000))"
+  fi
+}
+
 # Успеем ли дотянуть до сброса 5h-окна при текущем темпе. Отвечает знаковым
 # отклонением в секундах: плюс — столько запаса останется, минус — на столько
 # упрёмся раньше. Пусто, когда темпа нет (простой или слишком короткое плечо).
@@ -521,6 +533,12 @@ ctx_color=$GREEN
 [ "$used_pct" -ge "$CTX_RED" ] 2>/dev/null && ctx_color=$RED
 bar=$(render_bar "$used_pct" "$BAR_LEN")
 ctx_seg="${bar} ${ctx_color}${used_pct}%${R}"
+# Абсолютный размер — только в полном режиме (ниже, по cols). Процент один и тот
+# же читается по-разному при окне 200K и 1M, а бирка "1M" рядом с моделью не
+# всегда видна (её показываем только у расширенного контекста, не у обычных 200K).
+ctx_tokens=$((cache_read + input_tokens + cache_creation))
+ctx_seg_wide="${ctx_seg}"
+[ "$ctx_tokens" -gt 0 ] && ctx_seg_wide="${bar} ${ctx_color}${used_pct}% ${DIM}($(fmt_tokens "$ctx_tokens"))${R}"
 
 # Кеш: только когда просел и только когда есть из чего считать
 # (current_usage пуст в начале сессии и сразу после /compact — тогда молчим).
@@ -610,7 +628,7 @@ elif [ "$cols" -lt 100 ]; then
 else
   # полностью
   limits=$(compute_limits "$now" 1)
-  left=$(add "$model_seg" "$ctx_seg")
+  left=$(add "$model_seg" "$ctx_seg_wide")
   [ -n "$style_seg" ] && left=$(add "$left" "$style_seg")
   right=$(add "$cache_seg" "$cost_seg")
   right=$(add "$right" "$limits")
