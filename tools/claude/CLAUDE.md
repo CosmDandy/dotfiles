@@ -2,41 +2,52 @@
 
 ## Execution mode (read first)
 
-- INTERACTIVE (main session, human present): mentor mode below applies, and it
-  outranks the default pull toward delivering without checking in. Rules marked
-  (INTERACTIVE) apply as written.
+This file is how I want the work done, in every mode. Teaching me is a separate,
+switchable layer: the `Mentor` output style (`/output-style Mentor`). Once work
+has started, carry it through instead of checking in at every step.
+
+- INTERACTIVE (main session, human present): rules marked (INTERACTIVE) apply as
+  written.
 - DELEGATED (subagent, background job, headless -p, scheduled run): I am not
   watching and cannot answer mid-task, so a question blocks the work. Proceed on
   reasonable assumptions and state them. Don't end a turn on a plan or a promise
-  — finish it with tool calls. Mentor mode is void here.
-- Hard limits (permissions deny/ask + PreToolUse guard) apply in both modes.
+  — finish it with tool calls.
 
-## Mentor mode (INTERACTIVE only)
+**Starting implementation is my call (INTERACTIVE).** Most of what I say is thinking
+out loud — working through a problem, weighing an approach, saying what "should" be
+done. None of that starts implementation. I ask questions until it adds up to a
+decision, and announcing that decision is mine: «сделай», «приступай», «внедряй», «го».
 
-I am here to learn, not only to receive output. So by default — on non-trivial,
-irreversible, architectural, or new-to-me work — explain your approach and its
-tradeoffs before acting, ask me one guiding question, offer 2-3 options with
-their costs, and let me make the call. Give the reason behind a recommendation,
-not just the verdict. Treat this as a deliberate override: with me, checking in
-beats delivering unattended, even when the work would be safe to just do.
+The gate is on changing things, not on effort. Investigation is unrestricted: read
+anything, run diagnostics, write throwaway scripts, spawn as many subagents as the
+question deserves, keep digging until the answer is solid. None of that needs my
+word and none of it needs to be kept small — I'll stop you if it's too much. What
+waits is work that alters something: editing files, mutating commands, refactors,
+migrations, anything outward-facing.
 
-Fast path: urgent, routine, purely mechanical, or explicitly delegated — just do
-it and show the result.
-
-Per-task overrides: "быстро" / "сделай молча" / "just do it" → fast path.
-"научи" / "разбери" / "объясни" → mentor, even on routine work.
+Don't ask "shall I start?" either — that just makes me repeat myself. Stay in the
+conversation; I'll say when.
 
 ## Communication
 
-- Show results, not process. After a batch of work: a brief summary.
-- Keep responses, caveats and disclaimers short. No emoji unless I use them first.
-- Reference code as `file_path:line_number`.
+- After a batch of work: a brief summary of what changed — not a narration of how.
+- When I ask several things at once, mirror my structure: a heading per question of
+  mine, the answer under it, in my order. One question — just answer it, no headings.
+- When you point at code I haven't already seen this session, paste the relevant
+  lines with their numbers, not just `file:line`. The path alone makes me open the
+  file to learn what you already know. Long enough to judge, short enough to read.
 
 ## Code
 
-- Don't add features, refactor adjacent code, or introduce abstractions beyond
-  what the task needs; don't handle scenarios that can't happen.
-- Don't produce docs, READMEs, or docstrings I didn't ask for.
+- Don't add features, refactor adjacent code, or introduce abstractions beyond what
+  the task needs. A bug fix doesn't need surrounding cleanup; a one-shot operation
+  doesn't need a helper. Do the simplest thing that works — don't design for
+  hypothetical future requirements.
+- No error handling, fallbacks or validation for scenarios that can't happen. Trust
+  internal code and framework guarantees; validate at system boundaries only — user
+  input, external APIs.
+- No feature flags or backwards-compatibility shims when you can just change the code.
+- Don't produce docstrings I didn't ask for.
 - The PostToolUse hook lints what you edit — when it reports a problem, fix it
   and carry on.
 
@@ -44,25 +55,47 @@ Per-task overrides: "быстро" / "сделай молча" / "just do it" �
 
 - Run commands yourself, diagnostics included — ssh, logs, status checks,
   network tests. Don't hand them back to me.
-- Reach for the tool rather than reasoning about what it would say: ssh via my
-  ~/.ssh/config aliases; gh for GitHub, glab for GitLab (never raw curl or API
-  calls, and prefer them over MCP); jq/yq for JSON/YAML; rg/fd for search;
-  kubectl/helm/terraform/nomad for infra inspection.
-- If a command fails — read the error, adjust, retry.
-- Every command is on a 45s clock (`BASH_DEFAULT_TIMEOUT_MS`). At 45s it is NOT
-  killed — it moves to the background with an ID, and checking on it is then your
-  job: poll it, report what it did, never leave it dangling.
-- When you already know the work exceeds 45s (nix build, darwin-rebuild, docker
-  build, terraform apply, a full test suite, a big clone) start it with
-  `run_in_background` instead of burning 45s in the foreground first. Raise
-  `timeout` above 45s only when you need the whole output inline and know it fits.
+- Reach for the tool rather than reasoning about what it would say: gh for GitHub,
+  glab for GitLab (never raw curl or API calls, and prefer them over MCP); jq/yq
+  for JSON/YAML; rg/fd for search; kubectl/helm/terraform/nomad for infra
+  inspection.
+- ssh hosts come from my ~/.ssh/config, and a machine often has two aliases: one
+  over the work VPN (`*.infra.hamster`) and one direct (`-origin`, plain IP). When
+  a hostname won't resolve, that's the VPN being down — try the `-origin` variant.
+  Read the config with `ssh -G <alias>`; never invent a hostname or an IP.
+- Every command is on a 45s clock (`BASH_DEFAULT_TIMEOUT_MS`). At 45s it is NOT killed
+  — it moves to the background with an ID, and following it up becomes your job. When
+  you already know the work is longer (nix build, darwin-rebuild, terraform apply, a
+  full test suite, a big clone), start it with `run_in_background` rather than burning
+  45s first; raise `timeout` only when you need the whole output inline and it fits.
+- A command still alive at 45s is a signal, not a wait. Go and look: what has it printed,
+  is the process still doing anything, is it stuck on a prompt it can never get. Report
+  what you found and keep moving. I should never be the one who notices something hung.
 - Never poll by hand in a loop of tool calls — every "is it done yet" re-sends the
-  entire context and usually learns nothing. One signal (a port opens, a build
-  finishes) → `run_in_background` with an `until` condition that exits by itself.
-  A stream of events (errors in a log, CI steps landing) → the Monitor tool. Both
-  come to you; waiting is not something you should pay turns for.
-- For a multi-section report or review meant to be read — build an Artifact
-  instead of a wall of terminal markdown.
+  entire context and learns nothing. One signal (a port opens, a build finishes) →
+  `run_in_background` with a self-exiting `until`. A stream of events (errors in a
+  log, CI steps landing) → the Monitor tool. Both come to you.
+- Artifact only for what outlives this session: research worth returning to, a
+  reference, a document that gets updated over days. Whatever we are actively
+  rewriting right now goes in the chat — an artifact about work in progress is stale
+  within the hour and costs tokens on every update. Test: will I open this tomorrow?
+
+## Shell
+
+Each of these cost real turns; they are the mistakes I actually repeat.
+
+- Never put control characters (tab, `\x1f`, ANSI escapes) literally into a command —
+  the approval dialog would hide them, so the call is rejected outright. Build them
+  with `printf` into a variable and pass the variable.
+- macOS is BSD userland under zsh: no GNU `timeout`, `sed -i` needs a suffix, `cut`
+  breaks on multibyte UTF-8, and a glob matching nothing is a hard error rather than
+  an empty list. Check before reaching for a GNU-ism.
+- Quoting nested inside `python -c` or `perl -e` is where this breaks most often —
+  use a heredoc or a temp file instead of nesting quotes.
+- `cd` does not survive between Bash calls ("Shell cwd was reset") — use absolute
+  paths rather than relying on an earlier cd.
+- A pipe reports only the last command's exit status. When the result matters,
+  `set -o pipefail` or check `${PIPESTATUS[@]}`.
 
 ## Infrastructure
 
@@ -76,56 +109,91 @@ Per-task overrides: "быстро" / "сделай молча" / "just do it" �
 ## Ops domains (work without files: ssh, network, bare metal, VMs)
 
 - Load the matching skill — `ops-remote`, `ops-net`, `ops-metal`, `ops-vm` — before the
-  second command in that domain. Do it yourself; don't wait to be told.
+  second command in that domain. Do it yourself; don't wait to be told. The rules of
+  each domain live in its skill: detaching long remote work, rollback timers before
+  touching the path you arrived on, a console before anything that can stop a boot.
 - All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`. Never interactive, never a command
-  that can prompt.
-- Anything over ~45s on a remote host (upgrade, dd, firmware) runs detached under
-  `tmux new -d` or `systemd-run --unit`, then gets polled. Never in the foreground.
-  The 45s clock backgrounds the local ssh client, which is NOT the same as detaching
-  the remote job: it stays tied to that channel, so a dropped link or a stopped task
-  SIGHUPs it mid-write. Detach on the remote side, then poll over fresh connections.
-- Before changing link/addr/route/firewall/sshd on a host you reached over that same path:
-  capture state to a file and arm a rollback timer first.
-- Never overwrite a remote config without `cp -a f f.bak-$(date +%s)`.
-- BMC: no power, boot-order or BIOS change until you have SEEN live console output.
+  that can prompt. This one is here rather than in the skill because it has to hold on
+  the first command, before "second command in this domain" has even happened.
 
-## Workflow (INTERACTIVE)
+## Finishing work
 
-- Work in blocks of 2-3 related changes, then show what changed and stop.
-- If a code change doesn't work within 2 attempts, stop and ask. Diagnostics are
-  the exception: with logs, status, ssh, network — keep digging.
-- For documents and prose: ask about audience and focus before writing.
+- Before reporting work as done, run the check that already exists — build, test,
+  lint, `--check`, `--dry-run` — and name which one you ran. If no such check
+  exists, say the work is unverified instead of implying it passed. This is about
+  running something that can fail, not about re-reading your own reasoning.
+- Stop on exhausted information, not on a fixed count of attempts: when tries keep
+  failing the same way and you have no new hypothesis, say what you ruled out and
+  ask. While each attempt narrows the problem, keep going. Diagnostics are the wide
+  exception — with logs, status, ssh, network, keep digging regardless.
 - 5+ files, or a plan with 5+ steps — start in plan mode, get the list approved.
-- In DELEGATED mode: no stopping — finish end to end and report once.
+  (INTERACTIVE)
 
-## Long / multi-session runs (DELEGATED)
+## Long runs and PROGRESS.md
 
-For work spanning sessions (migrations, refactors, multi-day features):
+For work spanning sessions (migrations, refactors, multi-day features) AND for
+any single session long enough to reach a compact:
 - Start by reading PROGRESS.md at the repo root — the handoff from the previous
   session. On the first run there is none yet, so create it with these sections:
   ## Done / ## In progress / ## Next / ## Notes.
 - Work one item from ## Next at a time.
+- Write findings down as you reach them, not at the end. A compact replaces the
+  conversation with a ~30x summary: whatever isn't on disk is gone, not
+  "remembered worse". The file costs a few hundred tokens; re-deriving a lost
+  finding costs thousands.
+- What earns a line: a decision and why; an approach that failed, with the symptom
+  it actually produced; the exact command that worked; a non-obvious fact about this
+  system. The small findings from testing are the most valuable and the first to be
+  lost — what we tried, what it did instead, what finally made it work. Not a
+  narration of what you did — git already has that.
 - Before ending the turn, update PROGRESS.md so the next session can continue.
+
+## Compact Instructions
+
+When compacting, always preserve:
+- the task and what "done" looks like, in my words, not your paraphrase;
+- files touched so far and what changed in each;
+- exact invocations that worked — build, test, deploy, ssh;
+- decisions already settled and approaches already rejected, so they don't get
+  retried from scratch;
+- what was still open and what the next step was.
+
+Drop freely: file contents, tool output, search results, superseded reasoning.
+If something important lives only in the conversation, write it to PROGRESS.md
+BEFORE compacting, not after.
 
 ## Git
 
-- Free to use: status, diff, log, blame, add, commit, amend.
-- Never push and never open a PR/MR unless I ask for it, or it's part of a full
-  cycle I requested.
-- Commit only when asked. Conventional commits. Show status after.
+- Free to use: status, diff, log, blame, add, amend.
+- Push and PR/MR only when I ask, or as part of a full cycle I requested.
+  Conventional commits. Show status after.
 - Stage by explicit path — never `git add -A` or `git add .`. This repo has
   submodules I don't want swept in.
-- Check which branch you're on before committing.
+- With an explicit pathspec, run `git status --short` first and confirm the path is
+  really in the list — a pathspec that matches nothing is the most frequent git slip.
 
 ## Agents
 
-- Do the work yourself by default. Delegate only for genuinely large,
-  independent tracks — a broad multi-file search or review whose file dumps I
-  don't need in the conversation — or when I ask for it.
-- When you do fan out, spawn them in one message rather than serially.
+- Reconnaissance goes to a subagent by default, not as an exception: broad search,
+  unfamiliar code, "where does X live", log trawls, reading other repos, surveying a
+  dependency. Bring back the finding and `file:line` pointers — never the grep dumps
+  and file contents that produced them.
+- Brief a subagent as precisely as an implementation task: what to look for, where,
+  and what shape the answer should take. A vague "investigate X" is the documented way
+  to get a confident answer to the wrong question.
+- Don't delegate what you could just open. One named file, one grep, one known path —
+  read it yourself; a subagent costs a whole context setup and a round trip.
+- Do implementation and debugging yourself. They run on the task's own context, which
+  a subagent cannot see and will replace with something plausible.
+- A subagent's report is not evidence — spot-check any claim that drives a decision.
+  A reviewer subagent especially will find something even when the work is sound, because
+  that is what it was asked to do; weigh findings by their effect on correctness.
+- Before reading a large body of data, ask whether a script can shrink it first. Count,
+  filter and aggregate with python or rg, then read only what survives. That is the
+  difference between megabytes of transcripts and a few thousand tokens.
 
 ## These rules are working if
 
 - Diffs contain nothing I didn't ask for.
-- Clarifying questions come before implementation, not after.
+- Work called done names the check that proved it.
 - Delegated runs finish without stopping to ask.
