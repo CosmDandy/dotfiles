@@ -1,8 +1,10 @@
-[
-  {
-    "context": "Chat",
-    "bindings": {
-      "escape": null
+{
+  "bindings": [
+    {
+      "context": "Chat",
+      "bindings": {
+        "escape": null
+      }
     }
-  }
-]
+  ]
+}
