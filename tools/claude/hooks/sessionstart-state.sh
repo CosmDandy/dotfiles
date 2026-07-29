@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # SessionStart: surface state that is easy to lose track of between sessions.
 #
-# Two things only, both earned by real incidents:
+# Three things only, all earned by real incidents:
 #   1. uncommitted work inside the tools/claude/custom submodule — it lives in a
 #      separate repo, so `git status` in the superproject shows only ` m <path>`
 #      and the actual changes are invisible until you look inside.
 #   2. a PROGRESS.md handoff in the working directory — the long-run convention
 #      only works if the next session actually reads it.
+#   3. knowledge left unharvested — /knowledge only runs when someone remembers
+#      to call it, and nobody does. Reported as one line about how long it has
+#      been, NOT as a list of unharvested sessions: at ~8 substantial sessions a
+#      day that list is permanently non-empty and stops being read.
 # Silent when there is nothing to report.
 set -uo pipefail
 
@@ -27,6 +31,26 @@ if [[ -f PROGRESS.md ]]; then
   if [[ -n "$next" ]]; then
     out+="PROGRESS.md handoff — ## Next:"$'\n'
     out+="$(printf '%s\n' "$next" | sed 's/^/  /')"$'\n'
+  fi
+fi
+
+marker="${HOME}/.claude/.knowledge-last-harvest"
+proj="${HOME}/.claude/projects"
+if [[ -d "$proj" ]]; then
+  # maxdepth 2: deeper paths are subagent transcripts, not sessions of mine.
+  # 500k is the rough floor for "something actually happened in here".
+  if [[ -f "$marker" ]]; then
+    mtime="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+    days=$(( ( $(date +%s) - mtime ) / 86400 ))
+    since="$(find "$proj" -maxdepth 2 -name '*.jsonl' -size +500k -newer "$marker" 2>/dev/null | grep -c .)"
+    ago="${days}d ago"
+  else
+    days=99
+    since="$(find "$proj" -maxdepth 2 -name '*.jsonl' -size +500k -mtime -14 2>/dev/null | grep -c .)"
+    ago="never"
+  fi
+  if [[ "$days" -ge 2 && "$since" -ge 3 ]]; then
+    out+="Last /knowledge harvest: ${ago}; ${since} substantial sessions since then. If this session turns up something worth keeping, offer it — the owner writes the note, you only outline."$'\n'
   fi
 fi
 

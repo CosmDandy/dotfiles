@@ -329,10 +329,25 @@
     "sonnet"
   ],
   "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/precompact-snapshot.sh"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",
         "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/stop-progress.sh"
+          },
           {
             "type": "command",
             "command": "printf '\\a'"
@@ -377,6 +392,11 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/progress.sh maybe-start",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
             "async": true
           }
         ]
