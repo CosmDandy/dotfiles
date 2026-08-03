@@ -338,6 +338,11 @@
           "label": "Toggle Built-in Display",
           "type": "url",
           "value": "raycast://script-commands/toggle-builtin-display"
+        },
+        {
+          "key": "h",
+          "type": "command",
+          "value": "/Users/cosmdandy/.dotfiles/automation/spokenly/redictate.sh"
         }
       ],
       "iconPath": "lasso.badge.sparkles",
