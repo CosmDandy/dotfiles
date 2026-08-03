@@ -377,7 +377,7 @@ EOF
 #   7d — всегда: это бюджет, и недобор — такой же сигнал, как перерасход
 compute_limits() {
   local now=$1 want_eta=$2 want_week=${3:-1}
-  local five_pct dev trend color elapsed week_dev five_seg="" week_seg="" segs=""
+  local five_pct dev trend color elapsed week_dev five_seg="" week_seg="" segs="" eta
 
   if [ -n "$five_pct100" ]; then
     # функция возвращает актуальные (общие для всех сессий) процент и время сброса
@@ -411,13 +411,18 @@ EOF2
         [ -n "$five_reset" ] && five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
         five_seg="${five_seg}${R}"
       else
-        # Порядок: процент, отклонение, справа — время сброса. При запасе больше
-        # DEV_SHOW_SEC решать нечего, тогда остаётся только время.
+        # Порядок: процент, отклонение, справа — время в скобках. Пока темпа
+        # решать нечего (запас больше DEV_SHOW_SEC), там голый reset. Как
+        # только отклонение выводится, в скобках уже не reset, а момент, когда
+        # при этом темпе упрёмся в 0%: reset+dev, ведь dev = время-до-исчерпания
+        # минус время-до-сброса — прибавка тем и возвращает первое слагаемое.
         five_seg="${color}${G_FIVEH} ${five_pct}%"
+        eta=$five_reset
         if [ -n "$dev" ] && [ "$dev" -lt "$DEV_SHOW_SEC" ] && [ "$want_eta" -eq 1 ]; then
           five_seg="${five_seg} $(fmt_dev "$dev")"
+          [ -n "$five_reset" ] && eta=$(( five_reset + dev ))
         fi
-        [ -n "$five_reset" ] && five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
+        [ -n "$eta" ] && five_seg="${five_seg} ($(fmt_clock "$eta"))"
         five_seg="${five_seg}${R}"
       fi
     fi
