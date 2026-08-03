@@ -11,9 +11,12 @@
 # Documentation:
 # @raycast.author CosmDandy
 
-killall WakaTime
-pkill -f "Microsoft Teams"
-killall Calendar
-killall Mail
-killall Obsidian
-killall Claude
+# Закрывается только рабочее. Telegram, Things, Timing, Ghostty и Arc остаются
+# открытыми намеренно — они нужны и вне работы.
+# `|| true` обязателен: killall на незапущенном процессе возвращает 1, и Raycast
+# показывал ошибку выполнения, хотя профиль отрабатывал как надо.
+pkill -f "Microsoft Teams" || true
+killall Calendar || true
+killall Mail || true
+killall Obsidian || true
+killall Claude || true

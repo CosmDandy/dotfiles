@@ -36,7 +36,6 @@ COMMON_EXTENSIONS=(
   ms-python.black-formatter
   ms-python.mypy-type-checker
   ms-python.isort
-  trinhanhngoc.vscode-odoo
   eamodio.gitlens
   wakatime.vscode-wakatime
   pkief.material-icon-theme

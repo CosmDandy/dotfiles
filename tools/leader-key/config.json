@@ -29,33 +29,6 @@
           "value": "/Applications/Ghostty.app"
         },
         {
-          "actions": [
-            {
-              "key": "c",
-              "type": "application",
-              "value": "/Applications/Cursor.app"
-            },
-            {
-              "iconPath": "/Applications/Cursor.app",
-              "key": "r",
-              "label": "Recent Projects",
-              "type": "url",
-              "value": "raycast://extensions/degouville/cursor-recent-projects/index"
-            },
-            {
-              "iconPath": "/Applications/Cursor.app",
-              "key": "n",
-              "label": "New Window",
-              "type": "url",
-              "value": "raycast://extensions/degouville/cursor-recent-projects/open-new-window"
-            }
-          ],
-          "iconPath": "/Applications/Cursor.app",
-          "key": "c",
-          "label": "Cursor",
-          "type": "group"
-        },
-        {
           "key": "v",
           "type": "application",
           "value": "/Applications/Visual Studio Code.app"
@@ -71,24 +44,9 @@
           "value": "/Applications/OrbStack.app"
         },
         {
-          "key": "t",
-          "type": "application",
-          "value": "/Applications/Transmit.app"
-        },
-        {
-          "key": "n",
-          "type": "application",
-          "value": "/Applications/Network Radar.app"
-        },
-        {
           "key": "u",
           "type": "application",
           "value": "/Applications/UTM.app"
-        },
-        {
-          "key": "k",
-          "type": "application",
-          "value": "/Applications/Kaleidoscope.app"
         }
       ],
       "iconPath": "apple.terminal",
@@ -102,11 +60,6 @@
           "key": "o",
           "type": "application",
           "value": "/Applications/Obsidian.app"
-        },
-        {
-          "key": "t",
-          "type": "application",
-          "value": "/Applications/Texifier.app"
         },
         {
           "iconPath": "pencil.line",
@@ -160,11 +113,6 @@
     },
     {
       "actions": [
-        {
-          "key": "g",
-          "type": "application",
-          "value": "/Applications/ChatGPT.app"
-        },
         {
           "key": "c",
           "type": "application",
@@ -295,6 +243,49 @@
               "value": "/Applications/OpenVPN Connect/OpenVPN Connect.app"
             },
             {
+              "iconPath": "/Applications/Happ.app",
+              "key": "t",
+              "label": "Toggle Happ",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/toggle-vpn"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "s",
+              "label": "Select Server",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/select-server"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "p",
+              "label": "Copy Proxy URL",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/copy-proxy-url"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "l",
+              "label": "Open Log",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/open-log"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "o",
+              "label": "Open Happ",
+              "type": "application",
+              "value": "/Applications/Happ.app"
+            }
+          ],
+          "iconPath": "network",
+          "key": "v",
+          "label": "Vpn",
+          "type": "group"
+        },
+        {
+          "actions": [
+            {
               "iconPath": "/Applications/Tailscale.app",
               "key": "t",
               "label": "Toggle",
@@ -335,28 +326,17 @@
               "label": "Netcheck",
               "type": "url",
               "value": "raycast://extensions/tailscale/tailscale/netcheck"
-            },
-            {
-              "key": "s",
-              "label": "Sing Box",
-              "type": "application",
-              "value": "/Applications/SFM.app"
             }
           ],
-          "iconPath": "network",
-          "key": "v",
-          "label": "Vpn",
+          "iconPath": "/Applications/Tailscale.app",
+          "key": "m",
+          "label": "Mesh",
           "type": "group"
         },
         {
           "key": "o",
           "type": "application",
           "value": "/Applications/OnyX.app"
-        },
-        {
-          "key": "i",
-          "type": "application",
-          "value": "/Applications/iStatistica Pro.app"
         },
         {
           "key": "p",
@@ -371,9 +351,16 @@
           "value": "raycast://extensions/raycast/raycast/toggle-bounce-animation"
         },
         {
-          "key": "m",
-          "type": "application",
-          "value": "/System/Applications/iPhone Mirroring.app"
+          "iconPath": "/Applications/BetterDisplay.app",
+          "key": "d",
+          "label": "Toggle Built-in Display",
+          "type": "url",
+          "value": "raycast://script-commands/toggle-builtin-display"
+        },
+        {
+          "key": "h",
+          "type": "command",
+          "value": "/Users/cosmdandy/.dotfiles/automation/spokenly/redictate.sh"
         }
       ],
       "iconPath": "lasso.badge.sparkles",
@@ -383,13 +370,6 @@
     },
     {
       "actions": [
-        {
-          "iconPath": "homekit",
-          "key": "h",
-          "label": "Homepage",
-          "type": "url",
-          "value": "https://homepage.cosmdandy.dev"
-        },
         {
           "key": "g",
           "label": "GitHub",
@@ -431,22 +411,22 @@
           "iconPath": "microphone",
           "key": "s",
           "label": "Sound",
-          "type": "url",
-          "value": "com.apple.Sound-Settings.extension"
+          "type": "command",
+          "value": "/usr/bin/open x-apple.systempreferences:com.apple.Sound-Settings.extension"
         },
         {
           "iconPath": "lock",
           "key": "p",
           "label": "Privacy",
-          "type": "url",
-          "value": "com.apple.settings.PrivacySecurity.extension"
+          "type": "command",
+          "value": "/usr/bin/open x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"
         },
         {
           "iconPath": "keyboard",
           "key": "k",
           "label": "Keyboard",
-          "type": "url",
-          "value": "com.apple.Keyboard-Settings.extension"
+          "type": "command",
+          "value": "/usr/bin/open x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
         },
         {
           "iconPath": "trash",
@@ -534,25 +514,6 @@
           ],
           "key": "w",
           "label": "Work",
-          "type": "group"
-        },
-        {
-          "actions": [
-            {
-              "key": "e",
-              "label": "Enable",
-              "type": "url",
-              "value": "raycast://script-commands/enable-development-profile"
-            },
-            {
-              "key": "d",
-              "label": "Disable",
-              "type": "url",
-              "value": "raycast://script-commands/disable-development-profile"
-            }
-          ],
-          "key": "d",
-          "label": "Development",
           "type": "group"
         }
       ],

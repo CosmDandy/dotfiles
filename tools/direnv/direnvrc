@@ -1,0 +1,23 @@
+# nix-direnv: кэширует nix-окружения (use flake / use nix), делает вход в каталог мгновенным.
+# Два пути: nix-darwin кладёт в /run/current-system (мак), home-manager —
+# в ~/.nix-profile (контейнер). Без второго в контейнере молча работал бы
+# некэширующий use flake.
+for _nd in /run/current-system/sw/share/nix-direnv/direnvrc \
+           "$HOME/.nix-profile/share/nix-direnv/direnvrc"; do
+  [[ -f $_nd ]] && { source "$_nd"; break; }
+done
+unset _nd
+
+# Проектных функций (use_sops, use_cluster и подобных) здесь СОЗНАТЕЛЬНО нет.
+#
+# Этот файл есть только на моих машинах, а `.envrc` уезжают в git вместе с
+# репозиторием. Функция, объявленная тут, у всех остальных превращается в
+# `command not found`: direnv обрывает .envrc и не экспортирует НИЧЕГО, причём
+# terraform после этого не падает, а спокойно идёт без TF_VAR_* — тихий отказ
+# вместо честной ошибки. Держать её тут вдобавок опасно тем, что маскирует
+# поломку: у автора всё работает, у команды нет.
+#
+# Место таких функций — корневой `.envrc` самого репозитория, а дочерние
+# подключают их первой строкой `source_up`. Образец — `use_sops` в
+# kvt-local-lab-main. Пользоваться при этом только штатной stdlib direnv
+# (has, log_error, direnv_load, watch_file), чтобы зависимостей не осталось.

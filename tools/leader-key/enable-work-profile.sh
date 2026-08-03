@@ -11,9 +11,12 @@
 # Documentation:
 # @raycast.author CosmDandy
 
-open /System/Volumes/Data/Applications/WakaTime.app
+# /System/Volumes/Data/Applications — тот же каталог, что /Applications
+# (firmlink), поэтому пути приведены к короткой форме.
+# WakaTime убран: приложение не ставится ни каской, ни вручную, open на нём
+# только возвращал ошибку.
 open /Applications/Telegram.app
-open /System/Volumes/Data/Applications/Microsoft\ Teams.app
+open /Applications/Microsoft\ Teams.app
 open /System/Applications/Mail.app
 open /System/Applications/Calendar.app
 open /Applications/Things3.app
