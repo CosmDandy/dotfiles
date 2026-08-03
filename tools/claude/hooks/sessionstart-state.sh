@@ -5,8 +5,9 @@
 #   1. uncommitted work inside the tools/claude/custom submodule — it lives in a
 #      separate repo, so `git status` in the superproject shows only ` m <path>`
 #      and the actual changes are invisible until you look inside.
-#   2. a PROGRESS.md handoff in the working directory — the long-run convention
-#      only works if the next session actually reads it.
+#   2. a PROGRESS.md handoff in the repo root, plus any PROGRESS/TODO fragments
+#      other sessions left behind — the per-session convention only works if the
+#      next session actually reads what the previous one wrote.
 #   3. knowledge left unharvested — /knowledge only runs when someone remembers
 #      to call it, and nobody does. Reported as one line about how long it has
 #      been, NOT as a list of unharvested sessions: at ~8 substantial sessions a
@@ -14,7 +15,15 @@
 # Silent when there is nothing to report.
 set -uo pipefail
 
+input="$(cat)"
+sid="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)"
+sid8="${sid:0:8}"
+
 out=""
+
+if [[ -n "$sid8" ]]; then
+  out+="Session id: ${sid8}. Per-session files go under this id: running handoff notes to PROGRESS.${sid8}.md (not PROGRESS.md directly), the session's task list to TODO.${sid8}.md."$'\n'
+fi
 
 sub="${HOME}/.dotfiles/tools/claude/custom"
 if [[ -d "$sub/.git" || -f "$sub/.git" ]]; then
@@ -26,12 +35,25 @@ if [[ -d "$sub/.git" || -f "$sub/.git" ]]; then
   fi
 fi
 
-if [[ -f PROGRESS.md ]]; then
-  next="$(awk '/^## Next/{f=1;next} /^## /{f=0} f' PROGRESS.md | grep -v '^[[:space:]]*$' | head -8)"
+# Ищем от КОРНЯ репозитория, а не от cwd: stop-progress.sh и precompact-snapshot.sh
+# работают от корня, и если claude запущен из подкаталога, пути разъезжаются —
+# фрагмент пишется в подкаталог, Stop его там не находит и напоминает зря.
+root="$(git rev-parse --show-toplevel 2>/dev/null)"
+[[ -n "$root" ]] || root="."
+
+if [[ -f "$root/PROGRESS.md" ]]; then
+  next="$(awk '/^## Next/{f=1;next} /^## /{f=0} f' "$root/PROGRESS.md" | grep -v '^[[:space:]]*$' | head -8)"
   if [[ -n "$next" ]]; then
     out+="PROGRESS.md handoff — ## Next:"$'\n'
     out+="$(printf '%s\n' "$next" | sed 's/^/  /')"$'\n'
   fi
+fi
+
+frags="$(find "$root" -maxdepth 1 \( -name 'PROGRESS.*.md' -o -name 'TODO.*.md' \) \
+  ! -name "PROGRESS.${sid8}.md" ! -name "TODO.${sid8}.md" 2>/dev/null | sort)"
+if [[ -n "$frags" ]]; then
+  out+="Other sessions' per-session files present — read them before touching the same work. A PROGRESS fragment folds into PROGRESS.md; a TODO fragment is that session's unfinished list. Delete either only once its session has clearly ended:"$'\n'
+  out+="$(printf '%s\n' "$frags" | sed 's/^/  /')"$'\n'
 fi
 
 marker="${HOME}/.claude/.knowledge-last-harvest"

@@ -7,20 +7,30 @@
 # просит записать находки заранее; оно advisory и срабатывает не всегда — этот
 # хук даёт хотя бы фактическую опору.
 #
-# PROGRESS.md лежит в глобальном gitignore, поэтому создать его здесь безопасно:
-# в коммит он не попадёт.
+# PROGRESS.md и PROGRESS.*.md лежат в глобальном gitignore, поэтому создать файл
+# здесь безопасно: в коммит он не попадёт.
 set -uo pipefail
 
 input="$(cat)"
 trigger="$(printf '%s' "$input" | jq -r '.trigger // "unknown"')"
 cwd="$(printf '%s' "$input" | jq -r '.cwd // empty')"
+sid="$(printf '%s' "$input" | jq -r '.session_id // empty')"
+sid8="${sid:0:8}"
 
 [[ -n "$cwd" ]] || exit 0
 cd "$cwd" 2>/dev/null || exit 0
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [[ -n "$root" ]] || exit 0
 
-f="$root/PROGRESS.md"
+# Снимок кладётся в фрагмент СВОЕЙ сессии, а не в общий PROGRESS.md: иначе он,
+# во-первых, разлучается с текстовыми заметками того же хода, а во-вторых, обновляет
+# mtime общего файла — и stop-progress.sh считает свежей чужую активность, переставая
+# напоминать сессии, которая весь день ничего не записала.
+if [[ -n "$sid8" ]]; then
+  f="$root/PROGRESS.${sid8}.md"
+else
+  f="$root/PROGRESS.md"
+fi
 branch="$(git branch --show-current 2>/dev/null)"
 dirty="$(git status --porcelain 2>/dev/null | head -25)"
 stamp="$(date '+%Y-%m-%d %H:%M')"

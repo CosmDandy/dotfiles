@@ -161,6 +161,45 @@ any single session long enough to reach a compact:
 - In DELEGATED mode it is the only channel out: nobody reads the chat summary and
   nobody can be asked. Anything that isn't in the file didn't happen.
 
+**More than one session can be open on this repo at once** (several terminals,
+several background agents). Two sessions editing PROGRESS.md at the same moment
+race — an Edit can silently land against content the other session already
+changed underneath it. SessionStart reports this session's own id (`sid8`, 8 hex
+chars); write running notes to `PROGRESS.<sid8>.md` instead of PROGRESS.md
+directly for as long as another session might also be active. SessionStart also
+lists any `PROGRESS.*.md` fragments left by other sessions — read them alongside
+PROGRESS.md. Once a fragment's session has clearly ended, fold it into
+PROGRESS.md's own sections and delete the fragment — normal cleanup, not
+something to ask permission for. `PROGRESS.*.md` is gitignored the same way
+PROGRESS.md is.
+
+## TODO.<sid8>.md — the session's plan
+
+Alongside the handoff, the plan: `TODO.<sid8>.md` at the repo root — same `sid8`
+SessionStart reported, same per-session split, gitignored the same way. PROGRESS
+answers "what did we learn"; this one answers "what is still open right now".
+
+Why a file when there is a built-in task tracker: the tracker lives in the
+context, so a compact leaves a paraphrase of it, and it drops closed items
+entirely. The file survives verbatim and keeps the finished ones with the time
+they were finished.
+
+- Start one as soon as the work is more than two steps. Below that it's noise.
+- One task per markdown checklist line: `- [ ] HH:MM что делаем`.
+- Never delete a finished task — flip it to `- [x]` and add the closing time:
+  `- [x] 10:20→11:05 что сделали`. An unchecked line at the end of the session is
+  exactly what the next session has to pick up.
+- Take the time from `date '+%H:%M'`, never from your head — you have no clock,
+  and an invented timestamp is worse than a missing one.
+- A day is an `## YYYY-MM-DD` heading; a session running past midnight opens the
+  next one.
+- Keep it in step with the work, not at the end of the turn: a task gets checked
+  off when it's actually done, and new ones get appended when they appear.
+- When the session ends, its outcome goes into PROGRESS.md together with the
+  fragment, and `TODO.<sid8>.md` is deleted alongside it. A TODO file left by a
+  session that has clearly ended is unfinished work, not a file to tidy away
+  silently — read it first.
+
 ## Compact Instructions
 
 When compacting, always preserve:

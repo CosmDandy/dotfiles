@@ -13,6 +13,7 @@ input="$(cat)"
 [[ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false')" == "true" ]] && exit 0
 
 sid="$(printf '%s' "$input" | jq -r '.session_id // "nosid"')"
+sid8="${sid:0:8}"
 mark="${TMPDIR:-/tmp}/claude-progress-nag-${sid}"
 [[ -f "$mark" ]] && exit 0
 
@@ -26,17 +27,25 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 changed="$(git status --porcelain 2>/dev/null | grep -c .)"
 [[ "${changed:-0}" -lt 3 ]] && exit 0
 
-# PROGRESS.md в gitignore, поэтому судим по mtime, а не по git.
-if [[ -f "$root/PROGRESS.md" ]]; then
-  now="$(date +%s)"
+# PROGRESS.md (и PROGRESS.<sid8>.md) в gitignore, поэтому судим по mtime, а не по git.
+# Фрагмент своей сессии считается наравне с общим файлом — при нескольких
+# параллельных агентах правки идут в PROGRESS.<sid8>.md, не в PROGRESS.md.
+frag="$root/PROGRESS.${sid8}.md"
+newest=0
+for f in "$root/PROGRESS.md" "$frag"; do
+  [[ -f "$f" ]] || continue
   # GNU-синтаксис ПЕРВЫМ: BSD не знает -c и падает молча, а GNU знает -f как
   # --file-system и на `-f %m` печатает в stdout блок про файловую систему —
   # мусор попадает в переменную и роняет арифметику ниже.
-  m="$(stat -c %Y "$root/PROGRESS.md" 2>/dev/null || stat -f %m "$root/PROGRESS.md" 2>/dev/null || echo 0)"
-  (( now - m < 3600 )) && exit 0
+  m="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)"
+  (( m > newest )) && newest=$m
+done
+if (( newest > 0 )); then
+  now="$(date +%s)"
+  (( now - newest < 3600 )) && exit 0
 fi
 
 touch "$mark"
-jq -nc --arg r "В репозитории ${changed} изменённых путей, а PROGRESS.md не обновлялся больше часа. Допиши туда решения, тупики и точные команды, которые сработали — после компакта это единственный источник. Потом заканчивай ход." \
+jq -nc --arg r "В репозитории ${changed} изменённых путей, а PROGRESS.md/PROGRESS.${sid8}.md не обновлялись больше часа. Допиши в PROGRESS.${sid8}.md (свой файл — не трогай чужие фрагменты и общий PROGRESS.md, если рядом могут работать другие агенты) решения, тупики и точные команды, которые сработали — после компакта это единственный источник. Потом заканчивай ход." \
   '{decision:"block",reason:$r}'
 exit 0
