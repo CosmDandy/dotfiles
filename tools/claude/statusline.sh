@@ -87,6 +87,7 @@ if [ "$glyphs" = nerd ]; then
   G_WEEK=$'\363\260\250\263'     # U+F0A33 md-calendar_week
   G_SESSIONS=$'\363\260\204\241'   # U+F0121 md-tab
   G_DEAD=$'\360\237\222\200'      # U+1F480 череп: окно выбрано до конца
+  G_ARROW=$'\342\237\266'         # U+27F6 ⟶ reset превращается в расчётное время
   CAP_L=''
   CAP_R=''
   # Иконки Nerd Font занимают ДВЕ колонки в вариантах шрифта без суффикса Mono
@@ -99,6 +100,7 @@ else
   G_WEEK='7d'
   G_SESSIONS='x'
   G_DEAD='!!'
+  G_ARROW='->'
   CAP_L=''
   CAP_R=''
   GLYPH_COLS=1
@@ -413,16 +415,24 @@ EOF2
       else
         # Порядок: процент, отклонение, справа — время в скобках. Пока темпа
         # решать нечего (запас больше DEV_SHOW_SEC), там голый reset. Как
-        # только отклонение выводится, в скобках уже не reset, а момент, когда
-        # при этом темпе упрёмся в 0%: reset+dev, ведь dev = время-до-исчерпания
-        # минус время-до-сброса — прибавка тем и возвращает первое слагаемое.
+        # только отклонение выводится, в скобки добавляется стрелкой момент,
+        # когда при этом темпе упрёмся в 0%: reset+dev, ведь dev =
+        # время-до-исчерпания минус время-до-сброса — прибавка тем и
+        # возвращает первое слагаемое. Оба времени рядом: реальный сброс — что
+        # будет по расписанию, стрелка — во что его превращает текущий темп.
         five_seg="${color}${G_FIVEH} ${five_pct}%"
-        eta=$five_reset
+        eta=""
         if [ -n "$dev" ] && [ "$dev" -lt "$DEV_SHOW_SEC" ] && [ "$want_eta" -eq 1 ]; then
           five_seg="${five_seg} $(fmt_dev "$dev")"
           [ -n "$five_reset" ] && eta=$(( five_reset + dev ))
         fi
-        [ -n "$eta" ] && five_seg="${five_seg} ($(fmt_clock "$eta"))"
+        if [ -n "$five_reset" ]; then
+          if [ -n "$eta" ]; then
+            five_seg="${five_seg} ($(fmt_clock "$five_reset") ${G_ARROW} $(fmt_clock "$eta"))"
+          else
+            five_seg="${five_seg} ($(fmt_clock "$five_reset"))"
+          fi
+        fi
         five_seg="${five_seg}${R}"
       fi
     fi
