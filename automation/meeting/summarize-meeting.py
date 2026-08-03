@@ -29,6 +29,15 @@ PROMPT = Path(__file__).parent / "prompt.md"
 TEMPLATE_ID = "tpl-work-call-ru"
 DOC_TITLE = "Рабочий созвон"
 
+# Метка в generation_metadata_json — по ней скрипт узнаёт свой документ. Нужна
+# потому, что anarlog по выбору шаблона в выпадающем списке не переключает вкладку,
+# а перегенерирует текущую локальной моделью — и создаёт свой template_output с тем
+# же template_id. Без метки скрипт затирал бы чужую запись. Фронт этой колонки не
+# читает, так что метка невидима в интерфейсе.
+MARKER = "summarize-meeting"
+MARKER_JSON = json.dumps({"source": MARKER})
+MINE = "json_extract(generation_metadata_json, '$.source') = ?"
+
 # Канал 0 — микрофон этой машины, там всегда её владелец: собеседники приходят
 # системным звуком в канал 1. Правило постоянное, поэтому имя берём отсюда, а не
 # из назначений спикеров — те могут быть не проставлены, и тогда в транскрипт
@@ -124,17 +133,20 @@ def build_transcript(con, session_id):
 
 def pending(con, only=None):
     """Сессии с транскриптом, у которых саммари нет или оно старше транскрипта."""
-    rows = con.execute("""
+    rows = con.execute(
+        f"""
         select s.id, s.title, t.updated_at,
                (select d.updated_at from session_documents d
-                 where d.session_id = s.id and d.kind = 'template_output'
+                 where d.session_id = s.id and {MINE} and d.deleted_at is null
                  order by d.updated_at desc limit 1)
         from sessions s
         join transcripts t on t.session_id = s.id
         where s.deleted_at is null
         group by s.id
         order by s.created_at desc
-    """).fetchall()
+    """,
+        (MARKER,),
+    ).fetchall()
     out = []
     for sid, title, t_upd, d_upd in rows:
         if only and not sid.startswith(only):
@@ -218,13 +230,13 @@ def write_summary(session_id, md):
     body = json.dumps(md_to_prosemirror(md), ensure_ascii=False)
     con = sqlite3.connect(DB)
     row = con.execute(
-        "select id from session_documents where session_id=? and kind='template_output' "
-        "order by updated_at desc limit 1",
-        (session_id,),
+        f"select id from session_documents where session_id=? and {MINE} "
+        "and deleted_at is null order by updated_at desc limit 1",
+        (session_id, MARKER),
     ).fetchone()
     if row:
         con.execute(
-            "update session_documents set body=?, title=?, template_id=?, "
+            "update session_documents set body=?, title=?, template_id=?, sort_order=0, "
             "updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') where id=?",
             (body, DOC_TITLE, TEMPLATE_ID, row[0]),
         )
@@ -234,7 +246,8 @@ def write_summary(session_id, md):
         ).fetchone()
         con.execute(
             "insert into session_documents (id, workspace_id, session_id, kind, template_id, "
-            "title, body_format, body, sort_order) values (?,?,?,?,?,?,?,?,1)",
+            "title, body_format, body, sort_order, generation_metadata_json) "
+            "values (?,?,?,?,?,?,?,?,0,?)",
             (
                 str(uuid.uuid4()),
                 ws[0] if ws else "",
@@ -244,8 +257,18 @@ def write_summary(session_id, md):
                 DOC_TITLE,
                 "prosemirror_json",
                 body,
+                MARKER_JSON,
             ),
         )
+    # Пустышки от anarlog: строку он заводит до обращения к модели и не убирает,
+    # если та не ответила, — иначе у сессии копятся вкладки без текста. Список
+    # вкладок строится без фильтра по содержимому, так что видно каждую.
+    con.execute(
+        "update session_documents set deleted_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+        "where session_id=? and kind in ('summary','template_output') "
+        "and trim(body) in ('', '{}') and deleted_at is null",
+        (session_id,),
+    )
     con.commit()
     con.close()
     return bool(row)
