@@ -138,7 +138,7 @@ Each of these cost real turns; they are the mistakes I actually repeat.
 - 5+ files, or a plan with 5+ steps — start in plan mode, get the list approved.
   (INTERACTIVE)
 - For a feature big enough that we'd otherwise discover the requirements mid-way,
-  `/spec` first: interview, write SPEC.md, then implement in a fresh session.
+  `/spec` first: interview, write `specs/<task>.md`, then implement in a fresh session.
 
 ## Long runs and PROGRESS.md
 
