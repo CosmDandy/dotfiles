@@ -3,7 +3,7 @@
 
 auto_sync = true
 update_check = true
-sync_address = "https://atuin.cosmdandy.ru"
+sync_address = "https://atuin.cosmdandy.dev"
 sync_frequency = "30m"
 
 search_mode = "fuzzy"
