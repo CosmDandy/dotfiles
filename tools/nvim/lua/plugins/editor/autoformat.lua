@@ -123,10 +123,15 @@ return {
       },
 
       -- YAML форматер для DevOps конфигураций
+      -- include_document_start=true      — сам ставит '---' в начале документа
+      -- retain_line_breaks_single=true   — сохраняет пустые строки между тасками
+      --                                    (двойные схлопывает в одну)
+      -- pad_line_comments=2              — 2 пробела перед inline-комментом,
+      --                                    чтобы не конфликтовать с yamllint (comments)
       yamlfmt = {
         prepend_args = {
           '-formatter',
-          'indent=2,include_document_start=false,drop_merge_tag=true',
+          'indent=2,include_document_start=true,retain_line_breaks_single=true,pad_line_comments=2,drop_merge_tag=true',
         },
       },
 
