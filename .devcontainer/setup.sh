@@ -8,6 +8,16 @@ set -e
 # маркера не имеют и проходят скрипт целиком.
 if [[ -f /etc/devcontainer-prebuilt ]]; then
   echo "prebuilt image ($(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo '?')) — system prep baked in, skipping"
+  # .zcompdump запечён в образ при сборке, поэтому его mtime — это время СБОРКИ
+  # образа, а не создания воркспейса. Гард в .zshrc (`(#qN.mh+24)`) считает дамп
+  # старше суток протухшим и уходит в полный compinit с compaudit — ~450 мс на
+  # первом старте КАЖДОГО нового воркспейса, при том что содержимое дампа
+  # валидно: пакеты те же, что при сборке. Освежаем только дату.
+  # Не `[[ … ]] && touch`: под `set -e` отсутствие файла дало бы код 1 на
+  # последней команде и уронило скрипт целиком.
+  if [[ -f "$HOME/.zcompdump" ]]; then
+    touch "$HOME/.zcompdump"
+  fi
   exit 0
 fi
 

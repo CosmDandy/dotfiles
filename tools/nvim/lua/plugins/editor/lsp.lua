@@ -199,10 +199,6 @@ return {
         'bash-language-server',
         'dockerfile-language-server',
         'docker-compose-language-service',
-        'terraform-ls',
-        'ansible-language-server',
-        'helm-ls',
-        'jsonnet-language-server',
         -- marksman — LSP для Markdown: переходы по ссылкам между документами и
         -- по заголовкам. В репозитории 24 .md, docs/ читается постоянно.
         'marksman',
@@ -220,13 +216,39 @@ return {
         'hadolint',
         'yamllint',
         'shellcheck',
-        'tflint',
-        'ansible-lint',
         -- Formatters
         'stylua',
         'yamlfmt',
         'shfmt',
       }
+
+      -- IaC-инструменты ставятся только там, где на них работают. Профиль
+      -- контейнера лежит в ~/.dotfiles-profile (пишется platform/linux/install.sh
+      -- и запекается в образ Dockerfile'ом). На маке файла нет — там ставится всё.
+      --
+      -- Замерено в образе :core — эти пять пакетов занимали 275 МБ из 988 МБ
+      -- каталога mason, в профиле, который объявлен как «редактор, шелл, git»:
+      --   ansible-lint 78, helm-ls 56, tflint 52, ansible-language-server 47,
+      --   terraform-ls 42.
+      -- jsonnet-language-server здесь же не случайно: mason собирает его через go,
+      -- а go есть только в devops-профиле — в core установка молча падала с
+      -- «Could not find executable go in PATH» (см. hooks.nix, installMasonTools).
+      local iac_tools = {
+        'terraform-ls',
+        'ansible-language-server',
+        'helm-ls',
+        'jsonnet-language-server',
+        'tflint',
+        'ansible-lint',
+      }
+      local profile_file = vim.fn.expand '~/.dotfiles-profile'
+      local profile = ''
+      if vim.fn.filereadable(profile_file) == 1 then
+        profile = vim.trim(vim.fn.readfile(profile_file)[1] or '')
+      end
+      if profile ~= 'core' then
+        vim.list_extend(ensure_installed, iac_tools)
+      end
 
       require('mason-tool-installer').setup {
         ensure_installed = ensure_installed,

@@ -123,9 +123,12 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   # отсутствующего TERM, но плагины к этому моменту уже склонированы
   && (zsh -i -c exit >/dev/null 2>&1 || true) \
   && rm -f "$HOME/dotfiles" \
-  # кэши сборки mason (npm ~71 МБ, go ~66 МБ) — мусор, сами пакеты уже в
-  # ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout
+  # кэши сборки mason (npm ~71 МБ, go ~66 МБ, pip ~121 МБ) — мусор, сами пакеты
+  # уже в ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout.
+  # pip кэширует колёса venv'ов (mypy, yamllint, ansible-lint, debugpy) и по
+  # объёму крупнее двух других вместе взятых.
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
+            "$HOME/.cache/pip" \
   && nix-collect-garbage -d \
   && echo core > "$HOME/.dotfiles-profile"
 
@@ -145,5 +148,6 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && (zsh -i -c exit >/dev/null 2>&1 || true) \
   && rm -f "$HOME/dotfiles" \
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
+            "$HOME/.cache/pip" \
   && nix-collect-garbage -d \
   && echo devops > "$HOME/.dotfiles-profile"

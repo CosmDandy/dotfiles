@@ -112,5 +112,21 @@ in
   # man в контейнере не читают, страницы никто не открывает.
   programs.man.enable = false;
 
+  # Тот же класс, что man-db выше: home-manager сам тянет glibcLocales и
+  # прописывает LOCALE_ARCHIVE в свой environment.d. Полный набор — это ВСЕ
+  # локали мира, 223 МБ в образе (замерено `du -sh /nix/store/*glibc-locales*`;
+  # цепочка `nix why-depends` идёт через hm_environment.d10homemanager.conf).
+  # Контейнер живёт в одной локали — её и объявляем: Dockerfile выставляет
+  # LANG/LC_ALL=en_US.UTF-8 и генерирует ровно её же через locale-gen.
+  # C.UTF-8 добавлена как fallback: на неё откатываются программы, когда
+  # запрошенная локаль недоступна, без неё они сыпали бы предупреждениями.
+  i18n.glibcLocales = pkgs.glibcLocales.override {
+    allLocales = false;
+    locales = [
+      "en_US.UTF-8/UTF-8"
+      "C.UTF-8/UTF-8"
+    ];
+  };
+
   home.stateVersion = "26.05";
 }
