@@ -27,13 +27,34 @@ gui:
 git:
   overrideGpg: True
   autoFetch: true
-  # Дифф через delta: номера строк слева, как в веб-интерфейсе GitLab.
+  # Дифф через delta. Номера строк ВЫКЛЮЧЕНЫ: на 13" экране, и особенно во
+  # float внутри nvim, колонки съедали ширину — две по 11 символов, одна по 5,
+  # а на четырёхзначных номерах ещё и сливались. Что осталось от delta:
+  # подсветка синтаксиса в изменённых строках, заливка +/- и кликабельные пути.
+  #
+  # Вернуть номера — дописать в строку ниже (во ВСЕ три файла, цвета в
+  # theme-*.yml тоже):
+  #   две колонки:  --line-numbers --line-numbers-left-format='{nm:>4} '
+  #                 --line-numbers-right-format='{np:>4}  '
+  #   одна колонка: --line-numbers --line-numbers-left-format=''
+  #                 --line-numbers-right-format='{np:>4} '
+  #   плюс цвета:   --line-numbers-left-style='#248d83'
+  #                 --line-numbers-right-style='#248d83'
+  #                 --line-numbers-minus-style='#dc322f'
+  #                 --line-numbers-plus-style='#859900'
+  #                 --line-numbers-zero-style='#657b83' (dark) / '#586e75' (light)
+  #
   # --paging=never обязателен — свой пейджер delta сломал бы прокрутку панели.
-  # Цвета, зависящие от фона, — в theme-{light,dark}.yml (см. обёртку lg
-  # в conf.d/lg.zsh). Полноэкранный side-by-side: добавить --side-by-side.
+  # --wrap-max-lines 0 — не переносить длинные строки, а обрезать по ширине,
+  # как делает обычный git. Дефолтный перенос дробил длинную строку на
+  # несколько с маркером ↵, и в узкой панели читалось хуже, чем обрезка.
+  # Вернуть перенос: убрать флаг (дефолт) или задать число строк, например
+  # --wrap-max-lines 2; символы настраиваются --wrap-left-symbol/--wrap-right-symbol.
+  # Цвета, зависящие от фона, — в theme-{light,dark}.yml (обёртка lg в conf.d/lg.zsh,
+  # внутри nvim — snacks-git.lua по vim.o.background).
   pagers:
     - colorArg: always
-      pager: "delta --paging=never --line-numbers --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --line-numbers-left-style='#248d83' --line-numbers-right-style='#248d83' --hunk-header-style=omit --line-numbers-left-format='{nm:>4} ' --line-numbers-right-format='{np:>4}  ' --line-numbers-minus-style='#dc322f' --line-numbers-plus-style='#859900' --hyperlinks"
+      pager: "delta --paging=never --wrap-max-lines 0 --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --hunk-header-style=omit --hyperlinks"
   mainBranches:
     # master оставлен: конфиг общий для всех репозиториев, а рабочие (kvt-*)
     # на GitLab по-прежнему живут на master/develop
