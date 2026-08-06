@@ -23,7 +23,7 @@ while read -r name state; do
   fi
 
   echo "$LOG_PREFIX Updating: $name ($workspace)"
-  docker exec -u vscode -e HOME=/home/vscode -e USER=vscode "$name" bash -c '
+  docker exec -u cosmdandy -e HOME=/home/cosmdandy -e USER=cosmdandy "$name" bash -c '
     . ~/.nix-profile/etc/profile.d/nix.sh
     cd ~/dotfiles
     git remote set-url origin https://github.com/CosmDandy/dotfiles.git

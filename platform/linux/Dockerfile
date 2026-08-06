@@ -22,8 +22,24 @@ ENV TZ=Europe/Moscow \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8
 
+# Пользователя приносит базовый образ Microsoft — он там vscode с uid 1000.
+# Именно ПЕРЕИМЕНОВАНИЕ, а не создание нового: на uid 1000 завязаны права
+# bind-mount'ов devpod, а новый пользователь получил бы 1001. Делается первым
+# делом в стадии, пока под ним никто не залогинен (usermod -m переносит
+# домашний каталог) и до любого USER.
+#
+# Правило sudo лежит отдельным файлом /etc/sudoers.d/vscode со строкой
+# `vscode ALL=(root) NOPASSWD:ALL` (его пишет фича common-utils), и usermod за
+# ним НЕ следует: без правки sudo у cosmdandy просто нет, а на него опирается
+# .devcontainer/setup.sh на голом образе. Проверено в контейнере: uid/gid
+# остаются 1000, `sudo -n id` после правки отвечает uid=0, visudo -c — OK.
+#
 # Системная часть — то же, что .devcontainer/setup.sh делает на голом образе
-RUN apt-get update \
+RUN usermod -l cosmdandy -d /home/cosmdandy -m vscode \
+  && groupmod -n cosmdandy vscode \
+  && sed -i 's/^vscode /cosmdandy /' /etc/sudoers.d/vscode \
+  && mv /etc/sudoers.d/vscode /etc/sudoers.d/cosmdandy \
+  && apt-get update \
   && apt-get install -y --no-install-recommends zsh python3-pip python3-venv locales \
   && rm -rf /var/lib/apt/lists/* \
   && echo 'en_US.UTF-8 UTF-8' > /etc/locale.gen \
@@ -31,16 +47,30 @@ RUN apt-get update \
   && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
   && ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime \
   && echo "$TZ" > /etc/timezone \
-  && chsh -s /usr/bin/zsh vscode \
-  && mkdir -m 0755 /nix && chown vscode:vscode /nix \
+  && chsh -s /usr/bin/zsh cosmdandy \
+  && mkdir -m 0755 /nix && chown cosmdandy:cosmdandy /nix \
   # маркер для .devcontainer/setup.sh: системная подготовка уже в образе,
   # повторять её при каждом создании воркспейса незачем
   && echo prebuilt > /etc/devcontainer-prebuilt
 
-USER vscode
-ENV USER=vscode \
-    HOME=/home/vscode
-WORKDIR /home/vscode
+USER cosmdandy
+ENV USER=cosmdandy \
+    HOME=/home/cosmdandy
+WORKDIR /home/cosmdandy
+
+# Лейбл devcontainer.metadata приезжает из базового образа со значением
+# […, {"remoteUser":"vscode"}], и devcontainers читает ЕГО, а не директиву USER
+# выше. В .devcontainer/devcontainer.json этого репозитория remoteUser задан
+# явно, но рабочие репозитории получают образ через --devcontainer-image
+# (private/zsh/work-stack.sh) и своего remoteUser не задают — проверено на
+# kvt-d-01: во всех восьми воркспейсах его нет. Для них единственный источник
+# правды — этот лейбл, иначе devpod up после переименования просит
+# несуществующего vscode.
+#
+# Значение перезаписывается целиком (LABEL не умеет дополнять): из него выпадают
+# id'шники фич common-utils и git. Это безразлично — ни один наш devcontainer.json
+# фичи не запрашивает, они и так запечены в базовый образ.
+LABEL devcontainer.metadata='[{"remoteUser":"cosmdandy"}]'
 
 # Nix single-user: версия запинена, скрипт сверяется с checksum (security.md);
 # --no-channel-add — канал не нужен (всё флейковое) и иначе запёк бы ~400MB
@@ -52,9 +82,9 @@ RUN curl -fsSL https://releases.nixos.org/nix/nix-2.33.1/install -o /tmp/nix-ins
   && mkdir -p "$HOME/.config/nix" \
   && echo "experimental-features = nix-command flakes" >> "$HOME/.config/nix/nix.conf"
 
-ENV PATH=/home/vscode/.nix-profile/bin:$PATH
+ENV PATH=/home/cosmdandy/.nix-profile/bin:$PATH
 
-COPY --chown=vscode:vscode platform/nix /opt/dotfiles/platform/nix
+COPY --chown=cosmdandy:cosmdandy platform/nix /opt/dotfiles/platform/nix
 
 # Конфиг nvim нужен хукам: home-manager линкует ~/.config/nvim ->
 # ~/dotfiles/tools/nvim (mkOutOfStoreSymlink), и без него симлинк висячий,
@@ -71,14 +101,14 @@ COPY --chown=vscode:vscode platform/nix /opt/dotfiles/platform/nix
 # пока core сносил каталог насовсем, devops оставался с висячим симлинком и
 # пропускал mason — из-за чего jsonnet-language-server (ему нужен go, а он
 # только в devops-профиле) не попадал в образ вообще никогда.
-COPY --chown=vscode:vscode tools/nvim /opt/dotfiles/tools/nvim
+COPY --chown=cosmdandy:cosmdandy tools/nvim /opt/dotfiles/tools/nvim
 
 # .zshrc нужен по той же причине: zinit при первом старте оболочки клонирует
 # пять плагинов (~13 МБ) — это происходило в каждом воркспейсе и было видно
 # пользователю как пауза с прогресс-барами. Достаточно один раз запустить
 # интерактивный zsh при сборке: плагины объявлены с `wait lucid`, то есть
 # асинхронно, но планировщик успевает отработать до выхода (проверено).
-COPY --chown=vscode:vscode tools/zsh /opt/dotfiles/tools/zsh
+COPY --chown=cosmdandy:cosmdandy tools/zsh /opt/dotfiles/tools/zsh
 
 # --- core: редактор, шелл, git, CI ---
 # ~/.dotfiles-profile — тот же файл, что пишет platform/linux/install.sh и
@@ -87,7 +117,7 @@ COPY --chown=vscode:vscode tools/zsh /opt/dotfiles/tools/zsh
 FROM base AS core
 RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
-      switch --flake "/opt/dotfiles/platform/nix#vscode-core-$(uname -m)-linux" -b hm-backup \
+      switch --flake "/opt/dotfiles/platform/nix#cosmdandy-core-$(uname -m)-linux" -b hm-backup \
   # плагины zinit: только в core, devops наследует их вместе со слоем.
   # || true — оболочка может вернуть ненулевой код из-за мелочей вроде
   # отсутствующего TERM, но плагины к этому моменту уже склонированы
@@ -104,7 +134,7 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
 FROM core AS devops
 RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
-      switch --flake "/opt/dotfiles/platform/nix#vscode-devops-$(uname -m)-linux" -b hm-backup \
+      switch --flake "/opt/dotfiles/platform/nix#cosmdandy-devops-$(uname -m)-linux" -b hm-backup \
   # Прогрев повторяется и здесь, хотя плагины zinit уже приехали из core.
   # Причина другая: completion'ы генерируются блоком в .zshrc при первом старте
   # шелла, а профиль devops приносит kubectl, helm, talosctl и k9s — которых в

@@ -14,6 +14,11 @@
   // локальном (|| true).
   "initializeCommand": "docker pull ghcr.io/cosmdandy/devcontainer:devops || true",
   "onCreateCommand": "bash .devcontainer/setup.sh",
+  // Обязательно, хотя в Dockerfile уже есть `USER cosmdandy`: образ несёт label
+  // devcontainer.metadata с унаследованным от базового образа Microsoft
+  // {"remoteUser":"vscode"}, и directive USER его НЕ перебивает — devcontainers
+  // читает label. Без этой строки контейнер поднимется под vscode (проверено).
+  "remoteUser": "cosmdandy",
   // containerEnv против remoteEnv: первый задаёт переменные всему контейнеру,
   // второй — только процессам, которые запускает инструмент. Локаль и таймзона
   // нужны и фоновым демонам, и `docker exec`, поэтому им место в containerEnv
