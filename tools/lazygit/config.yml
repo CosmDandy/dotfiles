@@ -13,8 +13,9 @@ gui:
   showFileIcons: false
   theme:
     # cyan, а не blue: «где сейчас ввод» во всём стеке помечено бирюзовым —
-    # рамка активного окна jankyborders (#248d83, darwin-configuration.nix)
-    # и курсор ghostty (#2aa198). Синий тут выбивался из общей схемы.
+    # тем же цветом, что курсор ghostty (#2aa198). Синий тут выбивался из
+    # общей схемы. (Раньше в этот же ряд входила рамка активного окна от
+    # jankyborders — её убрали вместе с отступами aerospace.)
     activeBorderColor:
       - '#2aa198'
       - bold

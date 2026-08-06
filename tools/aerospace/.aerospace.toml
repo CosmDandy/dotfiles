@@ -33,13 +33,6 @@ default-root-container-orientation = 'vertical'
 on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 # on-focus-changed = 'move-mouse window-lazy-center'
 
-# Рамку активного окна гасим, когда окно на воркспейсе одно — подсвечивать
-# нечего. Условия «сколько окон» у JankyBorders нет, поэтому считает скрипт.
-# Два колбэка, потому что закрытие окна отдельного события не даёт: смену
-# 2→1 ловим через фокус, а приход на пустой воркспейс — через смену воркспейса.
-on-focus-changed = ['exec-and-forget $HOME/.dotfiles/tools/aerospace/borders-solo.sh']
-exec-on-workspace-change = ['/bin/bash', '-c', '$HOME/.dotfiles/tools/aerospace/borders-solo.sh']
-
 # You can effectively turn off macOS "Hide application" (cmd-h) feature by toggling this flag
 # Useful if you don't use this macOS feature, but accidentally hit cmd-h or cmd-alt-h key
 # Also see: https://nikitabobko.github.io/AeroSpace/goodies#disable-hide-app
@@ -62,17 +55,17 @@ preset = 'qwerty'
 #                 In this example, 24 is a default value when there is no match.
 #                 Monitor pattern is the same as for 'workspace-to-monitor-force-assignment'.
 #                 See: https://nikitabobko.github.io/AeroSpace/guide#assign-workspaces-to-monitors
-# outer не нули: рамка активного окна (jankyborders) центрирована по его
-# контуру, наружу торчит половина ширины. Без отступа от края экрана эта
-# половина обрезается, и подсветка фокуса пропадает ровно там, где окно
-# развёрнуто на весь экран. 4px хватает с запасом при width=3.
+# Всё по нулям: окно занимает экран целиком. outer раньше держали 4px ради
+# рамки активного окна (jankyborders) — она центрирована по контуру окна, и
+# без отступа половина её ширины обрезалась краем экрана. Рамку убрали,
+# значит и повод для отступов исчез.
 [gaps]
-inner.horizontal = 8
-inner.vertical =   8
-outer.left =       4
-outer.bottom =     4
-outer.top =        4
-outer.right =      4
+inner.horizontal = 0
+inner.vertical =   0
+outer.left =       0
+outer.bottom =     0
+outer.top =        0
+outer.right =      0
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
