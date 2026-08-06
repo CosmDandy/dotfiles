@@ -14,10 +14,11 @@ permissions: {}
 jobs:
   syntax-lint:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Дальше только линтеры и git ls-files по локальному дереву —
           # ни один шаг никуда не пушит, токену в .git/config делать нечего.
@@ -35,15 +36,40 @@ jobs:
             fi
           done < <(git ls-files '*.sh' '*.bash')
           exit $fail
-      - name: Shellcheck Claude hooks
+      # Раньше проверялись только tools/claude/hooks/*.sh — то есть ровно те
+      # скрипты, которые ничего не мутируют. Установщики и automation/ с их
+      # sudo, rm -rf и sed -i оставались без семантического анализа, хотя цена
+      # ошибки там на порядок выше. Теперь под shellcheck идёт всё, что он
+      # понимает; на момент включения дерево было чистым.
+      # zsh-файлы пропускаются: shellcheck разбирает их как bash и выдаёт
+      # сплошной шум. Их синтаксис проверяет `zsh -n` шагом выше — установщики
+      # написаны на zsh намеренно, потому что на свежем маке `env bash` — это
+      # /bin/bash 3.2 (см. platform/common.sh).
+      - name: Shellcheck (all bash/sh scripts)
         run: |
-          shopt -s nullglob
-          for f in tools/claude/hooks/*.sh; do
+          fail=0
+          while IFS= read -r f; do
             head -1 "$f" | grep -q zsh && continue
-            shellcheck -S warning "$f"
-          done
+            shellcheck -S warning "$f" || fail=1
+          done < <(git ls-files '*.sh' '*.bash')
+          exit $fail
       - name: Yamllint (relaxed)
         run: git ls-files '*.yml' '*.yaml' | xargs -r yamllint -d relaxed
+
+      # Форматтеры дублируются в CI по той же логике, что и gitleaks ниже:
+      # pre-commit обходится через --no-verify, а CI обойти нельзя.
+      - name: Stylua (nvim config)
+        run: |
+          curl -sSfL -o stylua.zip \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/v${VERSION}/stylua-linux-x86_64.zip"
+          echo "${SHA256}  stylua.zip" | sha256sum -c -
+          unzip -q stylua.zip stylua
+          ./stylua --config-path tools/nvim/.stylua.toml --check tools/nvim/
+        env:
+          VERSION: 2.5.2
+          SHA256: bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
+      - name: Ruff (automation scripts)
+        run: pipx run ruff==0.16.1 check automation/
 
       # devcontainer.json и settings.json — JSONC: комментарии там законны, а
       # висячая запятая нет. Именно на ней спотыкался конфиг в рабочем репо:
@@ -66,10 +92,11 @@ jobs:
   # меньше доверенных сторон и версия зафиксирована явно.
   gitleaks:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Тем более здесь: сканируем рабочее дерево целиком, и сохранённый
           # токен оказался бы ровно в той области, по которой ходит сканер.

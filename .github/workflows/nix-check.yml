@@ -26,25 +26,48 @@ jobs:
     # только для сборки. Так ловятся опечатки в опциях, несуществующие пакеты и
     # сломанные модули за секунды и без macos-раннера.
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Флейк подтягивается как path:./platform/nix, входы — публичные
           # github:-урлы, которые nix тянет анонимно. Токен в .git/config не
           # нужен ни одному шагу, а установщик nix — сторонний экшен.
           persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      # working-directory + '.#', а НЕ 'path:./platform/nix#'. Разница
+      # принципиальная: `path:` жёстко ограничивает корень флейка каталогом, а
+      # `darwin-configuration.nix` читает `../../automation/*.sh` (скрипты
+      # launchd запекаются в store). В pure eval чтение за пределами корня
+      # запрещено — ран 31099582262 упал именно так:
+      #   access to absolute path '/nix/automation/backup/backup-check.sh'
+      #   is forbidden in pure evaluation mode
+      # Из каталога флейка `.` резолвится в git+file://<корень>?dir=platform/nix,
+      # то есть в store копируется весь репозиторий и `../..` доступен. Ровно
+      # так это работает локально, поэтому расхождения CI и машины больше нет.
       - name: Eval darwin configuration
+        working-directory: platform/nix
         run: |
           nix eval --raw \
-            'path:./platform/nix#darwinConfigurations.macbook-cosmdandy.config.system.build.toplevel.drvPath'
+            '.#darwinConfigurations.macbook-cosmdandy.config.system.build.toplevel.drvPath'
           echo
+      # --all-systems обязателен: без него на linux-раннере проверяется ТОЛЬКО
+      # то, что относится к текущей системе, и линуксовые homeConfigurations с
+      # darwin-конфигурацией молча пропускаются — проверка выглядела бы зелёной,
+      # не посмотрев ни на одну из них.
+      # --no-build: сборку по матрице делает job ниже, здесь нужна оценка всех
+      # выходов флейка разом, включая formatter и те конфигурации, которых в
+      # матрице нет.
+      - name: Flake check (all systems)
+        working-directory: platform/nix
+        run: nix flake check --no-build --all-systems
 
   build-linux:
     # Сборка ловит то, чего не видит оценка: пакет исчез из нового nixpkgs,
     # переименовался или не собирается. Матрица по профилям — наборы пакетов
     # у них разные, и ломается обычно devops.
     runs-on: ubuntu-24.04
+    timeout-minutes: 60  # devops тянет terraform из исходников
     strategy:
       fail-fast: false
       matrix:
@@ -54,10 +77,14 @@ jobs:
           - cosmdandy-devops
           - cluster-devops
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      # Здесь `path:` намеренно оставлен, в отличие от eval-darwin выше:
+      # homeConfigurations ничего за пределами platform/nix не читают, а
+      # git+file копировал бы весь репозиторий в store на каждую из четырёх
+      # джоб матрицы.
       - name: Build ${{ matrix.config }}
         run: |
           nix build --no-link --print-out-paths \
