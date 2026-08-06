@@ -44,7 +44,15 @@ if at '(cat|less|more|head|tail|bat)[[:space:]]+[^|;&]*\.env(\.[[:alnum:]_-]+)?'
 at '(printenv|env|set)\b[^|]*\|[^|]*(base64|curl|wget|nc|xxd)' && deny "environment-variable exfiltration"
 at '(curl|wget)\b[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)\b' && deny "pipe-to-shell from network"
 has '>[[:space:]]*/dev/tcp/'                          && deny "reverse shell"
-has '(\.ssh/[^[:space:]]*(id_|key)|\.config/sops/age|\bage-keygen\b)' && deny "touching private keys"
+# Раньше матчились только id_* и файлы с "key" в имени — реальные ключи
+# (private_ed25519, work_ed25519, cluster-autossh, utm_test) проходили свободно.
+# Теперь блокируется весь ~/.ssh целиком по литералу ".ssh" с границей слова
+# (не даёт ложно сработать на .sshd/.ssh-что-то-с-буквой-сразу-после).
+# NB: `has` матчит в любом месте строки команды, включая heredoc/echo-содержимое —
+# запись файла с упоминанием "~/.ssh/..." в тексте тоже блокируется. Сузить до
+# позиции аргумента нельзя: с точки зрения регулярки путь-как-аргумент и
+# путь-как-текст-внутри-heredoc неразличимы без полного разбора шелла.
+has '(\.ssh\b|\.config/sops/age|\bage-keygen\b)' && deny "touching private keys"
 
 # ---- DENY: committing a secret (staged diff scanned by gitleaks) ----
 # Fires only on a real `git commit` at command position, and only if gitleaks
