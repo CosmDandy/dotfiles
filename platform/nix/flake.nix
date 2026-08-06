@@ -13,14 +13,13 @@
   };
   outputs =
     {
-      self,
       nixpkgs,
       darwin,
       home-manager,
       ...
-    }@inputs:
+    }:
     let
-      lib = nixpkgs.lib;
+      inherit (nixpkgs) lib;
       # Linux user-env (DevPod/devcontainers): vscode — стандартный юзер
       # devcontainer-образов, cosmdandy — остальные linux-хосты,
       # cluster — рабочий сервер kvt-d-01.
@@ -74,7 +73,6 @@
             ./darwin-configuration.nix
             home-manager.darwinModules.home-manager
             ({ config, ... }: {
-              nixpkgs.config.allowUnfree = true;
               # Пользовательский слой (симлинки, activation-хуки) — те же модули,
               # что и Linux homeConfigurations; пакеты остаются в systemPackages
               home-manager = {
