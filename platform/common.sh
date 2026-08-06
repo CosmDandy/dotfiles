@@ -1,7 +1,17 @@
 #!/usr/bin/env zsh
+#
+# Библиотека для установщиков. Собственного `set` здесь НЕТ намеренно: файл
+# подключается через source, и `set -e` менял бы поведение вызывающего скрипта,
+# а не своё. Режим задают сами установщики (`set -euo pipefail`); здешний код
+# написан так, чтобы под ними не падать — отсюда `${VAR:-}` ниже.
+#
+# И почему zsh, а не bash: на свежем маке nix ещё не установлен, поэтому
+# `#!/usr/bin/env bash` разрешается в /bin/bash 3.2 (2007 год) — там
+# `"${arr[@]}"` для пустого массива под `set -u` падает с «unbound variable».
+# Системный zsh при этом 5.9. Перевод установщиков на bash был бы регрессом.
 
 # Если DOTFILES_ROOT не определена (скрипт запущен напрямую, а не через setup.sh)
-if [ -z "$DOTFILES_ROOT" ]; then
+if [ -z "${DOTFILES_ROOT:-}" ]; then
   # ${(%):-%x} — zsh-нативный путь текущего sourced-файла (BASH_SOURCE в zsh пустой)
   PLATFORM_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
   export DOTFILES_ROOT="$(dirname "$PLATFORM_DIR")"
@@ -65,7 +75,7 @@ setup_app() {
   echo ""
   read "response?Press Enter when done (or 's' to skip): "
 
-  if [[ "$response" == "s" ]]; then
+  if [[ "${response:-}" == "s" ]]; then
     echo "⊘ Skipped $app_name"
   else
     echo "✓ Completed $app_name"
