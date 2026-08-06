@@ -68,10 +68,6 @@ return {
           bg = 'NONE',
         }
 
-        hl.TreesitterContext = {
-          bg = is_dark() and '#073642' or '#eee8d5', -- base02 для темной, base2 для светлой
-        }
-
         -- Статусная строка (mini.statusline) с прозрачным фоном
         hl.StatusLine = {
           bg = 'NONE',

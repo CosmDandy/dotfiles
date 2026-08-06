@@ -1,6 +1,6 @@
 return {
   'lewis6991/gitsigns.nvim',
-  event = "BufRead",
+  event = 'BufRead',
   opts = {
     -- Знаки незастейдженных изменений — тонкая черта │ (vs толстая ┃ у staged)
     signs = {

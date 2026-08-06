@@ -13,10 +13,41 @@ return {
 
       -- Парсеры под DevOps-стек
       local ensure = {
-        'python', 'sql', 'json', 'csv', 'bash', 'html', 'css', 'javascript',
-        'diff', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'gitignore',
-        'rust', 'dockerfile', 'yaml', 'hcl', 'terraform', 'jinja', 'toml',
-        'xml', 'regex', 'vim', 'vimdoc', 'gotmpl', 'helm', 'jsonnet',
+        'python',
+        'sql',
+        'json',
+        'csv',
+        'bash',
+        'html',
+        'css',
+        'javascript',
+        'diff',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'gitignore',
+        'rust',
+        'dockerfile',
+        'yaml',
+        'hcl',
+        'terraform',
+        'jinja',
+        'toml',
+        'xml',
+        'regex',
+        'vim',
+        'vimdoc',
+        'gotmpl',
+        'helm',
+        'jsonnet',
+        -- nix — язык конфигурации самой машины; без парсера flake.nix и
+        -- darwin-configuration.nix открывались как простой текст.
+        'nix',
+        -- gitcommit/git_rebase — сообщения коммитов и интерактивный rebase
+        -- пишутся здесь же; оба входят в базовый набор kickstart и LazyVim.
+        'gitcommit',
+        'git_rebase',
       }
       -- Установить недостающие парсеры (idempotent). В интерактивной сессии —
       -- асинхронно, чтобы не задерживать старт. В headless (сборка образа,

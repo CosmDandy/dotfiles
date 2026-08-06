@@ -1,6 +1,7 @@
 return {
   'folke/flash.nvim',
-  event = 'BufReadPre',
+  -- event не нужен: полный keys-спек ниже сам подтягивает плагин по s/S/r/R/<c-s>,
+  -- как это сделано у folke в LazyVim
   ---@type Flash.Config
   opts = {
     search = { multi_window = true },

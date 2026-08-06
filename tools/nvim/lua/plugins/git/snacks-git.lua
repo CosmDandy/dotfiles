@@ -46,7 +46,9 @@ return {
     {
       '<leader>gY',
       mode = { 'n', 'v' },
-      function() Snacks.gitbrowse { what = 'permalink' } end,
+      function()
+        Snacks.gitbrowse { what = 'permalink' }
+      end,
       desc = '[G]it open in browser',
     },
   },

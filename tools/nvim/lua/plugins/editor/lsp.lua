@@ -24,10 +24,11 @@ return {
     },
   },
 
-  -- mason-lspconfig - в 2.0 сам вызывает vim.lsp.enable для установленных серверов
+  -- mason-lspconfig - в 2.0 сам вызывает vim.lsp.enable для установленных серверов.
+  -- lazy=false не нужен: setup{} вызывается из config() nvim-lspconfig, который
+  -- и так тянет этот плагин через свои dependencies (см. ниже).
   {
     'mason-org/mason-lspconfig.nvim',
-    lazy = false,
   },
 
   {
@@ -50,10 +51,18 @@ return {
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
-          map('gd', function() Snacks.picker.lsp_definitions() end, '[G]oto [D]efinition')
-          map('gr', function() Snacks.picker.lsp_references() end, '[G]oto [R]eferences')
-          map('gI', function() Snacks.picker.lsp_implementations() end, '[G]oto [I]mplementation')
-          map('<leader>D', function() Snacks.picker.lsp_type_definitions() end, 'Type [D]efinition')
+          map('gd', function()
+            Snacks.picker.lsp_definitions()
+          end, '[G]oto [D]efinition')
+          map('gr', function()
+            Snacks.picker.lsp_references()
+          end, '[G]oto [R]eferences')
+          map('gI', function()
+            Snacks.picker.lsp_implementations()
+          end, '[G]oto [I]mplementation')
+          map('<leader>D', function()
+            Snacks.picker.lsp_type_definitions()
+          end, 'Type [D]efinition')
 
           -- Символы документа и проекта живут в пространстве [s]earch:
           -- <leader>so и <leader>sS (snacks-picker.lua)
@@ -67,8 +76,12 @@ return {
           end, 'Hover Documentation')
           map('<leader>k', vim.lsp.buf.signature_help, 'Signature Help')
 
-          map(']d', function() vim.diagnostic.jump { count = 1 } end, 'Next [D]iagnostic')
-          map('[d', function() vim.diagnostic.jump { count = -1 } end, 'Previous [D]iagnostic')
+          map(']d', function()
+            vim.diagnostic.jump { count = 1 }
+          end, 'Next [D]iagnostic')
+          map('[d', function()
+            vim.diagnostic.jump { count = -1 }
+          end, 'Previous [D]iagnostic')
 
           map('<leader>lr', '<cmd>LspRestart<CR>', '[L]SP [R]estart')
 
@@ -97,15 +110,21 @@ return {
         virtual_text = false,
         float = {
           border = 'rounded',
-          source = 'always',
+          -- true, а не 'always': 'always' — значение до-0.10 API, тип теперь
+          -- boolean|'if_many'. Работало по случайности, как непустая строка.
+          source = true,
           header = '',
           focusable = false,
         },
         -- по умолчанию показываем все диагностики постоянно (vl_all ниже); toggle <leader>tD
         virtual_lines = true,
         severity_sort = true,
-        -- пересчитывать диагностику прямо во время ввода (свежесть важнее мерцания)
-        update_in_insert = true,
+        -- update_in_insert СОЗНАТЕЛЬНО не включён (дефолт false). :h vim.diagnostic.Opts
+        -- называет его дорогим, и ни kickstart, ни LazyVim его не ставят. Здесь цена
+        -- была бы тройной: с virtual_lines выше на каждое нажатие пересобирался бы
+        -- многострочный виртуальный блок, а рядом ещё nvim-lint на TextChanged
+        -- (lint.lua). Мерцание в insert-режиме, ради которого его когда-то включили,
+        -- как раз им и вызывается, а не лечится.
       }
 
       -- virtual_lines под курсором появляются через 500мс покоя (не дёргают вьюпорт при скролле).
@@ -161,14 +180,14 @@ return {
         -- если включили обратно — покажется на следующем покое курсора
       end, { desc = '[T]oggle auto under-cursor [d]iagnostics' })
 
-      -- Capabilities (blink.cmp) — глобально для всех серверов
-      vim.lsp.config('*', {
-        capabilities = require('blink.cmp').get_lsp_capabilities(),
-      })
-
       -- Дельты серверов вынесены в lua/../lsp/<name>.lua (нативная конвенция 0.11+):
-      -- nvim авто-загружает их при vim.lsp.enable, capabilities('*') мержится со всеми.
+      -- nvim авто-загружает их при vim.lsp.enable.
       -- docker_compose_language_service / jsonnet_ls — без дельт (shipped-конфиги полные).
+      --
+      -- Capabilities (completion/snippets) на vim.lsp.config('*', ...) отдельно ЗДЕСЬ
+      -- не вешаем: blink.cmp делает это сам в своём plugin/blink-cmp.lua при загрузке
+      -- (см. lua/plugins/editor/blink-cmp.lua) — дублирующий require('blink.cmp') тут
+      -- был бы лишней ручной копией того же вызова.
 
       -- Mason package names (НЕ lspconfig names) — для установки инструментов
       local ensure_installed = {
@@ -184,6 +203,14 @@ return {
         'ansible-language-server',
         'helm-ls',
         'jsonnet-language-server',
+        -- marksman — LSP для Markdown: переходы по ссылкам между документами и
+        -- по заголовкам. В репозитории 24 .md, docs/ читается постоянно.
+        'marksman',
+        -- LSP для Nix (nil) здесь СОЗНАТЕЛЬНО нет: mason ставит его через cargo,
+        -- которого в системе нет, и установка молча падает с ENOENT. Он приходит
+        -- из nixpkgs — см. `nil` и `nixfmt` в environment.systemPackages
+        -- (platform/nix/darwin-configuration.nix). nvim-lspconfig подхватывает
+        -- бинарь `nil` из PATH сам, дельта-конфига ему не нужно.
         -- DAP
         'debugpy',
         -- Linters
@@ -204,7 +231,12 @@ return {
       require('mason-tool-installer').setup {
         ensure_installed = ensure_installed,
         auto_update = false,
-        run_on_start = true,
+        -- false, потому что это дубль: MasonToolsInstallSync уже вызывается при каждой
+        -- активации home-manager (platform/nix/home/hooks.nix:122). С true тот же обход
+        -- 25 пакетов повторялся при первом открытии файла в каждом запуске nvim —
+        -- lspconfig грузится на BufReadPre, а его config и делает этот setup.
+        -- Доустановить руками: :MasonToolsInstall
+        run_on_start = false,
       }
 
       -- mason-lspconfig 2.0: automatic_enable как whitelist — только реальные LSP-серверы
@@ -227,5 +259,4 @@ return {
       }
     end,
   },
-
 }

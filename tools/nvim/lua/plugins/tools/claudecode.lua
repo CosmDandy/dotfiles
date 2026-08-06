@@ -23,16 +23,16 @@ local tmux_provider = {
     pane(focus == false and 'show' or 'focus')
   end,
   close = function()
-    pane('hide')
+    pane 'hide'
   end,
   simple_toggle = function()
-    pane('toggle')
+    pane 'toggle'
   end,
   focus_toggle = function()
-    pane('focus_toggle')
+    pane 'focus_toggle'
   end,
   ensure_visible = function()
-    pane('show')
+    pane 'show'
   end,
   -- терминала внутри nvim нет: буфера не существует, ClaudeCodeSendText не работает
   get_active_bufnr = function()
@@ -48,7 +48,12 @@ local tmux_provider = {
 
 return {
   'coder/claudecode.nvim',
-  lazy = false,
+  -- VeryLazy, а не lazy=false: тот же eager-старт (auto_start=true поднимает WS-сервер
+  -- и lock-файл ~/.claude/ide/ сразу после старта nvim, до любого нажатия клавиш —
+  -- внешний claude в соседнем tmux-пейне подхватывает IDE-интеграцию так же), но
+  -- вне синхронного пути запуска: полный набор keys ниже всё равно триггернул бы
+  -- загрузку по первому нажатию, а VeryLazy просто убирает эти ~10мс из startuptime.
+  event = 'VeryLazy',
   opts = {
     terminal = {
       provider = tmux_provider,

@@ -2,37 +2,36 @@
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 vim.g.have_nerd_font = true -- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.opt.number = true       -- Make line numbers default
+vim.opt.number = true -- Make line numbers default
 vim.opt.relativenumber = true
-vim.opt.mouse = ''          -- мышь отключена (клавиатура-only); hardtime тоже её держит
-vim.opt.showmode = false    -- Don't show the mode, since it's already in the status line
+vim.opt.mouse = '' -- мышь отключена (клавиатура-only); hardtime тоже её держит
+vim.opt.showmode = false -- Don't show the mode, since it's already in the status line
 
-vim.schedule(function()     -- Sync clipboard between OS and Neovim.
+vim.schedule(function() -- Sync clipboard between OS and Neovim.
   vim.opt.clipboard = 'unnamedplus'
 end)
 
 vim.opt.numberwidth = 5
 vim.opt.fillchars:append { eob = ' ' } -- Убираем символы тильды (~) в пустых строках
-vim.opt.breakindent = true             -- Enable break indent
-vim.opt.breakindentopt = 'shift:2'     -- отступ перенесённых длинных строк (YAML/HCL)
-vim.opt.undofile = true                -- Save undo history
+vim.opt.breakindent = true -- Enable break indent
+vim.opt.breakindentopt = 'shift:2' -- отступ перенесённых длинных строк (YAML/HCL)
+vim.opt.undofile = true -- Save undo history
 vim.opt.ignorecase = true
-vim.opt.smartcase = true               -- Case-insensitive searching UNLESS \C or one or more capital letters in the search term
-vim.opt.signcolumn = 'yes'             -- Keep signcolumn on by default
-vim.opt.updatetime = 250               -- Decrease update time
-vim.opt.timeoutlen = 300               -- Decrease mapped sequence wait time
+vim.opt.smartcase = true -- Case-insensitive searching UNLESS \C or one or more capital letters in the search term
+vim.opt.signcolumn = 'yes' -- Keep signcolumn on by default
+vim.opt.updatetime = 250 -- Decrease update time
+vim.opt.timeoutlen = 300 -- Decrease mapped sequence wait time
 vim.opt.splitright = true
-vim.opt.splitbelow = true              -- Configure how new splits should be opened
-vim.opt.list = true                    -- Sets how neovim will display certain whitespace characters in the editor.
+vim.opt.splitbelow = true -- Configure how new splits should be opened
+vim.opt.list = true -- Sets how neovim will display certain whitespace characters in the editor.
 vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
-vim.opt.inccommand = 'split'           -- Preview substitutions live, as you type!
-vim.opt.cursorline = true              -- Show which line your cursor is on
-vim.opt.scrolloff = 10                 -- Minimal number of screen lines to keep above and below the cursor.
-vim.opt.sidescrolloff = 10             -- Горизонтальный отступ при сайдскроллинге
-vim.opt.termguicolors = true           -- Поддержка 24-битного цвета
+vim.opt.inccommand = 'split' -- Preview substitutions live, as you type!
+vim.opt.cursorline = true -- Show which line your cursor is on
+vim.opt.scrolloff = 10 -- Minimal number of screen lines to keep above and below the cursor.
+vim.opt.sidescrolloff = 10 -- Горизонтальный отступ при сайдскроллинге
+vim.opt.termguicolors = true -- Поддержка 24-битного цвета
 vim.opt.linebreak = true
 vim.opt.ttimeoutlen = 10 -- Сократить время ожидания терминальных кодов
-
 
 vim.loader.enable()
 vim.o.laststatus = 3
@@ -44,7 +43,11 @@ vim.o.winborder = 'rounded'
 -- Плавный скролл по визуальным строкам при wrap
 vim.opt.smoothscroll = true
 
--- Лимит подсветки синтаксиса для длинных строк (minified, логи, длинные JSON)
+-- Лимит подсветки для legacy regexp-синтаксиса (:syntax), а не treesitter — тот
+-- запускается через vim.treesitter.start (nvim-treesitter.lua) и от synmaxcol не
+-- зависит. Опция реально работает только там, где парсера treesitter нет и nvim
+-- падает обратно на :syntax (:Man, help и т.п.); от больших файлов вообще
+-- защищает snacks.bigfile.
 vim.opt.synmaxcol = 300
 
 -- Больше времени на отрисовку, чтобы treesitter не отключался на больших файлах
@@ -61,7 +64,8 @@ vim.g.loaded_netrwPlugin = 1
 vim.g.loaded_2html_plugin = 1
 vim.g.loaded_tutor_mode_plugin = 1
 vim.g.loaded_spellfile_plugin = 1
-vim.g.loaded_man = 1
+-- :Man НЕ отключаем: рабочий инструмент для DevOps (:Man ansible-playbook, :Man ssh_config),
+-- и на буферы filetype=man уже рассчитана автокоманда q-close (autocmds.lua)
 
 -- Ограничение shada: 100 файлов истории, 50 строк регистров, 10kb лимит
 vim.opt.shada = "'100,<50,s10,h"

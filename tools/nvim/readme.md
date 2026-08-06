@@ -18,6 +18,3 @@
 - norcalli/nvim-colorizer.lua
 - MagicDuck/grug-far.nvim
 - akinsho/toggleterm.nvim
-
-# TODO:
-- необходимо настроить events

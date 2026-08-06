@@ -145,11 +145,7 @@ return {
         warnings = get_severity(vim.diagnostic.severity.WARN),
       }
 
-      return string.format(
-        ' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ',
-        result.errors,
-        result.warnings
-      )
+      return string.format(' %%#DiagnosticError#%s %%#DiagnosticWarn#%s ', result.errors, result.warnings)
     end
 
     local function get_fileinfo()
