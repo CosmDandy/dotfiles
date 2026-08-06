@@ -105,6 +105,14 @@ FROM core AS devops
 RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "/opt/dotfiles/platform/nix#vscode-devops-$(uname -m)-linux" -b hm-backup \
+  # Прогрев повторяется и здесь, хотя плагины zinit уже приехали из core.
+  # Причина другая: completion'ы генерируются блоком в .zshrc при первом старте
+  # шелла, а профиль devops приносит kubectl, helm, talosctl и k9s — которых в
+  # core не было. Без этой строки их completion'ы генерировались в первом же
+  # шелле каждого нового воркспейса (замер в контейнере: 39+50+43+74 мс) и
+  # вдобавок не попадали в запечённый .zcompdump. Строка ДОЛЖНА идти после
+  # home-manager switch: до него новых бинарей ещё нет.
+  && (zsh -i -c exit >/dev/null 2>&1 || true) \
   && rm -f "$HOME/dotfiles" \
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
   && nix-collect-garbage -d \
