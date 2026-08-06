@@ -504,25 +504,6 @@
           "key": "w",
           "label": "Work",
           "type": "group"
-        },
-        {
-          "actions": [
-            {
-              "key": "e",
-              "label": "Enable",
-              "type": "url",
-              "value": "raycast://script-commands/enable-development-profile"
-            },
-            {
-              "key": "d",
-              "label": "Disable",
-              "type": "url",
-              "value": "raycast://script-commands/disable-development-profile"
-            }
-          ],
-          "key": "d",
-          "label": "Development",
-          "type": "group"
         }
       ],
       "key": ".",
