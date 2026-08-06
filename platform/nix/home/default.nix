@@ -25,6 +25,15 @@ let
     tmuxPlugins.tmux-thumbs # flash-метки по экрану (prefix+f), nix-сборка без cargo
     btop
     lazygit
+    # Два пейджера диффа, оба зовёт lazygit (переключение клавишей `|`):
+    # delta рисует построчный дифф от git, difftastic сравнивает синтаксические
+    # деревья через tree-sitter. Идёт испытательный период — по его итогу один
+    # из двух отсюда уедет вместе с элементом в tools/lazygit/*.yml.
+    # Оба ставились императивно через `nix profile install`, то есть вне
+    # конфигурации: в образ контейнера не попадали ни разу, и diff там было
+    # смотреть нечем.
+    delta
+    difftastic
     uv
     # НЕ мёртвый вес, хоть руками ни разу не вызывались: gitleaks сканирует
     # git diff --cached в tools/git/hooks/pre-commit/pre-push (симлинк
