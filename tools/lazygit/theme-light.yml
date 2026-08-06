@@ -3,3 +3,8 @@ gui:
   theme:
     selectedLineBgColor:
       - '#eee8d5'
+git:
+  # См. комментарий в theme-dark.yml: строка pager повторяется целиком.
+  pagers:
+    - colorArg: always
+      pager: "delta --paging=never --line-numbers --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --line-numbers-left-style='#248d83' --line-numbers-right-style='#248d83' --hunk-header-style=omit --line-numbers-left-format='{nm:>4} ' --line-numbers-right-format='{np:>4}  ' --line-numbers-minus-style='#dc322f' --line-numbers-plus-style='#859900' --hyperlinks --light --syntax-theme='Solarized (light)' --line-numbers-zero-style='#586e75' --minus-style='syntax #f6d0c4' --plus-style='syntax #e3ecc8'"

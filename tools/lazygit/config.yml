@@ -12,8 +12,11 @@ gui:
   nerdFontsVersion: "3"
   showFileIcons: false
   theme:
+    # cyan, а не blue: «где сейчас ввод» во всём стеке помечено бирюзовым —
+    # рамка активного окна jankyborders (#248d83, darwin-configuration.nix)
+    # и курсор ghostty (#2aa198). Синий тут выбивался из общей схемы.
     activeBorderColor:
-      - '#268bd2'
+      - '#2aa198'
       - bold
     inactiveBorderColor:
       - '#586e75'
@@ -24,6 +27,13 @@ gui:
 git:
   overrideGpg: True
   autoFetch: true
+  # Дифф через delta: номера строк слева, как в веб-интерфейсе GitLab.
+  # --paging=never обязателен — свой пейджер delta сломал бы прокрутку панели.
+  # Цвета, зависящие от фона, — в theme-{light,dark}.yml (см. обёртку lg
+  # в conf.d/lg.zsh). Полноэкранный side-by-side: добавить --side-by-side.
+  pagers:
+    - colorArg: always
+      pager: "delta --paging=never --line-numbers --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --line-numbers-left-style='#248d83' --line-numbers-right-style='#248d83' --hunk-header-style=omit --line-numbers-left-format='{nm:>4} ' --line-numbers-right-format='{np:>4}  ' --line-numbers-minus-style='#dc322f' --line-numbers-plus-style='#859900' --hyperlinks"
   mainBranches:
     # master оставлен: конфиг общий для всех репозиториев, а рабочие (kvt-*)
     # на GitLab по-прежнему живут на master/develop
