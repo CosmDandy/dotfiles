@@ -1,12 +1,20 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   # Живой working copy репо: на Linux devpod клонирует в ~/dotfiles
   # (~/.dotfiles — bridge-симлинк), на macOS репо живёт в ~/.dotfiles
-  dotfiles = "${config.home.homeDirectory}/${if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"}";
+  dotfiles = "${config.home.homeDirectory}/${
+    if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"
+  }";
   # Симлинк на файл в клоне, НЕ на копию в store: правка в репо видна сразу,
   # без home-manager switch (та же семантика, что были ln -s в install.sh)
   link = path: config.lib.file.mkOutOfStoreSymlink "${dotfiles}/${path}";
-in {
+in
+{
   home.file = {
     ".tmux.conf".source = link "tools/tmux/.tmux.conf";
     ".zprofile".source = link "tools/zsh/.zprofile";
@@ -36,7 +44,22 @@ in {
     "atuin/config.toml".source = link "tools/atuin/config.toml";
     "nvim".source = link "tools/nvim";
     "btop/btop.conf".source = link "tools/btop/btop.conf";
-    "k9s".source = link "tools/k9s";
+    # k9s НЕ одним симлинком на весь tools/k9s (как остальные каталоги выше):
+    # k9s.zsh переключает активный скин, перезаписывая symlink
+    # ~/.config/k9s/skins/solarized.yaml на -dark/-light. Если бы ~/.config/k9s
+    # целиком был симлинком в репозиторий, эта перезапись летела бы прямо в
+    # working copy (мутабельный артефакт «из nix в исходники», дерево вечно
+    # dirty). Линкуем файлы поштучно — home-manager тогда создаёт РЕАЛЬНЫЙ
+    # каталог ~/.config/k9s/skins с симлинками на статичные skin-файлы репо,
+    # а solarized.yaml внутри него — обычная запись на реальной файловой
+    # системе, вне репозитория.
+    "k9s/config.yaml".source = link "tools/k9s/config.yaml";
+    "k9s/aliases.yaml".source = link "tools/k9s/aliases.yaml";
+    "k9s/hotkeys.yaml".source = link "tools/k9s/hotkeys.yaml";
+    "k9s/plugins.yaml".source = link "tools/k9s/plugins.yaml";
+    "k9s/views.yaml".source = link "tools/k9s/views.yaml";
+    "k9s/skins/solarized-dark.yaml".source = link "tools/k9s/skins/solarized-dark.yaml";
+    "k9s/skins/solarized-light.yaml".source = link "tools/k9s/skins/solarized-light.yaml";
   };
 
   home.activation = {
@@ -46,23 +69,19 @@ in {
     '';
 
     # Активный скин k9s — мутабельный симлинк (обёртка k9s.zsh переключает
-    # dark/light по теме), поэтому не home.file: только дефолт, если отсутствует
+    # dark/light по теме), поэтому не home.file: только дефолт, если отсутствует.
+    # Каталог реальный (см. xdg.configFile."k9s/skins/..." выше), а не симлинк
+    # в репозиторий — здесь можно писать, не трогая working copy.
     k9sDefaultSkin = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-      if [ -d "${dotfiles}/tools/k9s/skins" ] && [ ! -e "${dotfiles}/tools/k9s/skins/solarized.yaml" ]; then
-        run ln -sf solarized-dark.yaml "${dotfiles}/tools/k9s/skins/solarized.yaml"
-      fi
-    '';
-  } // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-    # known_hosts — копией, не симлинком: ssh должен мочь дописывать в файл.
-    # Guard на клон: при сборке образа ~/dotfiles ещё нет. На macOS вместо
-    # копии — симлинк в репо (darwin.nix): новые хосты дописываются в
-    # tools/git/known_hosts и остаются под git
-    sshKnownHosts = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-      if [ -f "${dotfiles}/tools/git/known_hosts" ]; then
-        run mkdir -p "$HOME/.ssh"
-        run cp "${dotfiles}/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
-        run chmod 644 "$HOME/.ssh/known_hosts"
+      skinDir="${config.xdg.configHome}/k9s/skins"
+      if [ -d "$skinDir" ] && [ ! -e "$skinDir/solarized.yaml" ]; then
+        run ln -sf solarized-dark.yaml "$skinDir/solarized.yaml"
       fi
     '';
   };
+  # known_hosts не раскладывается вовсе (файл удалён из репозитория 2026-08-06).
+  # Он копился годами и стал картой всей инфраструктуры, куда когда-либо ходили,
+  # включая рабочий GitLab с нестандартным портом — в публичном репозитории это
+  # готовая цель для разведки, а пользы почти нет: ssh дописывает хосты сам при
+  # первом подключении, TOFU-подтверждение делается один раз на хост.
 }

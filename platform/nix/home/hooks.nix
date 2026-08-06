@@ -1,6 +1,13 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
-  dotfiles = "${config.home.homeDirectory}/${if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"}";
+  dotfiles = "${config.home.homeDirectory}/${
+    if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"
+  }";
   # Активация может бежать при сборке образа (сети/клона может не быть) и при
   # каждом switch — каждый хук идемпотентен и толерантен к оффлайну
   after = lib.hm.dag.entryAfter [ "linkGeneration" ];
@@ -8,7 +15,10 @@ let
   # обычных after-хуков. Без него mason бежал бы, пока ~/.nix-profile указывает
   # на прежнее поколение, и на стадии devops не нашёл бы go — из-за чего
   # jsonnet-language-server молча не ставился (проверено на собранном образе).
-  afterNvim = lib.hm.dag.entryAfter [ "syncNvimPlugins" "installPackages" ];
+  afterNvim = lib.hm.dag.entryAfter [
+    "syncNvimPlugins"
+    "installPackages"
+  ];
 
   # Накопитель warn'ов общий с darwin.nix — см. комментарий в warn.nix.
   # Файл, а не переменная: не зависит от того, выполняются ли записи DAG в
@@ -16,7 +26,8 @@ let
   w = import ./warn.nix { inherit config; };
   warnFile = w.file;
   warn = w.mk;
-in {
+in
+{
   home.activation = {
     # Обнуляем накопитель до первого хука, иначе сводка показывала бы warn'ы
     # прошлой активации. entryBefore linkGeneration — раньше всех наших.
@@ -33,7 +44,15 @@ in {
     installClaudeCode = after ''
       if [ ! -x "$HOME/.local/bin/claude" ] && ! command -v claude >/dev/null 2>&1; then
         run ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
-          && PATH="${lib.makeBinPath [ pkgs.curl pkgs.coreutils pkgs.gnutar pkgs.gzip pkgs.unzip ]}:$PATH:/usr/bin:/bin" \
+          && PATH="${
+            lib.makeBinPath [
+              pkgs.curl
+              pkgs.coreutils
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.unzip
+            ]
+          }:$PATH:/usr/bin:/bin" \
              run ${pkgs.bash}/bin/bash /tmp/claude-install.sh \
           && run rm -f /tmp/claude-install.sh \
           || ${warn "claude install skipped (offline?)"}
@@ -46,7 +65,13 @@ in {
     installZinit = after ''
       if [ ! -d "$HOME/.local/share/zinit" ]; then
         run ${pkgs.curl}/bin/curl -fsSL https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh -o /tmp/zinit-install.sh \
-          && PATH="${lib.makeBinPath [ pkgs.git pkgs.curl pkgs.coreutils ]}:$PATH" NO_INPUT=1 ZSHRC=/dev/null \
+          && PATH="${
+            lib.makeBinPath [
+              pkgs.git
+              pkgs.curl
+              pkgs.coreutils
+            ]
+          }:$PATH" NO_INPUT=1 ZSHRC=/dev/null \
              run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
           && run rm -f /tmp/zinit-install.sh \
           || ${warn "zinit install skipped (offline?)"}
@@ -84,7 +109,16 @@ in {
     # curl/tar — nvim-treesitter качает парсеры; /usr/bin — cc для их сборки
     syncNvimPlugins = after ''
       if [ -e "$HOME/.config/nvim/init.lua" ]; then
-        PATH="$HOME/.nix-profile/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.tree-sitter ]}:$PATH:/usr/bin:/bin" \
+        PATH="$HOME/.nix-profile/bin:${
+          lib.makeBinPath [
+            pkgs.git
+            pkgs.neovim
+            pkgs.curl
+            pkgs.gnutar
+            pkgs.gzip
+            pkgs.tree-sitter
+          ]
+        }:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! sync" +qa \
           || ${warn "nvim Lazy sync failed (offline?)"}
       fi
@@ -118,7 +152,20 @@ in {
         # guard: на девственной машине лога ещё нет — редирект < падал бы с
         # шумной ошибкой в стдерр активации (сам хук выживал через || echo 0)
         LOG_POS=$([ -f "$MASON_LOG" ] && wc -c < "$MASON_LOG" || echo 0)
-        PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.git pkgs.neovim pkgs.curl pkgs.gnutar pkgs.gzip pkgs.unzip pkgs.nodejs_24 pkgs.python313 pkgs.luarocks pkgs.uv ]}:$PATH:/usr/bin:/bin" \
+        PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${
+          lib.makeBinPath [
+            pkgs.git
+            pkgs.neovim
+            pkgs.curl
+            pkgs.gnutar
+            pkgs.gzip
+            pkgs.unzip
+            pkgs.nodejs_24
+            pkgs.python313
+            pkgs.luarocks
+            pkgs.uv
+          ]
+        }:$PATH:/usr/bin:/bin" \
           run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
         if [ -f "$MASON_LOG" ]; then
@@ -153,7 +200,13 @@ in {
             || ${warn "claude custom submodule skipped (нет ssh-агента или ключа)"}
         fi
         if [ -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
-          PATH="$HOME/.local/bin:${lib.makeBinPath [ pkgs.git pkgs.uv pkgs.nodejs_24 ]}:$PATH:/usr/bin:/bin" \
+          PATH="$HOME/.local/bin:${
+            lib.makeBinPath [
+              pkgs.git
+              pkgs.uv
+              pkgs.nodejs_24
+            ]
+          }:$PATH:/usr/bin:/bin" \
             run "${dotfiles}/tools/claude/custom/install.sh" \
             || ${warn "MCP install failed"}
         fi
@@ -163,17 +216,24 @@ in {
     # Сводка последним шагом: активация всё равно завершается успешно (это
     # осознанно — офлайн не должен её валить), но теперь пропуски видно сразу,
     # а не при первом запуске nvim через неделю.
-    reportWarnings = lib.hm.dag.entryAfter [
-      "installClaudeCode" "installZinit" "cacheYamlSchemas"
-      "syncNvimPlugins" "installMasonTools" "installClaudeCustom"
-    ] ''
-      if [ -s "${warnFile}" ]; then
-        echo ""
-        echo "  ВНИМАНИЕ: активация прошла, но $(wc -l < "${warnFile}" | tr -d ' ') шаг(ов) пропущено:"
-        sed 's/^/    - /' "${warnFile}"
-        echo "  подробности: ${warnFile}"
-        echo ""
-      fi
-    '';
+    reportWarnings =
+      lib.hm.dag.entryAfter
+        [
+          "installClaudeCode"
+          "installZinit"
+          "cacheYamlSchemas"
+          "syncNvimPlugins"
+          "installMasonTools"
+          "installClaudeCustom"
+        ]
+        ''
+          if [ -s "${warnFile}" ]; then
+            echo ""
+            echo "  ВНИМАНИЕ: активация прошла, но $(wc -l < "${warnFile}" | tr -d ' ') шаг(ов) пропущено:"
+            sed 's/^/    - /' "${warnFile}"
+            echo "  подробности: ${warnFile}"
+            echo ""
+          fi
+        '';
   };
 }

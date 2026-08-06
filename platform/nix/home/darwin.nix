@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   dotfiles = "${config.home.homeDirectory}/.dotfiles";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dotfiles}/${path}";
@@ -13,8 +18,15 @@ let
   # grep/coreutils — из pkgs. zsh нужен для apply.sh (шебанг env zsh): на маке
   # он есть в /bin, но /bin в PATH активации нет, и хук падал с
   # "env: zsh: No such file or directory"
-  hookPath = "/opt/homebrew/bin:/usr/local/bin:${lib.makeBinPath [ pkgs.gnugrep pkgs.coreutils pkgs.zsh ]}";
-in {
+  hookPath = "/opt/homebrew/bin:/usr/local/bin:${
+    lib.makeBinPath [
+      pkgs.gnugrep
+      pkgs.coreutils
+      pkgs.zsh
+    ]
+  }";
+in
+{
   # macOS-слой: общие файлы/хуки — те же модули, что у Linux (devpod)
   imports = [
     ./files.nix
@@ -39,9 +51,11 @@ in {
     "Library/Application Support/rbw/config.json".source = link "private/rbw/config.json";
     "Library/Application Support/Leader Key/config.json".source = link "tools/leader-key/config.json";
     "Library/Application Support/Cursor/User/settings.json".source = link "tools/vscode/settings.json";
-    "Library/Application Support/Cursor/User/keybindings.json".source = link "tools/vscode/keybindings.json";
+    "Library/Application Support/Cursor/User/keybindings.json".source =
+      link "tools/vscode/keybindings.json";
     "Library/Application Support/Code/User/settings.json".source = link "tools/vscode/settings.json";
-    "Library/Application Support/Code/User/keybindings.json".source = link "tools/vscode/keybindings.json";
+    "Library/Application Support/Code/User/keybindings.json".source =
+      link "tools/vscode/keybindings.json";
   };
 
   xdg.configFile = {
@@ -89,15 +103,11 @@ in {
       fi
     '';
 
-    # known_hosts сеем копией только при отсутствии: дальше файлом владеет
-    # ssh (дописывает/пересоздаёт), а не home-manager
-    seedKnownHosts = after ''
-      if [ ! -e "$HOME/.ssh/known_hosts" ] && [ -f "${dotfiles}/tools/git/known_hosts" ]; then
-        run mkdir -p "$HOME/.ssh"
-        run cp "${dotfiles}/tools/git/known_hosts" "$HOME/.ssh/known_hosts"
-        run chmod 644 "$HOME/.ssh/known_hosts"
-      fi
-    '';
+    # Хук seedKnownHosts удалён вместе с самим файлом (2026-08-06): known_hosts
+    # копился годами и превратился в карту всей инфраструктуры, куда когда-либо
+    # ходили, включая рабочий GitLab с нестандартным портом — в публичном
+    # репозитории это готовая цель для разведки. Заводить его заново не нужно:
+    # ssh дописывает хосты сам, подтверждение отпечатка делается один раз на хост.
 
     # devpod ставится каской в homebrew-шаге активации nix-darwin, который
     # идёт ДО postActivation (home-manager) — на первом прогоне бинарь уже есть
