@@ -88,3 +88,42 @@ if [ -n "$staged_workflows" ]; then
     echo "  установить: nix profile install nixpkgs#zizmor" >&2
   fi
 fi
+
+# Форматирование lua и nix. Без гейта конфиги расходятся молча: на 2026-08-06
+# stylua --check падал на 12 файлах из 34, nixfmt — на всех шести .nix.
+# stylua ищем и в PATH, и в mason: mason кладёт бинарь в путь, видимый только
+# изнутри nvim.
+staged_lua=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.lua$' || true)
+if [ -n "$staged_lua" ]; then
+  stylua_bin=""
+  command -v stylua &>/dev/null && stylua_bin="stylua"
+  [ -z "$stylua_bin" ] && [ -x "$HOME/.local/share/nvim/mason/bin/stylua" ] \
+    && stylua_bin="$HOME/.local/share/nvim/mason/bin/stylua"
+
+  if [ -n "$stylua_bin" ]; then
+    # shellcheck disable=SC2086
+    "$stylua_bin" --check $staged_lua || {
+      echo "pre-commit: lua не отформатирован — коммит остановлен." >&2
+      echo "  починить: $stylua_bin ${staged_lua//$'\n'/ } && git add -u" >&2
+      exit 1
+    }
+  else
+    echo "pre-commit: stylua не найден, lua не проверен." >&2
+  fi
+fi
+
+staged_nix=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.nix$' || true)
+if [ -n "$staged_nix" ]; then
+  if command -v nixfmt &>/dev/null; then
+    # shellcheck disable=SC2086
+    nixfmt --check $staged_nix || {
+      echo "pre-commit: nix не отформатирован — коммит остановлен." >&2
+      echo "  починить: nixfmt ${staged_nix//$'\n'/ } && git add -u" >&2
+      echo "  или из корня platform/nix: nix fmt" >&2
+      exit 1
+    }
+  else
+    echo "pre-commit: nixfmt не найден, .nix не проверены." >&2
+    echo "  появится после darwin-rebuild switch (есть в systemPackages)" >&2
+  fi
+fi

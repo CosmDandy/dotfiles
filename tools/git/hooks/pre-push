@@ -1,14 +1,81 @@
 #!/usr/bin/env bash
 
+# pre-push: защита main/master (force-push, удаление) + gitleaks по диапазону,
+# который реально уезжает на remote.
+#
+# `git commit --no-verify` обходит pre-commit целиком — это последний локальный
+# рубеж. Отсутствие gitleaks — отказ, а не тихий пропуск (как в pre-commit):
+# молчаливый пропуск однажды сделал непросканированные коммиты похожими на
+# просканированные. Осознанный обход — только GITLEAKS_SKIP=1.
+
 protected_branches="main master"
 current_branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+zero_sha="0000000000000000000000000000000000000000"
+status=0
 
-while read -r _ _ remote_ref _; do
+if [ "${GITLEAKS_SKIP:-}" != "1" ] && ! command -v gitleaks &>/dev/null; then
+  echo "pre-push: gitleaks не найден в PATH — push остановлен." >&2
+  echo "  установить: nix profile install nixpkgs#gitleaks" >&2
+  echo "  пропустить разово: GITLEAKS_SKIP=1 git push ..." >&2
+  exit 1
+fi
+
+while read -r _local_ref local_sha remote_ref remote_sha; do
   remote_branch="${remote_ref##refs/heads/}"
+
+  is_protected=0
   for branch in $protected_branches; do
-    if [[ "$remote_branch" == "$branch" && "$current_branch" != "$branch" ]]; then
-      echo "❌ Pushing to '$branch' from '$current_branch' is not allowed"
-      exit 1
-    fi
+    [ "$remote_branch" = "$branch" ] && is_protected=1
   done
+
+  # Удаление ветки — local_sha нулевой, сканировать нечего. Удаление защищённой
+  # ветки — та же дыра, что force-push, поэтому тоже под запретом.
+  if [ "$local_sha" = "$zero_sha" ]; then
+    if [ "$is_protected" = "1" ]; then
+      echo "❌ Deleting protected branch '$remote_branch' is not allowed" >&2
+      status=1
+    fi
+    continue
+  fi
+
+  # Пуш в защищённую ветку не из неё самой — как раньше.
+  if [ "$is_protected" = "1" ] && [ "$current_branch" != "$remote_branch" ]; then
+    echo "❌ Pushing to '$remote_branch' from '$current_branch' is not allowed" >&2
+    status=1
+    continue
+  fi
+
+  # Force-push (non-fast-forward) в защищённую ветку — единственный сценарий
+  # с необратимой потерей истории. Старая проверка смотрела только на имя
+  # ветки: находясь на main, `git push --force` в main проходил свободно.
+  if [ "$is_protected" = "1" ] && [ "$remote_sha" != "$zero_sha" ]; then
+    if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+      echo "❌ Force-push (non-fast-forward) to '$remote_branch' is not allowed" >&2
+      status=1
+      continue
+    fi
+  fi
+
+  # Новый ref — remote_sha нулевой, диапазон "sha1..sha2" тут не работает.
+  # Сканируем только то, чего ещё нет ни на одной remote-ветке: иначе пуш
+  # нового branch, созданного от main, гонял бы gitleaks по всей истории main
+  # (минуты вместо секунд).
+  if [ "$remote_sha" = "$zero_sha" ]; then
+    log_opts="$local_sha --not --remotes"
+  else
+    log_opts="$remote_sha..$local_sha"
+  fi
+
+  if [ "${GITLEAKS_SKIP:-}" = "1" ]; then
+    echo "pre-push: сканирование секретов пропущено (GITLEAKS_SKIP=1) для '$remote_branch'" >&2
+    continue
+  fi
+
+  if ! gitleaks git --no-banner --log-opts="$log_opts"; then
+    echo "pre-push: gitleaks нашёл секреты в диапазоне, уходящем на '$remote_branch' — push остановлен." >&2
+    echo "  пропустить разово: GITLEAKS_SKIP=1 git push ..." >&2
+    status=1
+  fi
 done
+
+exit $status

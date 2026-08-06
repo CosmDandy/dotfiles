@@ -1,2 +1,5 @@
 [user]
+	# Только ключ подписи. Email СОЗНАТЕЛЬНО не переопределяется: рабочий адрес
+	# совпадает с личным из основного .gitconfig, отдельная строка была бы дублем,
+	# который разъедется при смене адреса.
 	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0KWH5ph7kkqsX9k2mm8wSRPKUPshfuy5tXAgIRlbnA cosmdandy@macbook-cosmdandy

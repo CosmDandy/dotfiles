@@ -1,2 +1,8 @@
-tkondrashin@icloud.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
-tkondrashin@icloud.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0KWH5ph7kkqsX9k2mm8wSRPKUPshfuy5tXAgIRlbnA cosmdandy@macbook-cosmdandy
+# namespaces="git" — иначе подпись тем же ключом в другом namespace
+# (ssh-keygen -Y sign -n file) принимается как подпись коммита.
+# valid-after — дата первого подписанного коммита; нужна, чтобы после ротации
+# ключа старая история осталась верифицируемой.
+# Опции — через запятую БЕЗ пробела: с пробелом ssh-keygen молча роняет строку,
+# %G? становится U вместо G, а --show-signature продолжает писать "Good signature".
+tkondrashin@icloud.com namespaces="git",valid-after="20251201" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
+tkondrashin@icloud.com namespaces="git",valid-after="20251210" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0KWH5ph7kkqsX9k2mm8wSRPKUPshfuy5tXAgIRlbnA cosmdandy@macbook-cosmdandy
