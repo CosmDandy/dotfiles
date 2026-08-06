@@ -403,6 +403,24 @@ in
     # на другом пользователе.
     hostName = hostname;
     localHostName = hostname;
+
+    # Файрвол был выключен: FileVault, SIP и Gatekeeper включены, а входящие
+    # соединения не фильтровались никак. Машина регулярно бывает в чужих сетях
+    # (офис, коворкинг), и любой слушающий порт — dev-сервер, kubectl
+    # port-forward, restic на время восстановления — был доступен всей подсети.
+    #
+    # blockAllIncoming = false осознанно: полная блокировка рвёт AirDrop,
+    # Handoff и локальные dev-серверы, к которым ходишь с телефона. Режим
+    # «пускать подписанное» закрывает то, что нужно закрыть, и не мешает.
+    applicationFirewall = {
+      enable = true;
+      blockAllIncoming = false;
+      allowSigned = true; # системные службы Apple
+      allowSignedApp = true; # подписанное стороннее (ghostty, orbstack)
+      # не отвечать на ping и на пробы закрытых портов: в чужой сети машина
+      # просто не видна сканеру
+      enableStealthMode = true;
+    };
   };
 
   system.defaults = {
