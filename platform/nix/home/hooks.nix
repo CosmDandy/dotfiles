@@ -108,7 +108,7 @@ in
     # nvim из pkgs: на darwin он в системном профиле, а не в ~/.nix-profile.
     # curl/tar — nvim-treesitter качает парсеры; /usr/bin — cc для их сборки
     syncNvimPlugins = after ''
-      if [ -e "$HOME/.config/nvim/init.lua" ]; then
+      if [ -e "$HOME/.config/nvim/init.lua" ]; then (
         PATH="$HOME/.nix-profile/bin:${
           lib.makeBinPath [
             pkgs.git
@@ -118,10 +118,24 @@ in
             pkgs.gzip
             pkgs.tree-sitter
           ]
-        }:$PATH:/usr/bin:/bin" \
-          run nvim --headless "+Lazy! sync" +qa \
+        }:$PATH:/usr/bin:/bin"
+        export PATH
+
+        run nvim --headless "+Lazy! sync" +qa \
           || ${warn "nvim Lazy sync failed (offline?)"}
-      fi
+
+        # Парсеры treesitter отдельным шагом: ts.install() в конфиге ставит
+        # только НЕДОСТАЮЩИЕ и молча пропускает уже стоящий парсер, даже когда
+        # плагин ушёл вперёд и его queries больше не соответствуют грамматике.
+        # Так разъехались jinja, diff и nix — подсветка .j2 пропала без единой
+        # ошибки. `build = ':TSUpdate'` у lazy тут не спасает: он срабатывает
+        # только когда обновился сам плагин.
+        # update() сверяет ревизии и пересобирает разошедшиеся; при свежих
+        # парсерах отрабатывает за ~6 с (замерено), поэтому идёт на каждой
+        # активации без guard'а.
+        run nvim --headless -c 'lua local h = require("nvim-treesitter").update(); if h then h:wait(600000) end' +qa \
+          || ${warn "treesitter update failed (offline?)"}
+      ); fi
     '';
 
     # Mason-пакеты (LSP-серверы, линтеры, форматтеры из ensure_installed).
@@ -147,11 +161,20 @@ in
     # когда отдельный пакет не установился, поэтому провал не виден ни по коду
     # возврата, ни в сводке. Сверяем только хвост, дописанный этим запуском.
     installMasonTools = afterNvim ''
-      if [ -e "$HOME/.config/nvim/init.lua" ]; then
+      # Подоболочка: PATH ниже нужен только этому шагу. Все home.activation
+      # склеиваются в ОДИН bash-скрипт, поэтому export здесь достался бы и
+      # installZinit, и setupDevpod.
+      if [ -e "$HOME/.config/nvim/init.lua" ]; then (
         MASON_LOG="$HOME/.local/state/nvim/mason.log"
         # guard: на девственной машине лога ещё нет — редирект < падал бы с
         # шумной ошибкой в стдерр активации (сам хук выживал через || echo 0)
         LOG_POS=$([ -f "$MASON_LOG" ] && wc -c < "$MASON_LOG" || echo 0)
+        # python НЕ добавлен в makeBinPath намеренно: этот шаг идёт после
+        # installPackages, а профиль стоит в PATH первым — на маке отсюда
+        # берётся python3 из systemPackages, в контейнере python313 из
+        # home.packages. Объявленный здесь пакет не выиграл бы ни разу и лишь
+        # создавал видимость, что версия зафиксирована (стояло python313,
+        # фактически venv собирались на 3.14 из системного профиля).
         PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${
           lib.makeBinPath [
             pkgs.git
@@ -161,12 +184,61 @@ in
             pkgs.gzip
             pkgs.unzip
             pkgs.nodejs_24
-            pkgs.python313
             pkgs.luarocks
             pkgs.uv
           ]
-        }:$PATH:/usr/bin:/bin" \
-          run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
+        }:$PATH:/usr/bin:/bin"
+        export PATH
+
+        # Venv пакетов mason (mypy, yamllint, ansible-lint, debugpy) ломаются
+        # двумя разными способами, и mason не замечает ни одного: каталог на
+        # месте — значит «установлено», переустановки не будет.
+        #
+        # 1. Минорная версия python в профиле сменилась (3.13 → 3.14 этим летом).
+        #    Интерпретатор запускается, но site-packages лежит в lib/python3.13 —
+        #    импорт падает. Так молча отвалились mypy, yamllint и ansible-lint.
+        # 2. venv собран от python по store-пути, и после nix-collect-garbage
+        #    (хвост updm) путь исчез. Тут не запускается уже сам интерпретатор —
+        #    в таком состоянии сейчас debugpy.
+        #
+        # Первый случай виден только по версии, второй — только по запуску,
+        # поэтому проверяются оба. MasonToolsInstallSync ниже ставит снесённое
+        # заново.
+        MASON_BIN="$HOME/.local/share/nvim/mason/bin"
+        rebuilt=""
+        if command -v python3 >/dev/null; then
+          PYVER=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+          for cfg in "$HOME"/.local/share/nvim/mason/packages/*/venv/pyvenv.cfg; do
+            [ -e "$cfg" ] || continue
+            pkgdir=''${cfg%/venv/pyvenv.cfg}
+            venv_ver=$(sed -n 's/^version *= *//p' "$cfg" | cut -d. -f1,2)
+            reason=""
+            if [ "$venv_ver" != "$PYVER" ]; then
+              reason="собран на python $venv_ver, сейчас $PYVER"
+            elif ! "$pkgdir/venv/bin/python" -c "" >/dev/null 2>&1; then
+              reason="интерпретатор venv не запускается"
+            fi
+            if [ -n "$reason" ]; then
+              echo "mason: $(basename "$pkgdir") — $reason, пересобираем"
+              # через run, а не напрямую: под `switch -n` (dry-run) он печатает
+              # команду вместо выполнения. Без него сухой прогон реально сносил
+              # бы каталоги пакетов.
+              run rm -rf "$pkgdir"
+              rebuilt=1
+            fi
+          done
+          # Снести каталог пакета мало: в mason/bin остаются симлинки на его
+          # бинари, и переустановка падает с «EEXIST: file already exists».
+          # Поймано на живом switch: ruff и debugpy были удалены, а поставиться
+          # обратно не смогли — ruff исчез из системы совсем.
+          # Чистим по битости, а не по имени пакета: имя бинаря с ним не
+          # обязано совпадать (debugpy → debugpy-adapter).
+          if [ -n "''${rebuilt:-}" ] && [ -d "$MASON_BIN" ]; then
+            find "$MASON_BIN" -type l ! -exec test -e {} \; -print -delete
+          fi
+        fi
+
+        run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
         if [ -f "$MASON_LOG" ]; then
           # || true обязателен: activate работает под `set -eu -o pipefail`, а
@@ -181,7 +253,7 @@ in
             echo "warn: $m"; echo "$m" >> "${warnFile}"
           fi
         fi
-      fi
+      ); fi
     '';
 
     # Приватный submodule (ssh) + установка MCP-серверов; без ключей — мягкий skip.
