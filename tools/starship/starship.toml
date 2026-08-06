@@ -113,11 +113,10 @@ min_time = 3_000
 format = '[$duration]($style) '
 style = 'yellow'
 
-[sudo]
-disabled = false
-format = '[$symbol]($style) '
-symbol = "\U000F0423 "
-style = 'bold red'
+# Блок [sudo] удалён целиком: индикатор не использовался, а модуль был самым
+# дорогим в промпте — 48 мс по `starship timings`, потому что дёргал `sudo -n -v`
+# перед КАЖДОЙ отрисовкой, почти всегда выводя пустую строку. Дефолт у модуля —
+# disabled, так что отсутствие блока и есть выключенное состояние.
 
 [palettes.solarized]
 # accent-цвета Solarized — читаемы и на light, и на dark фоне
