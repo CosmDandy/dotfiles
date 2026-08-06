@@ -18,16 +18,9 @@ if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
     . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
 fi
 
-# system.primaryUser захардкожен в darwin-configuration.nix — на машине с другим
-# пользователем активация падает («primary user does not exist»). Подгоняем
-# под текущего пользователя в working copy (на основной машине — no-op).
-CURRENT_USER="$(whoami)"
-if ! grep -q "primaryUser = \"$CURRENT_USER\";" "$DOTFILES_ROOT/platform/nix/darwin-configuration.nix"; then
-  print_section "Setting system.primaryUser to $CURRENT_USER"
-  sed -i '' "s/primaryUser = \"[^\"]*\";/primaryUser = \"$CURRENT_USER\";/" \
-    "$DOTFILES_ROOT/platform/nix/darwin-configuration.nix"
-fi
-
+# primaryUser/hostname задаются параметрами mkDarwin во flake.nix, а не
+# правкой трекаемого файла — sed по working copy убран (флейк снова функция
+# от коммита, дерево не грязнится установкой).
 print_section "Applying nix-darwin configuration"
 if command -v darwin-rebuild &> /dev/null; then
     echo "darwin-rebuild установлен"
