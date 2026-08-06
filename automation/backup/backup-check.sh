@@ -88,12 +88,25 @@ fi
 
 if [ -n "$need_check" ]; then
   log "проверяю целостность репозитория"
-  if restic check --read-data-subset=2% 2>&1 | tail -3 | grep -q "no errors were found"; then
+  # Раньше решение принималось по grep "no errors were found" в выводе — и лок,
+  # и недоступность репозитория, и реальное повреждение давали одно и то же
+  # сообщение «репозиторий повреждён», что будило человека чинить несуществующую
+  # поломку (см. инцидент 2026-07-26: check просто не смог взять лок). Теперь
+  # решение — по коду возврата, а причина отказа различается по тексту ошибки.
+  check_output=$(restic check --read-data-subset=2% --retry-lock 10m 2>&1)
+  check_exit=$?
+  if [ "$check_exit" -eq 0 ]; then
     mkdir -p "$(dirname "$STAMP")"
     date +%s > "$STAMP"
     log "целостность в порядке"
+  elif echo "$check_output" | grep -qE "repository is already locked|unable to create.*lock"; then
+    # --retry-lock 10m уже отретраил взятие лока и всё равно сдался — значит
+    # лок держит живой процесс, а не мусор от прошлого запуска.
+    fail "репозиторий залочен — restic check не смог взять лок даже после ретраев (10м). Проверь, не идёт ли сейчас другой restic; если процесс мёртв: restic unlock"
+  elif echo "$check_output" | grep -qiE "no such host|connection refused|dial tcp|TLS handshake|context deadline exceeded|401|403|InvalidAccessKeyId|SignatureDoesNotMatch|AccessDenied|wrong password|unable to open (repository|config)"; then
+    fail "репозиторий недоступен — проблема с сетью или доступами, не повреждение: $(echo "$check_output" | tail -3)"
   else
-    fail "restic check нашёл ошибки — репозиторий повреждён"
+    fail "restic check нашёл ошибки — репозиторий повреждён: $(echo "$check_output" | tail -3)"
   fi
 fi
 

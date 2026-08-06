@@ -91,6 +91,7 @@ log "снимаю снапшот (${#existing[@]} путей)"
 restic backup $DRY_RUN \
   --tag automated \
   --exclude-caches \
+  --retry-lock 10m \
   "${exclude_args[@]}" \
   "${existing[@]}" \
   || die "restic backup завершился с ошибкой"
@@ -106,11 +107,17 @@ fi
 # пропускает: без свежего снапшота она подрезала бы реальную историю.
 if [ -z "$DRY_RUN" ]; then
   log "ротация: --keep-daily $KEEP_DAILY --keep-weekly $KEEP_WEEKLY --keep-monthly $KEEP_MONTHLY"
-  restic forget --prune \
+  if ! restic forget --prune \
+    --retry-lock 10m \
     --keep-daily "$KEEP_DAILY" \
     --keep-weekly "$KEEP_WEEKLY" \
-    --keep-monthly "$KEEP_MONTHLY" \
-    || warn "restic forget завершился с ошибкой (снапшот при этом снят)"
+    --keep-monthly "$KEEP_MONTHLY"; then
+    # Раньше это был обычный warn, неотличимый от «пропущен один путь» — а тут
+    # политика хранения не применяется вообще, и объём в облаке молча растёт,
+    # пока кто-то не заметит счёт (см. инцидент 2026-07-26: не применялось 10 дней).
+    warn "restic forget --prune завершился с ошибкой — политика хранения НЕ применена, старые снапшоты копятся (снапшот при этом снят)"
+    notify "forget --prune упал — старые версии не подрезаны, объём в репозитории растёт" "политика хранения НЕ применена"
+  fi
 fi
 
 # --- итог -------------------------------------------------------------------
