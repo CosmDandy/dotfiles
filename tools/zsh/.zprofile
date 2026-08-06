@@ -15,6 +15,13 @@ export PATH="$HOME/.local/bin:$PATH"
 # =============================================================================
 
 export XDG_CONFIG_HOME="$HOME/.config"
+export XDG_DATA_HOME="$HOME/.local/share"
+export XDG_CACHE_HOME="$HOME/.cache"
+export XDG_STATE_HOME="$HOME/.local/state"
+# HISTFILE и .zcompdump намеренно НЕ переносятся сюда — это сломало бы
+# существующую историю команд и потребовало бы миграции файлов. Только
+# объявление переменных; `${XDG_CACHE_HOME:-$HOME/.cache}` в .zshrc и conf.d
+# теперь просто совпадает с явным значением, а не держится на fallback'е.
 
 # =============================================================================
 # CORE ENVIRONMENT VARIABLES

@@ -1,5 +1,4 @@
-# DevPod: доставка age-ключа зоны в контейнер. Алиасы devpod — в .zshrc,
-# рядом с остальными; сюда вынесены только функции.
+# DevPod: алиасы управления воркспейсами + доставка age-ключа зоны в контейнер.
 #
 # Ключ принадлежит ЗОНЕ (удалённому docker-хосту), а не человеку: на том хосте
 # root есть не только у меня, поэтому личный ключ мака туда не попадает никогда,
@@ -8,6 +7,16 @@
 #
 # Имя записи держим нейтральным: этот файл публичный, а реальное имя (оно же
 # имя рабочего хоста) переопределяется в private/zsh/ — тот сорсится позже.
+#
+# alias'ы dpl/dpf должны быть определены ДО private/zsh/work-stack.sh:kvt-up() —
+# там они используются внутри тела функции, а alias-подстановка происходит при
+# парсинге функции, не при её вызове. conf.d грузится раньше private/, поэтому
+# порядок соблюдён (см. комментарий у цикла подключения conf.d в .zshrc).
+alias ds='devpod ssh'
+alias dpd='devpod delete'
+alias dps='devpod stop'
+alias dpl='devpod up --dotfiles-script-env PROFILE=core --workspace-env-file ~/.dotfiles/.env'
+alias dpf='devpod up --dotfiles-script-env PROFILE=devops --workspace-env-file ~/.dotfiles/.env'
 
 : ${DPKEY_ITEM:=host-age-key}   # запись в Bitwarden с ПРИВАТНЫМ ключом зоны
 : ${DPKEY_FIELD:=}              # непусто → брать из custom-поля (rbw get -f)
