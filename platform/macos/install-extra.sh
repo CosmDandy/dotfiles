@@ -13,28 +13,17 @@ if [[ ! -t 0 ]]; then
   exit 0
 fi
 
-print_section "Installing apps"
-links=(
-    "https://appstorrent.ru/48-final-cut-pro.html"
-    "https://appstorrent.ru/87-capture-one.html"
-    "https://appstorrent.ru/1938-istatistica-pro.html"
-    "https://appstorrent.ru/1789-network-radar.html"
-    "https://appstorrent.ru/423-kaleidoscope.html"
-    "https://appstorrent.ru/3019-screen-studio.html"
-    "https://appstorrent.ru/162-transmit.html"
-    "https://appstorrent.ru/672-cleanshot-x.html"
-    "https://appstorrent.ru/3647-superwhisper.html"
-    "https://appstorrent.ru/42-things-3.html"
-    "https://www.logitech.com/en-eu/software/logi-options-plus.html"
-)
-
-for link in "${links[@]}"; do
-    echo "Opening link: $link"
-    open "$link"
-    sleep 1
-done
-
-confirm "Press 'y' when download all files"
+# Источники дистрибутивов — в приватном сабмодуле: репозиторий публичный.
+# Sourced, а не запуск отдельным процессом: скрипту нужны print_section,
+# confirm и setup_app, объявленные в common.sh выше. Файл только ОБЪЯВЛЯЕТ
+# функции; вызываются они ниже, каждая на своём месте.
+EXTRA_SOURCES="$DOTFILES_ROOT/private/macos/extra-apps.sh"
+if [[ -f "$EXTRA_SOURCES" ]]; then
+    source "$EXTRA_SOURCES"
+    extra_download_sources
+else
+    print_section "private/macos/extra-apps.sh не найден (сабмодуль не инициализирован) — источники пропущены"
+fi
 
 setup_app "OrbStack" \
     "Start at login → on" \
@@ -87,12 +76,11 @@ setup_app "CleanShot X" \
     "Freeze screen: Freeze screen when taking a screenshot → on" \
     "Automatically check for updates → off"
 
-setup_app "Activation Tool" \
-    "激活/Activation" \
-    "确定 (Принять)" \
-    "退出/Exit (Выход)" \
-    "Highlight recorded area during recording → off"
-sudo rm -rf "/Applications/Activation Tool.app"
+# Активация — здесь же, где стояла раньше: приложения, которые тул патчит, к
+# этому моменту установлены и настроены.
+if typeset -f extra_activation >/dev/null; then
+    extra_activation
+fi
 
 setup_app "Raycast" \
     "Import Data"
