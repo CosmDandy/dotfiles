@@ -109,10 +109,34 @@ typeset -U path fpath
 # со временем расходилась бы с установленной версией.
 fpath=("${XDG_CACHE_HOME:-$HOME/.cache}/zsh/completions" $fpath)
 
+# Каталоги, которые НЕ добавляет никто, кроме нас. Проверено в devcontainer'е:
+#   ~/.nix-profile/share/zsh/site-functions — 25 готовых completion'ов от nix-пакетов
+#     (_sops, _rg, _yq, _nix, _fd, _eza, _delta, _argocd, _kubectx/_kubens, _gitleaks…).
+#     На macOS их приносит /etc/zshenv от nix-darwin — ровно те 62 записи из комментария
+#     выше. В Linux-контейнере nix-darwin'а нет, только ~/.nix-profile от home-manager,
+#     и до этой строки sops не дополнялся вообще.
+#   ~/.local/share/zinit/completions — симлинки zinit на функции плагинов (там _age).
+#     Сам zinit добавит этот каталог, но при `source zinit.zsh` — на 150 строк НИЖЕ,
+#     то есть уже после compinit, и в дамп они не попадали.
+# typeset -U fpath (выше) съедает дубли, поэтому платформенного ветвления не нужно.
+() {
+    local d
+    for d in "$HOME/.nix-profile/share/zsh/site-functions" \
+             "$HOME/.nix-profile/share/zsh/vendor-completions" \
+             "${XDG_DATA_HOME:-$HOME/.local/share}/zinit/completions"; do
+        [[ -d $d ]] && fpath=("$d" $fpath)
+    done
+}
+
 # --- автогенерация completion'ов CLI в кэш (если нет; переживает пересборку devcontainer) ---
+# Считаем файлы до и после: если появился новый, compinit ниже обязан пройти полностью.
+# С -C он сканирует не fpath, а дамп, и свежесозданный _tool не увидел бы до следующего
+# полного прохода — то есть до суток.
+typeset -g _comp_fresh=0
 () {
     local cdir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/completions"
     mkdir -p "$cdir"
+    local -a before=("$cdir"/_*(N))
     local tool
     for tool in kubectl helm talosctl k9s devpod docker; do
         (($+commands[$tool])) && [[ ! -f "$cdir/_$tool" ]] && "$tool" completion zsh > "$cdir/_$tool" 2> /dev/null
@@ -128,6 +152,8 @@ fpath=("${XDG_CACHE_HOME:-$HOME/.cache}/zsh/completions" $fpath)
     for tool in uv uvx; do
         (($+commands[$tool])) && [[ ! -f "$cdir/_$tool" ]] && "$tool" --generate-shell-completion zsh > "$cdir/_$tool" 2> /dev/null
     done
+    local -a after=("$cdir"/_*(N))
+    (( $#after != $#before )) && _comp_fresh=1
 }
 
 autoload -Uz compinit
@@ -138,13 +164,34 @@ autoload -Uz compinit
 # extended_glob обратно на выходе, чтобы не менять поведение остального файла.
 () {
     setopt local_options extended_glob
-    local dump="${ZDOTDIR:-$HOME}/.zcompdump"
-    if [[ -n $dump(#qN.mh+24) ]]; then
-        compinit -d "$dump"     # дамп старше суток — полная проверка с compaudit
+    # СВОЙ файл дампа, а не общий ~/.zcompdump — иначе в Debian-контейнере наш
+    # compinit не работает вообще. /etc/zsh/zshrc:111-112 вызывает глобальный
+    # compinit ДО ~/.zshrc и пересоздаёт ~/.zcompdump на КАЖДОМ старте по системному
+    # fpath (969 файлов, наших каталогов там нет). Дамп поэтому всегда «свежий»,
+    # ветка полного прохода не наступала никогда, и `rm ~/.zcompdump` не помогал —
+    # системный вызов тут же писал его заново. Со своим файлом логика возраста
+    # снова считает наш проход, а не чужой. На macOS такого /etc/zsh/zshrc нет,
+    # там это просто переименование дампа.
+    local dump="${ZDOTDIR:-$HOME}/.zcompdump-${ZSH_VERSION}"
+    # Полный проход нужен в трёх случаях, а не в одном. Раньше проверялся только
+    # возраст — и при ОТСУТСТВУЮЩЕМ дампе (#qN) давал пусто, -n "" было ложно, и
+    # управление уходило в ветку -C: «доверяй дампу», которого нет. В свежем
+    # devcontainer'е это оставляло дополнения мёртвыми при живых файлах в fpath —
+    # _kubectl лежал на месте, а kubectl не дополнялся, и rm ~/.zcompdump не помогал.
+    # Glob вынесен в присваивание массива СПЕЦИАЛЬНО. Внутри [[ ]] он раскрывается
+    # до разбора выражения, и при нулевом совпадении (#qN) даёт пустоту — условие
+    # `-n $dump(#qN...)` схлопывается в голое `-n`, арность ломается, и результат
+    # ложный ВСЕГДА, включая случай, когда левая часть || истинна. Проверено
+    # трассировкой: с `[[ ! -f $dump || -n $dump(#qN.mh+24) ]]` при отсутствующем
+    # дампе выбиралась ветка -C.
+    local -a stale=($dump(#qN.mh+24))
+    if [[ ! -f $dump ]] || (( $#stale )) || (( _comp_fresh )); then
+        compinit -d "$dump"     # дампа нет / старше суток / появился новый файл
     else
         compinit -C -d "$dump"  # свежий дамп — читаем как есть
     fi
 }
+unset _comp_fresh
 
 # =============================================================================
 # NAVIGATION & CORE
