@@ -8,15 +8,27 @@ sync_frequency = "30m"
 
 search_mode = "fuzzy"
 filter_mode = "host"
+# история по всему дереву git-репозитория, а не по одной cwd — включает filter_mode
+# "workspace" (Ctrl+R → Tab). Без этого в монорепо история рвётся по подкаталогам.
+workspaces = true
+# после && || | дополнять строку, а не затирать её целиком
+command_chaining = true
 
 style = "full"
 inline_height = 0 # 0 = всегда фулскрин
+# ...но стрелка Вверх — это «подсмотреть последнее», а не полноценный поиск:
+# ей отдельная компактная высота, фулскрин остаётся за Ctrl+R
+inline_height_shell_up_key_binding = 15
 ctrl_n_shortcuts = true # ctrl+1..9 вместо alt для числовых шорткатов
 show_help = false
 show_tabs = false
 
 # не сохранять команды, совпавшие с дефолтными regex секретов (AWS, GH PAT, Slack, Stripe)
 secrets_filter = true
+# не писать промахи раскладки: команда, начинающаяся с кириллицы, не запустится никогда —
+# бинаря с кириллическим именем в PATH не бывает. Кириллица в аргументах, путях и
+# комментариях сохраняется: ai "что такое DAG", cd ВУЗ, ls # русский комментарий
+history_filter = ["^\\s*\\p{Cyrillic}"]
 # Enter сразу выполняет команду; Tab — вернуть в шелл для правки
 enter_accept = true
 
@@ -31,9 +43,41 @@ ignored_commands = [
   "dpd",
   "v"
 ]
+# Считать подкоманду частью команды: `devpod up` и `devpod ssh` — разные строки в
+# статистике, а не один слипшийся `devpod`. Список ЗАМЕНЯЕТ дефолтный целиком,
+# поэтому здесь полный апстримный набор + devpod (у нас dpd/dpf/dpl ~450 вызовов).
+common_subcommands = [
+  "apt",
+  "cargo",
+  "composer",
+  "devpod",
+  "dnf",
+  "docker",
+  "dotnet",
+  "git",
+  "go",
+  "ip",
+  "jj",
+  "kubectl",
+  "nix",
+  "nmcli",
+  "npm",
+  "pecl",
+  "pnpm",
+  "podman",
+  "port",
+  "systemctl",
+  "tmux",
+  "yarn"
+]
 
 [keys]
 prefix = 'h'
+
+# Внутри tmux поиск открывается всплывающим окном, а не занимает текущую панель.
+# Требует tmux >= 3.2. Апстрим отмечает несовместимость с iTerm2 — у нас ghostty.
+[tmux]
+enabled = true
 
 [sync]
 records = true
