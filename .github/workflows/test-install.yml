@@ -86,6 +86,36 @@ jobs:
           done < <(git ls-files '*.json' | grep -v -e lazy-lock.json -e flake.lock)
           exit $fail
 
+  # Поведенческие тесты PreToolUse-гарда. Синтаксис и shellcheck выше ловят
+  # «скрипт сломан», но не ловят «скрипт молча перестал что-то запрещать» — а
+  # это единственный гейт, действующий и под bypassPermissions. Прогон на Linux
+  # важен отдельно: разработка идёт на macOS с BSD-userland, и расхождение
+  # BSD/GNU в grep -E или tr здесь проявится как изменившийся вердикт.
+  claude-hook-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # Без gitleaks тест пропустит блок проверки порядка ask/deny — а это ровно
+      # тот класс регрессии, ради которого он написан. Версия и сумма те же, что
+      # в job gitleaks ниже.
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          echo "$PWD" >> "$GITHUB_PATH"
+      - name: Guard behaviour tests
+        run: bash tools/claude/hooks/pretooluse-guard.test.sh
+
   # Хук pre-commit тоже гоняет gitleaks, но его обходит --no-verify, а репозиторий
   # публичный — цена пропущенного секрета несоизмерима со стоимостью прогона.
   # Бинарь берём релизом с проверкой контрольной суммы, а не сторонним экшеном:
