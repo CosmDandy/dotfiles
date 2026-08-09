@@ -63,6 +63,9 @@ in
       upgrade = false;
     };
     casks = [
+  sshDevpodAgentScript = pkgs.writeShellScriptBin "ssh-devpod-agent" (
+    builtins.readFile ../../automation/launchd/scripts/ssh-devpod-agent.sh
+  );
       # with password
       "karabiner-elements"
       "microsoft-teams"
@@ -301,6 +304,26 @@ in
     # просили в 7.6 (для python "можно оставить"). Секретов на входе нет,
     # только чтение sqlite и вызов `claude -p`, так что риск от привязки к
     # working copy ниже, чем у launchd-скриптов на bash.
+    # Отдельный ssh-agent для dev-контейнеров: держит только те два ключа,
+    # которыми ходят изнутри контейнера, вместо всего системного агента.
+    # Подробности — в шапке самого скрипта; на стороне ssh это `IdentityAgent`
+    # в блоке `Host *.devpod` (private/ssh/config).
+    #
+    # KeepAlive: агент запущен с -D, скрипт висит на wait, поэтому выход
+    # процесса означает смерть агента — launchd поднимет заново и переложит
+    # ключи. RunAtLoad у user-агента срабатывает после логина, когда Keychain
+    # уже разблокирован и ssh-add может взять оттуда пароль.
+    ssh-devpod-agent.serviceConfig = {
+      ProgramArguments = [ "${sshDevpodAgentScript}/bin/ssh-devpod-agent" ];
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin";
+      };
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
+      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
+    };
+
     meeting-summary.serviceConfig = {
       ProgramArguments = [
         "/Users/${config.system.primaryUser}/.dotfiles/automation/meeting/summarize-meeting.py"
