@@ -10,8 +10,12 @@ clipboard-paste-protection = true
 clipboard-read = allow
 
 # Заголовок вкладки отдаём скрипту tab-title.zsh (иконки VM/контейнера).
-# Отключаем только title-фичу; cursor/path/etc остаются.
-shell-integration-features = no-title
+# Список мержится с дефолтом, а не заменяет его: cursor/path остаются.
+# ssh-* по умолчанию выключены. ssh-terminfo при первом заходе на хост заливает
+# туда xterm-ghostty через infocmp|tic и запоминает его (ghostty +ssh-cache) —
+# без этого ncurses на серверах не знает такого типа терминала. ssh-env —
+# фолбэк на xterm-256color для хостов, где tic недоступен.
+shell-integration-features = no-title,ssh-env,ssh-terminfo
 
 # keyboard-first: нейтрализуем мышь, но оставляем живой скролл
 # (Claude Code/nvim/TUI листаются колесом через mouse-reporting)
@@ -57,7 +61,6 @@ window-padding-balance = true
 macos-icon = microchip
 
 unfocused-split-opacity = 0.8
-adjust-cell-height = 10%
 
 split-preserve-zoom = navigation
 
