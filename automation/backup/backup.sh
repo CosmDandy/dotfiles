@@ -21,6 +21,12 @@ set -uo pipefail
 export PATH="/opt/homebrew/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$HOME/.nix-profile/bin:/usr/local/bin:/usr/bin:/bin"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Из launchd скрипт исполняется как store-путь (writeShellScriptBin кладёт туда
+# ОДИН файл — текст скрипта), поэтому рядом с ним манифеста нет и SCRIPT_DIR как
+# единственный источник ломал агента. Путь приходит переменной из
+# darwin-configuration.nix; фолбэк на соседний файл оставлен для запуска руками
+# из рабочей копии.
+MANIFEST_FILE="${BACKUP_MANIFEST_FILE:-$SCRIPT_DIR/manifest.conf}"
 ENV_FILE="${RESTIC_ENV_FILE:-$HOME/.config/restic/env}"
 KEEP_DAILY="${KEEP_DAILY:-7}"
 KEEP_WEEKLY="${KEEP_WEEKLY:-4}"
@@ -48,9 +54,9 @@ die() {
 
 command -v restic >/dev/null || die "restic не найден в PATH (добавлен в platform/nix, примени darwin-rebuild switch)"
 
-[ -f "$SCRIPT_DIR/manifest.conf" ] || die "не найден manifest.conf рядом со скриптом"
+[ -f "$MANIFEST_FILE" ] || die "не найден манифест $MANIFEST_FILE"
 # shellcheck source=manifest.conf
-source "$SCRIPT_DIR/manifest.conf"
+source "$MANIFEST_FILE"
 
 # Доступы: RESTIC_REPOSITORY, RESTIC_PASSWORD, AWS_ACCESS_KEY_ID,
 # AWS_SECRET_ACCESS_KEY. Файл с секретами — только у владельца.

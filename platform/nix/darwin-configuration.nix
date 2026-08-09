@@ -49,6 +49,14 @@ in
   # ===============================
   homebrew = {
     enable = true;
+  # Манифест едет в store отдельным путём и приходит в скрипт переменной.
+  # writeShellScriptBin создаёт ровно один файл — сам скрипт, — поэтому «файл
+  # рядом со скриптом» в store не существует, и агент падал на поиске манифеста
+  # (`не найден manifest.conf рядом со скриптом`, restic не писал с 2026-08-06).
+  # Держать манифест в store, а не читать из рабочей копии, — по той же причине,
+  # по которой там же лежат сами скрипты: иначе откат generation вернул бы
+  # старый скрипт, но список путей взял бы сегодняшний.
+  backupManifest = ../../automation/backup/manifest.conf;
     onActivation = {
       # autoUpdate/upgrade выключены: при true каждый darwin-rebuild switch
       # ходит в сеть и обновляет все каски — один и тот же коммит даёт разный
@@ -243,6 +251,7 @@ in
       RunAtLoad = false;
       LowPriorityIO = true;
       Nice = 5;
+      EnvironmentVariables.BACKUP_MANIFEST_FILE = "${backupManifest}";
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
     };
