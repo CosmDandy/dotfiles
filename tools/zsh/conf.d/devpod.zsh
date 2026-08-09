@@ -18,8 +18,9 @@ alias dps='devpod stop'
 alias dpl='devpod up --dotfiles-script-env PROFILE=core --workspace-env-file ~/.dotfiles/.env'
 alias dpf='devpod up --dotfiles-script-env PROFILE=devops --workspace-env-file ~/.dotfiles/.env'
 
-: ${DPKEY_ITEM:=host-age-key}   # запись в Bitwarden с ПРИВАТНЫМ ключом зоны
+: ${DPKEY_ITEM:=host-age-key}   # стартовый запрос в списке ключей, не жёсткий выбор
 : ${DPKEY_FIELD:=}              # непусто → брать из custom-поля (rbw get -f)
+: ${DPKEY_FILTER:=age}          # чем отсеиваем записи rbw; пусто → показать все
 
 # Строки «id <TAB> дата последнего использования», недавние сверху.
 # Сортируем по полному таймстемпу, а показываем только дату: иначе воркспейсы,
@@ -56,7 +57,37 @@ _dp_pick() {
   fi
 }
 
-# Доставка ключа зоны в контейнер. Без аргумента — интерактивный выбор.
+# Выбор записи с ключом среди всех записей Bitwarden. Фильтр по имени нужен
+# потому, что записей больше сотни, а ключей единицы; DPKEY_ITEM идёт стартовым
+# запросом fzf — привычный ключ сразу наверху, но список полный и Ctrl-U
+# показывает остальные. Содержимое записей здесь не читается: список строится по
+# именам, а `rbw get` вызывается уже для одной выбранной.
+_dp_pick_key() {
+  emulate -L zsh
+  local -a items
+  items=(${(f)"$(rbw list 2>/dev/null | grep -i -- "$DPKEY_FILTER")"})
+  (( ${#items} )) || {
+    print -u2 "dpkey: под фильтр «$DPKEY_FILTER» не попала ни одна запись Bitwarden"
+    print -u2 "       DPKEY_FILTER='' покажет все"
+    return 1
+  }
+
+  if (( $+commands[fzf] )); then
+    print -rl -- $items \
+      | fzf --prompt='age-key> ' --height=40% --reverse \
+            --query="$DPKEY_ITEM" \
+            --header='приватный ключ; Ctrl-U — очистить запрос и увидеть все'
+  else
+    local choice
+    select choice in $items; do
+      [[ -n $choice ]] && { print -r -- "$choice"; return 0; }
+    done
+    return 1
+  fi
+}
+
+# Доставка ключа зоны в контейнер. Без аргументов — интерактивный выбор обоих:
+# сначала воркспейс, потом ключ (порядок тот же, что у позиционных аргументов).
 # Ключ живёт в контейнере до пересоздания, поэтому вызывается на первый запуск
 # и после --recreate, а не на каждую сессию — оттого и отдельная команда,
 # а не хвост dpl/dpf.
@@ -74,17 +105,25 @@ dpkey() {
   fi
   [[ -z $id ]] && { print -u2 "dpkey: воркспейс не выбран"; return 1; }
 
+  local item
+  if (( $# > 1 )); then
+    item=$2
+  else
+    item=$(_dp_pick_key) || return 1
+  fi
+  [[ -z $item ]] && { print -u2 "dpkey: ключ не выбран"; return 1; }
+
   local key
   if [[ -n $DPKEY_FIELD ]]; then
-    key=$(rbw get -f "$DPKEY_FIELD" "$DPKEY_ITEM") || return 1
+    key=$(rbw get -f "$DPKEY_FIELD" "$item") || return 1
   else
-    key=$(rbw get "$DPKEY_ITEM") || return 1
+    key=$(rbw get "$item") || return 1
   fi
 
   # Страховка: пустой вывод или подсунутый публичный ключ иначе молча уедут
   # в контейнер файлом-пустышкой, и отлаживать это потом дорого
   if [[ $key != *AGE-SECRET-KEY-* ]]; then
-    print -u2 "dpkey: в записи «$DPKEY_ITEM» нет приватного age-ключа."
+    print -u2 "dpkey: в записи «$item» нет приватного age-ключа."
     print -u2 "       Нужен приватный (AGE-SECRET-KEY-...), а не публичный age1..."
     return 1
   fi
