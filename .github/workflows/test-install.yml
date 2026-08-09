@@ -115,6 +115,11 @@ jobs:
           echo "$PWD" >> "$GITHUB_PATH"
       - name: Guard behaviour tests
         run: bash tools/claude/hooks/pretooluse-guard.test.sh
+      # Свёртка фрагментов и восстановление после компакта работают с файлами в
+      # корне репозитория. Каждый кейс поднимает свой одноразовый git-репозиторий,
+      # поэтому прогон в CI безопасен и ничего в чекауте не трогает.
+      - name: Session lifecycle hook tests
+        run: bash tools/claude/hooks/session-lifecycle.test.sh
 
   # Хук pre-commit тоже гоняет gitleaks, но его обходит --no-verify, а репозиторий
   # публичный — цена пропущенного секрета несоизмерима со стоимостью прогона.

@@ -36,6 +36,12 @@ conversation; I'll say when.
 - When you point at code I haven't already seen this session, paste the relevant
   lines with their numbers, not just `file:line`. The path alone makes me open the
   file to learn what you already know. Long enough to judge, short enough to read.
+- A diagram earns its place when the thing is genuinely graph-shaped — states and
+  transitions, a branching data flow, an ordering with dependencies — and not
+  otherwise. One diagram per mechanism that will not fit in a paragraph; prose for
+  everything else. A stale diagram is worse than no diagram, because it reads as
+  authoritative, so anything you draw is something you have signed up to keep true.
+  Mermaid, so it lives in the file and diffs.
 
 ## Code
 
@@ -173,6 +179,19 @@ PROGRESS.md's own sections and delete the fragment — normal cleanup, not
 something to ask permission for. `PROGRESS.*.md` is gitignored the same way
 PROGRESS.md is.
 
+Your own fragment is folded for you: the `SessionEnd` hook appends it to
+PROGRESS.md, moves unchecked TODO lines into `## Next`, and deletes both files.
+Don't do it by hand at the end of a turn, and don't skip writing to the fragment
+on the theory that it won't survive — it will.
+
+**In a worktree, the fragment still belongs in the main checkout.** A handoff the
+next session cannot find is not a handoff, and `.claude/worktrees/<name>/` is
+exactly where nobody looks. Write it to the main checkout by absolute path —
+`git rev-parse --path-format=absolute --git-common-dir` gets you there — and use
+Bash if the Write tool is scoped to the worktree. This is expected, not a
+workaround: the file is gitignored and keyed to your own `sid8`, so it races with
+nothing. Just do it; there is no need to explain it in chat every session.
+
 ## TODO.<sid8>.md — the session's plan
 
 Alongside the handoff, the plan: `TODO.<sid8>.md` at the repo root — same `sid8`
@@ -195,10 +214,29 @@ they were finished.
   next one.
 - Keep it in step with the work, not at the end of the turn: a task gets checked
   off when it's actually done, and new ones get appended when they appear.
-- When the session ends, its outcome goes into PROGRESS.md together with the
-  fragment, and `TODO.<sid8>.md` is deleted alongside it. A TODO file left by a
-  session that has clearly ended is unfinished work, not a file to tidy away
-  silently — read it first.
+- The `SessionEnd` hook moves every unchecked line into PROGRESS.md's `## Next`
+  and deletes the file; closed lines stay behind, git already has them. So an
+  unchecked line is a promise to the next session — leave it unchecked if it is
+  genuinely open, and don't tick it to tidy up. A TODO file left by a session
+  that ended without the hook firing (a crash, a kill) is unfinished work, not a
+  file to sweep away silently — read it first.
+
+## Where a fact goes
+
+Three stores, and the boundary is the tense, not the topic. Putting a fact in the
+wrong one is how it gets lost: nobody looks for how the system works in a diary.
+
+- **`knowledge/<project>/` — as-is.** How the thing is built right now: components,
+  invariants, the constraint you would otherwise rediscover. Present tense, no
+  history. **Updating it is part of "done"**, not a separate ritual — a change that
+  invalidates a line there is not finished until that line is fixed. An as-is
+  document nobody updates is worse than none, because it is read as true.
+- **`PROGRESS.md` — narrative.** What we tried, what it did instead, what finally
+  worked, and why a road was not taken. Past tense. This is the only place where a
+  failed approach earns a line.
+- **`specs/<task>.md` — to-be**, written by `/spec` before implementation. Do not
+  put as-is state here: the folder is for the task you are about to do, and mixing
+  the two genres in one directory is how both stop being trusted.
 
 ## Compact Instructions
 

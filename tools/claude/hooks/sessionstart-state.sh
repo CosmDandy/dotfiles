@@ -18,6 +18,7 @@ set -uo pipefail
 input="$(cat)"
 sid="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)"
 sid8="${sid:0:8}"
+src="$(printf '%s' "$input" | jq -r '.source // empty' 2>/dev/null)"
 
 out=""
 
@@ -40,6 +41,19 @@ fi
 # фрагмент пишется в подкаталог, Stop его там не находит и напоминает зря.
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
 [[ -n "$root" ]] || root="."
+
+# Компакт заменяет разговор сводкой, и всё, чего нет на диске, потеряно.
+# precompact-snapshot.sh пишет снимок в фрагмент СВОЕЙ сессии — но обратно его никто
+# не читал: SessionStart висит на общем matcher и источник не различал, показывая
+# только ## Next из общего PROGRESS.md. Снимок писался в пустоту ровно в тот момент,
+# когда он единственно и нужен. Здесь он возвращается в контекст.
+if [[ "$src" == "compact" && -n "$sid8" && -f "$root/PROGRESS.${sid8}.md" ]]; then
+  frag="$(tail -n 120 "$root/PROGRESS.${sid8}.md" | tail -c 8000)"
+  if [[ -n "$frag" ]]; then
+    out+="Контекст только что схлопнулся. Ниже — хвост собственного фрагмента этой сессии (PROGRESS.${sid8}.md): то, что было записано ДО компакта. Читай его как продолжение работы, а не как справку."$'\n'
+    out+="$frag"$'\n\n'
+  fi
+fi
 
 if [[ -f "$root/PROGRESS.md" ]]; then
   next="$(awk '/^## Next/{f=1;next} /^## /{f=0} f' "$root/PROGRESS.md" | grep -v '^[[:space:]]*$' | head -8)"
