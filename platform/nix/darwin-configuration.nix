@@ -1,12 +1,32 @@
 {
   config,
+  lib,
   pkgs,
   user,
   hostname,
+  cpuCores,
+  memoryGiB,
   ...
 }:
 
 let
+  giB = n: toString (n * 1024 * 1024 * 1024);
+
+  # Параллелизм демона Nix считается от железа (cpuCores/memoryGiB приходят из
+  # flake.nix), а не берётся дефолтом. Дефолт — max-jobs = auto, то есть по
+  # числу ядер, и cores = 0, то есть каждое задание на все ядра: на восьми
+  # ядрах это до 64 компиляторов разом. На 8 ГиБ машина от этого уходит в своп
+  # и считает медленнее, чем считала бы с меньшим параллелизмом (наблюдалось
+  # 2026-08-09: load average 17.9, своп 8.6 ГиБ из 9.2 при сборке rio).
+  #
+  # Потолок по памяти: тяжёлая сборка (Rust, C++ с LTO) на пике берёт ~3 ГиБ,
+  # ещё ~2 ГиБ остаётся системе. Потолок по ядрам — половина: иначе на машине с
+  # большой памятью вышло бы много однопоточных заданий вместо нескольких
+  # быстрых, а сборки плохо параллелятся между собой, но хорошо внутри себя.
+  nixMaxJobs = lib.max 1 (lib.min (cpuCores / 2) ((memoryGiB - 2) / 3));
+  # Ядра делятся между одновременными заданиями, чтобы в сумме не превысить железо.
+  nixBuildCores = lib.max 1 (cpuCores / nixMaxJobs);
+
   # Скрипты launchd-агентов заворачиваются в store-путь, а не исполняются из
   # рабочей копии: агент декларирован в nix, но раньше выполнялось то, что
   # лежит в /Users/.../.dotfiles в момент запуска — откат generation вернёт
@@ -29,11 +49,22 @@ let
   backupScript = pkgs.writeShellScriptBin "backup" (
     builtins.readFile ../../automation/backup/backup.sh
   );
+  # Манифест едет в store отдельным путём и приходит в скрипт переменной.
+  # writeShellScriptBin создаёт ровно один файл — сам скрипт, — поэтому «файл
+  # рядом со скриптом» в store не существует, и агент падал на поиске манифеста
+  # (`не найден manifest.conf рядом со скриптом`, restic не писал с 2026-08-06).
+  # Держать манифест в store, а не читать из рабочей копии, — по той же причине,
+  # по которой там же лежат сами скрипты: иначе откат generation вернул бы
+  # старый скрипт, но список путей взял бы сегодняшний.
+  backupManifest = ../../automation/backup/manifest.conf;
   backupCheckScript = pkgs.writeShellScriptBin "backup-check" (
     builtins.readFile ../../automation/backup/backup-check.sh
   );
   cleanupMacScript = pkgs.writeShellScriptBin "cleanup-mac" (
     builtins.readFile ../../automation/launchd/scripts/cleanup-mac.sh
+  );
+  sshDevpodAgentScript = pkgs.writeShellScriptBin "ssh-devpod-agent" (
+    builtins.readFile ../../automation/launchd/scripts/ssh-devpod-agent.sh
   );
 in
 {
@@ -49,14 +80,6 @@ in
   # ===============================
   homebrew = {
     enable = true;
-  # Манифест едет в store отдельным путём и приходит в скрипт переменной.
-  # writeShellScriptBin создаёт ровно один файл — сам скрипт, — поэтому «файл
-  # рядом со скриптом» в store не существует, и агент падал на поиске манифеста
-  # (`не найден manifest.conf рядом со скриптом`, restic не писал с 2026-08-06).
-  # Держать манифест в store, а не читать из рабочей копии, — по той же причине,
-  # по которой там же лежат сами скрипты: иначе откат generation вернул бы
-  # старый скрипт, но список путей взял бы сегодняшний.
-  backupManifest = ../../automation/backup/manifest.conf;
     onActivation = {
       # autoUpdate/upgrade выключены: при true каждый darwin-rebuild switch
       # ходит в сеть и обновляет все каски — один и тот же коммит даёт разный
@@ -71,9 +94,6 @@ in
       upgrade = false;
     };
     casks = [
-  sshDevpodAgentScript = pkgs.writeShellScriptBin "ssh-devpod-agent" (
-    builtins.readFile ../../automation/launchd/scripts/ssh-devpod-agent.sh
-  );
       # with password
       "karabiner-elements"
       "microsoft-teams"
@@ -149,6 +169,20 @@ in
     neovim
     tree-sitter # CLI: nvim-treesitter (main) компилирует парсеры через него (на Linux ставится npm-ом в install.sh)
     tmux
+    # terminfo для tmux — явно, вместо снятого environment.enableAllTerminfo.
+    # Та опция тянула девять terminfo-пакетов, из которых восемь были не нужны:
+    # семь терминалов, которых на этой машине нет (alacritty, kitty, mtm, rio,
+    # rxvt-unicode, st, wezterm), плюс мёртвый дубль ghostty — настоящий приезжает
+    # из /Applications/Ghostty.app, приложение само выставляет TERMINFO на свой
+    # бандл, и эта переменная бьёт весь TERMINFO_DIRS.
+    # Нужен был из всей девятки только этот: TERM внутри tmux — tmux-256color, а в
+    # системном macOS ncurses он урезан (105 capabilities против 175 здесь) — нет
+    # hpa, indn, invis и модифицированных клавиш kDC/kEND/kHOM/kIC/kLFT, то есть
+    # shift+стрелки и shift+Home/End в tmux перестают распознаваться.
+    # Цена опции была не в мегабайтах: rio собирается из исходников, и на каждом
+    # bump'е nixpkgs, который Hydra не успела собрать под aarch64-darwin, обычный
+    # `updm` уходил компилировать Rust-терминал с wgpu ради 20 КБ terminfo.
+    tmux.terminfo
     # tmux-thumbs объявлен и здесь, а не только в Linux-профиле: .tmux.conf один
     # на обе среды и грузит плагин по `if-shell [ -e ~/.nix-profile/... ]`, поэтому
     # на маке файла не было и prefix+f молча ничего не делал — при живой
@@ -217,6 +251,7 @@ in
     # запуск не догоняет.
     backup.serviceConfig = {
       ProgramArguments = [ "${backupScript}/bin/backup" ];
+      EnvironmentVariables.BACKUP_MANIFEST_FILE = "${backupManifest}";
       StartCalendarInterval = [
         {
           Hour = 13;
@@ -251,7 +286,6 @@ in
       RunAtLoad = false;
       LowPriorityIO = true;
       Nice = 5;
-      EnvironmentVariables.BACKUP_MANIFEST_FILE = "${backupManifest}";
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
     };
@@ -268,6 +302,26 @@ in
       RunAtLoad = false;
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/cleanup-mac.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/cleanup-mac.log";
+    };
+
+    # Отдельный ssh-agent для dev-контейнеров: держит только те два ключа,
+    # которыми ходят изнутри контейнера, вместо всего системного агента.
+    # Подробности — в шапке самого скрипта; на стороне ssh это `IdentityAgent`
+    # в блоке `Host *.devpod` (private/ssh/config).
+    #
+    # KeepAlive: агент запущен с -D, скрипт висит на wait, поэтому выход
+    # процесса означает смерть агента — launchd поднимет заново и переложит
+    # ключи. RunAtLoad у user-агента срабатывает после логина, когда Keychain
+    # уже разблокирован и ssh-add может взять оттуда пароль.
+    ssh-devpod-agent.serviceConfig = {
+      ProgramArguments = [ "${sshDevpodAgentScript}/bin/ssh-devpod-agent" ];
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin";
+      };
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
+      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
     };
 
     # Демон переключения раскладки при подключении BT-клавиатуры. Бинарь
@@ -313,26 +367,6 @@ in
     # просили в 7.6 (для python "можно оставить"). Секретов на входе нет,
     # только чтение sqlite и вызов `claude -p`, так что риск от привязки к
     # working copy ниже, чем у launchd-скриптов на bash.
-    # Отдельный ssh-agent для dev-контейнеров: держит только те два ключа,
-    # которыми ходят изнутри контейнера, вместо всего системного агента.
-    # Подробности — в шапке самого скрипта; на стороне ssh это `IdentityAgent`
-    # в блоке `Host *.devpod` (private/ssh/config).
-    #
-    # KeepAlive: агент запущен с -D, скрипт висит на wait, поэтому выход
-    # процесса означает смерть агента — launchd поднимет заново и переложит
-    # ключи. RunAtLoad у user-агента срабатывает после логина, когда Keychain
-    # уже разблокирован и ssh-add может взять оттуда пароль.
-    ssh-devpod-agent.serviceConfig = {
-      ProgramArguments = [ "${sshDevpodAgentScript}/bin/ssh-devpod-agent" ];
-      EnvironmentVariables = {
-        PATH = "/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin";
-      };
-      RunAtLoad = true;
-      KeepAlive = true;
-      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
-      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
-    };
-
     meeting-summary.serviceConfig = {
       ProgramArguments = [
         "/Users/${config.system.primaryUser}/.dotfiles/automation/meeting/summarize-meeting.py"
@@ -393,7 +427,34 @@ in
   };
 
   environment = {
-    enableAllTerminfo = true;
+    # Настройки демона Nix. Не через `nix.settings` — при `nix.enable = false`
+    # (демон принадлежит Determinate) его в конфигурации не существует вовсе.
+    # Determinate владеет /etc/nix/nix.conf и перезаписывает его, но сам же
+    # подключает оттуда `!include nix.custom.conf` и этот файл не трогает —
+    # он и предназначен для пользовательских правок.
+    # Прежний nix.custom.conf (два комментария от инсталлятора, ни одной
+    # настройки) активация сама уведёт в *.before-nix-darwin — см. `mv` в
+    # /etc/static-обходе скрипта activate, ручное вмешательство не нужно.
+    etc."nix/nix.custom.conf".text = ''
+      # Параллелизм — из cpuCores/memoryGiB в flake.nix, формулы в let выше.
+      # На этой машине (8 ядер, 8 ГиБ) выходит max-jobs = ${toString nixMaxJobs}, cores = ${toString nixBuildCores}.
+      max-jobs = ${toString nixMaxJobs}
+      cores = ${toString nixBuildCores}
+
+      # Дедупликация store хардлинками при добавлении пути. Действует только на
+      # новые пути; уже лежащие 6.6 ГБ разово ужимает `nix store optimise`.
+      auto-optimise-store = true
+
+      # Страховка от переполнения диска посреди сборки: когда свободного места
+      # остаётся меньше min-free, GC чистит store, пока не освободит max-free.
+      # max-free задан явно, потому что по умолчанию он бесконечный — то есть
+      # сработавший GC выметал бы всё, что не под GC-рутом, а не нужный минимум.
+      # Эти два от железа не считаются: они про свободное место на диске, а не
+      # про ОЗУ и ядра, и размер тома при eval так же неизвестен.
+      min-free = ${giB 1}
+      max-free = ${giB 3}
+    '';
+
     variables = {
       BROWSER = "arc";
       LANG = "en_US.UTF-8";

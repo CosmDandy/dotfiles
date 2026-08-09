@@ -60,15 +60,29 @@
       # а не выводится из user — имя атрибута конфигурации (macbook-cosmdandy,
       # используется в install-nix.sh и updm) и networking.hostName были связаны
       # только через primaryUser и расходились бы на другом пользователе.
+      # cpuCores/memoryGiB — характеристики железа. Их приходится объявлять, а не
+      # определять: eval обязан быть воспроизводимым и одинаково считаться на
+      # любой машине, поэтому число ядер и объём ОЗУ текущего хоста ему просто не
+      # видны (`builtins.getEnv` требует --impure и в чистом флейке не вариант).
+      # Зато от них считаются max-jobs/cores демона — см. darwin-configuration.nix.
       mkDarwin =
         {
           hostname,
           user,
+          cpuCores,
+          memoryGiB,
           system ? "aarch64-darwin",
         }:
         darwin.lib.darwinSystem {
           inherit system;
-          specialArgs = { inherit user hostname; };
+          specialArgs = {
+            inherit
+              user
+              hostname
+              cpuCores
+              memoryGiB
+              ;
+          };
           modules = [
             ./darwin-configuration.nix
             home-manager.darwinModules.home-manager
@@ -99,6 +113,9 @@
       darwinConfigurations.macbook-cosmdandy = mkDarwin {
         hostname = "macbook-cosmdandy";
         user = "cosmdandy";
+        # MacBook Air M1: `sysctl -n hw.ncpu hw.memsize` → 8 ядер, 8 ГиБ
+        cpuCores = 8;
+        memoryGiB = 8;
       };
 
       # ===============================
