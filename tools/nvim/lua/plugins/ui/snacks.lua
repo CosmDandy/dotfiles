@@ -62,6 +62,10 @@ return {
     quickfile = { enabled = true },
     -- плавающий vim.ui.input (rename и пр.) вместо строки внизу — в стиле остального snacks
     input = { enabled = true },
+    -- Плавный скролл. Мгновенный прыжок на полэкрана заставляет заново искать, где ты;
+    -- анимация ведёт взгляд. Дефолтный фильтр не трогает buftype=terminal
+    -- (lazygit, claude-code) — там прокрутку рисует само приложение.
+    scroll = { enabled = true },
     -- подсветка вхождений символа под курсором (LSP document_highlight) + прыжки ]]/[[
     words = { enabled = true },
     -- текст-объекты по области: ii/ai + прыжки [i/]i

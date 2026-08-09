@@ -37,8 +37,31 @@ bell-audio-volume = 0.4
 keybind = shift+enter=text:\x1b\r
 
 # Quick Terminal (Quake-стиль): выезжает сверху по глобальному Option+F5, поверх любого приложения.
-# Глобальный бинд требует разрешения Ghostty в System Settings → Privacy → Accessibility.
 quick-terminal-position = top
 keybind = global:alt+f5=toggle_quick_terminal
 
 font-family = "JetBrainsMono Nerd Font"
+
+minimum-contrast = 1.1
+alpha-blending = linear-corrected
+# window-padding-color = extend
+
+# Отступы убраны совсем: дефолтные 2px оставляют у стекла полоску фона, 0 — впритык.
+# balance — при fullscreen ширина не делится на ячейки нацело, и остаток без него
+# уходит одной полосой вправо/вниз; с ним разносится симметрично по обеим сторонам.
+window-padding-x = 0
+window-padding-y = 0
+window-padding-balance = true
+
+# blueprint, chalkboard, microchip, gclass, holographic, paper, retro, xray
+macos-icon = microchip
+
+unfocused-split-opacity = 0.8
+adjust-cell-height = 10%
+
+split-preserve-zoom = navigation
+
+keybind = super+alt+y=goto_split:left
+keybind = super+alt+h=goto_split:down
+keybind = super+alt+a=goto_split:up
+keybind = super+alt+e=goto_split:right

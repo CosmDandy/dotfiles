@@ -74,6 +74,29 @@ return {
     -- Улучшенная навигация по тексту [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-bracketed.md]
     require('mini.bracketed').setup()
 
+    -- Выравнивание в столбик по разделителю [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-align.md]
+    -- ga{motion} + разделитель, gA — то же с интерактивным превью. Ради этого и
+    -- ставилось: хвостовые `-- комментарий` и таблицы значений встают по одной
+    -- колонке. Перекрывает встроенный ga (код символа под курсором) — если
+    -- понадобится, то же самое дают :ascii и g8.
+    require('mini.align').setup()
+
+    -- Анимация курсора [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-animate.md]
+    -- На прыжках (}, G, gg, результат поиска) рисуется след от старой позиции к новой —
+    -- глаз не теряет, откуда курсор приехал. Остальные модули выключены намеренно:
+    -- скролл анимирует snacks.scroll, а open/close/resize дерутся с плавающими
+    -- окнами snacks (picker, input, notifier) и мигают на каждом их открытии.
+    local animate = require 'mini.animate'
+    animate.setup {
+      cursor = {
+        timing = animate.gen_timing.linear { duration = 80, unit = 'total' },
+      },
+      scroll = { enable = false },
+      resize = { enable = false },
+      open = { enable = false },
+      close = { enable = false },
+    }
+
     -- Статуслайн снизу [https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-statusline.md]
     local statusline = require 'mini.statusline'
 
