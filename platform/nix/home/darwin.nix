@@ -114,27 +114,11 @@ in
 
     # devpod ставится каской в homebrew-шаге активации nix-darwin, который
     # идёт ДО postActivation (home-manager) — на первом прогоне бинарь уже есть
+    # apply.sh сам пропускает всё при отсутствии devpod CLI и не считает отказом
+    # недоступный ssh-провайдер kvt-d-01 (нет private/ssh/config или VPN)
     setupDevpod = beforeReport ''
-      export PATH="${hookPath}:$PATH"
-      if command -v devpod >/dev/null 2>&1; then
-        run devpod context set-options --option DOTFILES_URL=git@github.com:CosmDandy/dotfiles.git --option GIT_SSH_SIGNATURE_FORWARDING=false --option SSH_ADD_PRIVATE_KEYS=true --option SSH_AGENT_FORWARDING=true --option SSH_INJECT_DOCKER_CREDENTIALS=true --option SSH_INJECT_GIT_CREDENTIALS=false \
-          || ${warn "devpod context set-options failed"}
-        run devpod ide use none || ${warn "devpod ide use failed"}
-        # provider add не идемпотентен («already exists» на повторном запуске)
-        if ! devpod provider list 2>/dev/null | grep -q "local-docker"; then
-          run devpod provider add docker --name local-docker --use -o INACTIVITY_TIMEOUT=1h \
-            || ${warn "provider local-docker not added"}
-        fi
-        # ssh-провайдер требует Host kvt-d-01 из private/ssh/config и доступности
-        # хоста — на машине без приватного конфига/VPN не валим активацию
-        if ! devpod provider list 2>/dev/null | grep -q "kvt-d-01-ssh"; then
-          run devpod provider add ssh --name kvt-d-01-ssh -o HOST=kvt-d-01 \
-            || ${warn "ssh-провайдер kvt-d-01 не настроен (нет ~/.ssh/config или хост недоступен)"}
-        fi
-        run devpod provider use local-docker || ${warn "provider use failed"}
-      else
-        ${warn "devpod не найден — настройка providers пропущена"}
-      fi
+      PATH="${hookPath}:$PATH" run "${dotfiles}/tools/devpod/apply.sh" \
+        || ${warn "devpod apply failed"}
     '';
 
     # apply.sh сам пропускает всё при отсутствии orb CLI (свежая машина,
