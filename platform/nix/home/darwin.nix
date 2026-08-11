@@ -46,8 +46,14 @@ in
     # known_hosts НЕ здесь: ssh (UpdateHostKeys) пересоздаёт файл, уничтожая
     # симлинк, — каждый следующий switch упирался бы в бэкап; см. хук ниже
     # приватные конфиги — из сабмодуля private/; до его init симлинки висячие
-    # ssh-конфиг (config и config.d) переехал в общий files.nix — он нужен и в
-    # dev-контейнерах
+    # ssh-конфиги — только macOS. В dev-контейнеры не тянутся сознательно: там
+    # ssh нужен лишь для git к форжам, и это делает проброшенный агент. Пробовали
+    # тянуть — Linux-ssh 9.6 падает целиком («terminating, N bad configuration
+    # options») на UseKeychain и на mlkem768x25519, а вместе с ним умирает git.
+    ".ssh/config".source = link "private/ssh/config";
+    # контуры (kvt, local-lab, cloud-lab) — каталогом целиком, чтобы новый
+    # файл подхватывался глобом Include без правки этого списка
+    ".ssh/config.d".source = link "private/ssh/config.d";
     # rbw на macOS игнорирует XDG_CONFIG_HOME и читает конфиг из Library
     "Library/Application Support/rbw/config.json".source = link "private/rbw/config.json";
     "Library/Application Support/Leader Key/config.json".source = link "tools/leader-key/config.json";
@@ -78,7 +84,11 @@ in
       run ln -sfn "${dotfiles}/tools/homebrew/trust.json" "$HOME/.config/homebrew/trust.json"
     '';
 
-    # sshSockets переехал в общий hooks.nix — каталог нужен и в контейнерах
+    # ControlMaster в private/ssh/config держит мультиплекс-сокеты здесь.
+    # Только macOS: ssh-конфиг в контейнеры не тянется, там мультиплекса нет.
+    sshSockets = after ''
+      run mkdir -p "$HOME/.ssh/sockets"
+    '';
 
     # Раскладка Graphite — копией, а не симлинком через home.file: Text Input
     # Sources не принимает симлинк-бандлы, а цель в /nix/store вдобавок не

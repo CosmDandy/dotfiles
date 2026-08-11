@@ -23,15 +23,12 @@ in
     ".gitignore_global".source = link "tools/git/.gitignore_global";
     ".gitconfig".source = link "tools/git/.gitconfig";
     ".allowed_signers".source = link "tools/git/.allowed_signers";
-    # ssh-конфиг общий для macOS и Linux: основной файл нужен и в контейнерах —
-    # именно он делает Include контуров. Совместимость со старым ssh (9.6 в
-    # образе) держится внутри самого конфига: IgnoreUnknown для UseKeychain и
-    # имя KEX с суффиксом @openssh.com. Без этого Linux-ssh не игнорирует
-    # непонятое, а завершается с ошибкой и ломает вообще всё, включая git.
-    ".ssh/config".source = link "private/ssh/config";
-    # Контуры (kvt, local-lab, cloud-lab, home, vds-friends) — каталогом целиком,
-    # чтобы новый файл подхватывался глобом Include без правки этого списка.
-    ".ssh/config.d".source = link "private/ssh/config.d";
+    # ssh-конфигов здесь НЕТ и быть не должно: они macOS-only и живут в
+    # darwin.nix. В dev-контейнеры их не тянем — там ssh нужен только для git к
+    # форжам, и это делает проброшенный агент. Попытка притащить конфиг внутрь
+    # обошлась дорого: Linux-ssh падает целиком на macOS-опциях (UseKeychain) и
+    # на алгоритмах новее своей версии, а лечение каждой несовместимости
+    # отдельным механизмом ломало то macOS, то контейнер.
     ".git-hooks".source = link "tools/git/hooks";
     ".claude/CLAUDE.md".source = link "tools/claude/CLAUDE.md";
     ".claude/settings.json".source = link "tools/claude/settings.json";
@@ -40,23 +37,6 @@ in
     # ~/.claude/{agents,commands,skills,rules} НЕ здесь: ими владеет
     # tools/claude/custom/install.sh (хук installClaudeCustom) — сабмодуль
     # может отсутствовать на момент linkGeneration
-  }
-  # ТОЛЬКО Linux. `IdentitiesOnly yes` из Host * заставляет ssh брать ключ из
-  # агента лишь при наличии рядом ПУБЛИЧНОЙ половины, а приватных ключей (и их
-  # .pub) в контейнере нет — они приезжают проброшенным агентом. Без этого
-  # оверлея ssh ключ даже не предлагает: «no such identity … / Permission denied
-  # (publickey)», и отваливаются оба форжа вместе с git fetch.
-  #
-  # Ограничивать в контейнере нечего: в проброшенном агенте ровно три ключа,
-  # которые мы туда сами и положили (kvt, forge, sign — automation/launchd/
-  # scripts/ssh-devpod-agent.sh). На маке смысл обратный: там в агенте девять
-  # ключей, и без IdentitiesOnly каждый сервер увидел бы их все.
-  // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
-    ".ssh/config.local".text = ''
-      # Подключается первой строкой из private/ssh/config.
-      Host *
-        IdentitiesOnly no
-    '';
   };
 
   xdg.configFile = {

@@ -36,15 +36,8 @@ in
       run rm -f "${warnFile}"
     '';
 
-    # ControlMaster из private/ssh/config держит мультиплекс-сокеты здесь.
-    # Каталог нужен на ОБЕИХ платформах: конфиг теперь симлинкуется и в
-    # контейнеры, а ssh каталог сам не создаёт — падает с «unix_listener:
-    # cannot bind to path …/sockets/…: No such file or directory», и соединение
-    # не поднимается вовсе. Поймано в dev-контейнере на kvt-d-01.
-    sshSockets = after ''
-      run mkdir -p "$HOME/.ssh/sockets"
-      run chmod 700 "$HOME/.ssh/sockets"
-    '';
+    # sshSockets живёт в darwin.nix: ssh-конфиг с ControlMaster есть только на
+    # маке, в контейнеры мы его не тянем.
 
     # Claude Code — сознательно НЕ через nix: официальный бинарь самообновляется,
     # в иммутабельном store это невозможно. Хук лишь ставит его при отсутствии
