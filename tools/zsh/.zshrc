@@ -27,7 +27,9 @@ export DOTFILES_DIR="${HOME}/.dotfiles"
 # поэтому новая переменная в .env по умолчанию наружу не попадёт.
 # Следующий шаг (не сделан): раздавать JIRA_*/TIMING_MCP_URL самим MCP-серверам через
 # `claude mcp add -e KEY=...`, а GITLAB_TOKEN — через direnv в рабочих каталогах;
-# тогда глобальный экспорт исчезнет совсем. См. use_sops в tools/direnv/direnvrc.
+# тогда глобальный экспорт исчезнет совсем. Образец — use_sops в КОРНЕВОМ .envrc
+# репозитория (в личном direnvrc такому не место: .envrc уезжают в git, и у всех
+# остальных функции не будет).
 if [[ -f "$DOTFILES_DIR/.env" ]]; then
     source "$DOTFILES_DIR/.env"
     () {
@@ -404,21 +406,43 @@ autoload -Uz _zinit
 # Starship - современная настраиваемая строка приглашения
 eval "$(starship init zsh)"
 
-# fzf — строго ДО atuin. Оба вешают виджет на Ctrl-R; в этом порядке atuin
-# перебивает его на свой поиск (так и нужно), а Ctrl-T (файл под курсор) и
-# Alt-C (cd в подкаталог) остаются от fzf. В обратном порядке fzf отобрал бы
-# историю у atuin. Источник списка — fd, чтобы уважался .gitignore.
+# fzf — строго ДО atuin. Оба вешают виджет на Ctrl-R; раньше спор решался одним
+# лишь порядком eval'ов, теперь биндинг fzf снимается явно (см. ниже), а порядок
+# оставлен страховкой. Alt-C у fzf тоже забран — клавиша нужна вне zsh. За ним
+# остаётся один Ctrl-T (файл под курсор).
+# Источник списка — fd, чтобы уважался .gitignore.
 if (($+commands[fzf])); then
     (($+commands[fd])) && export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git' \
         && export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND" \
         && export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
-    export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
+    # --color=base16 берёт цвета из палитры терминала (ANSI 0-15) вместо зашитых:
+    # окно само следует теме ghostty light:/dark: без перезапуска шелла. Свои
+    # hex-цвета стали бы третьей темой, которую пришлось бы синхронизировать руками.
+    # Поэтому и правки ниже — индексами, а не hex: border:8 — приглушённая рамка
+    # (та самая линия слева от жёлоба), gutter:-1 — прозрачный жёлоб, bg+/fg+ —
+    # заливка текущей строки фоном base02, hl+ — совпавшие буквы в ней.
+    export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --style=full:rounded --color=base16,border:8,gutter:-1,bg+:0,fg+:15,hl+:6 --info=inline-right --prompt="❯ " --pointer="▸" --marker="✓"'
     # Гард на tty — у fzf --zsh своего нет: он безусловно трогает zle-опции и в
     # `zsh -i -c ...` (хуки, скрипты, headless-прогоны) сыплет в stderr
     # «can't change option: zle». Проверять надо именно -t 0, а не `-o zle`:
     # флаг -i включает опцию zle и без терминала, так что она тут ничего не отсекает.
     # Переменные выше нужны и в headless, биндинги — только здесь.
-    [[ -t 0 ]] && eval "$(fzf --zsh)"
+    if [[ -t 0 ]]; then
+        eval "$(fzf --zsh)"
+        # Ctrl-R за atuin: снимаем fzf-history-widget сразу после установки.
+        # Возвращаем ШТАТНЫЕ виджеты zsh, а не `bindkey -r` — иначе там, где atuin
+        # не установлен (dev-контейнер, чужой сервер), клавиша осталась бы мёртвой.
+        # Виджеты в кеймапах разные, проверено в `zsh -f`: emacs ищет по истории,
+        # viins только перерисовывает строку, vicmd — это redo.
+        bindkey -M emacs '^R' history-incremental-search-backward
+        bindkey -M viins '^R' redisplay
+        bindkey -M vicmd '^R' redo
+        # Alt-C тоже отдаём обратно: клавиша занята вне zsh. В emacs у неё есть
+        # штатный виджет, в viins/vicmd её по умолчанию нет — там просто снимаем.
+        bindkey -M emacs '\ec' capitalize-word
+        bindkey -M viins -r '\ec'
+        bindkey -M vicmd -r '\ec'
+    fi
 fi
 
 # Atuin - улучшенная история команд с синхронизацией
