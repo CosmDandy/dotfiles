@@ -99,14 +99,22 @@ echo "$PROFILE" > "$HOME/.dotfiles-profile"
 # эти шаги идемпотентны и отрабатывают мгновенно
 # ===============================
 print_section "Setting default shell to zsh"
-ZSH_PATH="$(which zsh)"
-if [[ "$SHELL" != "$ZSH_PATH" ]]; then
-  if grep -q "$ZSH_PATH" /etc/shells 2>/dev/null; then
-    chsh -s "$ZSH_PATH" 2>/dev/null || sudo chsh -s "$ZSH_PATH" "$(whoami)" 2>/dev/null || true
-  else
-    echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
-    chsh -s "$ZSH_PATH" 2>/dev/null || sudo chsh -s "$ZSH_PATH" "$(whoami)" 2>/dev/null || true
-  fi
+ZSH_PATH="$(command -v zsh)"
+# Сравнивать надо с ФАКТИЧЕСКИМ шеллом из passwd, а не с $SHELL: в сессии,
+# запущенной уже под zsh, $SHELL показывает zsh, хотя в passwd остался bash —
+# и блок молча пропускался.
+CURRENT_SHELL="$(getent passwd "$(whoami)" | cut -d: -f7)"
+if [[ "$CURRENT_SHELL" != "$ZSH_PATH" ]]; then
+  # -qx, а не -q: без точного совпадения строки запись дублировалась при каждом
+  # прогоне (в /etc/shells накопилось два одинаковых /usr/bin/zsh).
+  grep -qx "$ZSH_PATH" /etc/shells 2>/dev/null \
+    || echo "$ZSH_PATH" | sudo tee -a /etc/shells >/dev/null
+  # Сразу через sudo: обычный chsh спрашивает пароль через PAM, а у пользователя
+  # контейнера пароля нет — «chsh: PAM: Authentication failure». Раньше первый
+  # вызов падал именно так, а результат гасился `2>/dev/null || true`, из-за чего
+  # шелл тихо оставался bash после каждого пересоздания контейнера.
+  sudo chsh -s "$ZSH_PATH" "$(whoami)" \
+    || echo "warn: не удалось сменить шелл на zsh — останется $CURRENT_SHELL"
 fi
 
 # Timezone: containers default to UTC — set local zone so tmux clock, date and
