@@ -253,7 +253,14 @@ has '>[[:space:]]*/dev/tcp/'                          && deny "reverse shell"
 # запись файла с упоминанием "~/.ssh/..." в тексте тоже блокируется. Сузить до
 # позиции аргумента нельзя: с точки зрения регулярки путь-как-аргумент и
 # путь-как-текст-внутри-heredoc неразличимы без полного разбора шелла.
-has '(\.ssh\b|\.config/sops/age|\bage-keygen\b)' && deny "touching private keys"
+# Публичные артефакты внутри ~/.ssh — authorized_keys, known_hosts, config, *.pub,
+# sockets — не секреты, а без них нельзя инвентаризовать доступы (какой ключ где
+# прописан). Вырезаем такие вхождения и смотрим, осталось ли в команде ЕЩЁ хоть одно
+# упоминание .ssh: если да — это приватный ключ или неизвестный файл, и он по-прежнему
+# deny. Поэтому смешанная команда (`cat authorized_keys work_ed25519`) блокируется.
+cmd_pub_stripped=$(sed -E "s#\.ssh/(authorized_keys|known_hosts|config|sockets)[^[:space:]']*##g; s#\.ssh/[^[:space:]']*\.pub##g" <<<"$cmd")
+grep -Eq '(\.ssh\b|\.config/sops/age|\bage-keygen\b)' <<<"$cmd_pub_stripped" \
+                                                           && deny "touching private keys"
 
 # ---- DENY: committing a secret (staged diff scanned by gitleaks) ----
 # Fires only on a real `git commit` at command position, and only if gitleaks
