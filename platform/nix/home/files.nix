@@ -23,6 +23,15 @@ in
     ".gitignore_global".source = link "tools/git/.gitignore_global";
     ".gitconfig".source = link "tools/git/.gitconfig";
     ".allowed_signers".source = link "tools/git/.allowed_signers";
+    # ssh-конфиг общий для macOS и Linux: основной файл нужен и в контейнерах —
+    # именно он делает Include контуров. Совместимость со старым ssh (9.6 в
+    # образе) держится внутри самого конфига: IgnoreUnknown для UseKeychain и
+    # имя KEX с суффиксом @openssh.com. Без этого Linux-ssh не игнорирует
+    # непонятое, а завершается с ошибкой и ломает вообще всё, включая git.
+    ".ssh/config".source = link "private/ssh/config";
+    # Контуры (kvt, local-lab, cloud-lab, home, vds-friends) — каталогом целиком,
+    # чтобы новый файл подхватывался глобом Include без правки этого списка.
+    ".ssh/config.d".source = link "private/ssh/config.d";
     ".git-hooks".source = link "tools/git/hooks";
     ".claude/CLAUDE.md".source = link "tools/claude/CLAUDE.md";
     ".claude/settings.json".source = link "tools/claude/settings.json";

@@ -46,10 +46,8 @@ in
     # known_hosts НЕ здесь: ssh (UpdateHostKeys) пересоздаёт файл, уничтожая
     # симлинк, — каждый следующий switch упирался бы в бэкап; см. хук ниже
     # приватные конфиги — из сабмодуля private/; до его init симлинки висячие
-    ".ssh/config".source = link "private/ssh/config";
-    # контуры (kvt, local-lab, cloud-lab) — каталогом целиком, чтобы новый
-    # файл подхватывался глобом Include без правки этого списка
-    ".ssh/config.d".source = link "private/ssh/config.d";
+    # ssh-конфиг (config и config.d) переехал в общий files.nix — он нужен и в
+    # dev-контейнерах
     # rbw на macOS игнорирует XDG_CONFIG_HOME и читает конфиг из Library
     "Library/Application Support/rbw/config.json".source = link "private/rbw/config.json";
     "Library/Application Support/Leader Key/config.json".source = link "tools/leader-key/config.json";

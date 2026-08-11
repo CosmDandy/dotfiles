@@ -45,6 +45,28 @@ fi
 [[ "$DOTFILES_ROOT" != "$HOME/.dotfiles" && ! -e "$HOME/.dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/.dotfiles"
 [[ "$DOTFILES_ROOT" != "$HOME/dotfiles" && ! -e "$HOME/dotfiles" ]] && ln -sf "$DOTFILES_ROOT" "$HOME/dotfiles"
 
+# Сабмодуль private — ДО switch: на него ссылаются симлинки из home-модулей
+# (ssh-конфиги контуров, .config/git-identities), и без содержимого они висячие.
+# Только private, не --recursive: assets в контейнере не нужен.
+#
+# ЖЁСТКИЙ отказ, а не warn. Отсутствие сабмодуля не ломает установку заметно —
+# оно ломает её тихо: симлинк на месте, файла нет, git молча пропускает
+# несуществующий include, и рабочий репозиторий получает ЛИЧНУЮ почту вместо
+# kvt@ вместе с подписью не тем ключом. Замечается это уже по невалидным
+# коммитам в истории, когда чинить дорого. Поэтому лучше не подняться совсем.
+# Проверяется не только код возврата, но и реальный файл: `submodule update`
+# отдаёт 0 и на пустом каталоге, если сабмодуль зарегистрирован, но не выкачан.
+print_section "Initializing private submodule"
+if ! git -C "$DOTFILES_ROOT" submodule update --init private \
+   || [[ ! -f "$DOTFILES_ROOT/private/git/includes.conf" ]]; then
+  echo "✖ FATAL: сабмодуль private не подтянулся." >&2
+  echo "  Без него git подставит личную идентичность в рабочих репозиториях" >&2
+  echo "  и подпишет коммиты не тем ключом — молча." >&2
+  echo "  Причина обычно одна: в контейнер не проброшен ssh-агент с ключом к" >&2
+  echo "  github.com (см. IdentityAgent в блоке Host *.devpod на хосте)." >&2
+  exit 1
+fi
+
 # ===============================
 # Весь user-space одним switch: пакеты + симлинки + activation-хуки
 # (claude, ccusage, zinit, nvim-плагины, MCP). Версии пиннятся flake.lock.
