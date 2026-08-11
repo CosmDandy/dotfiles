@@ -41,29 +41,23 @@ in
     # tools/claude/custom/install.sh (хук installClaudeCustom) — сабмодуль
     # может отсутствовать на момент linkGeneration
   }
-  # ТОЛЬКО Linux: приватных ключей в контейнере нет, они приезжают проброшенным
-  # агентом. Но `IdentitiesOnly yes` из Host * заставляет ssh взять ключ из
-  # агента лишь при наличии рядом ПУБЛИЧНОЙ половины: без .pub он ключ даже не
-  # предлагает — «no such identity … / Permission denied (publickey)». Так в
-  # контейнере отваливались оба форжа и git fetch (поймано на живом).
-  # На macOS не нужно: там .pub лежат рядом с приватными, и симлинк конфликтовал
-  # бы с реальным файлом.
-  // lib.optionalAttrs (!pkgs.stdenv.isDarwin) (
-    builtins.listToAttrs (
-      map
-        (n: {
-          name = ".ssh/id_ed25519_${n}.pub";
-          value.source = link "private/ssh/keys/id_ed25519_${n}.pub";
-        })
-        [
-          "personal"
-          "kvt"
-          "untrusted"
-          "forge"
-          "sign"
-        ]
-    )
-  );
+  # ТОЛЬКО Linux. `IdentitiesOnly yes` из Host * заставляет ssh брать ключ из
+  # агента лишь при наличии рядом ПУБЛИЧНОЙ половины, а приватных ключей (и их
+  # .pub) в контейнере нет — они приезжают проброшенным агентом. Без этого
+  # оверлея ssh ключ даже не предлагает: «no such identity … / Permission denied
+  # (publickey)», и отваливаются оба форжа вместе с git fetch.
+  #
+  # Ограничивать в контейнере нечего: в проброшенном агенте ровно три ключа,
+  # которые мы туда сами и положили (kvt, forge, sign — automation/launchd/
+  # scripts/ssh-devpod-agent.sh). На маке смысл обратный: там в агенте девять
+  # ключей, и без IdentitiesOnly каждый сервер увидел бы их все.
+  // lib.optionalAttrs (!pkgs.stdenv.isDarwin) {
+    ".ssh/config.local".text = ''
+      # Подключается первой строкой из private/ssh/config.
+      Host *
+        IdentitiesOnly no
+    '';
+  };
 
   xdg.configFile = {
     # Рабочие идентичности — из сабмодуля private/, каталогом целиком: домены
