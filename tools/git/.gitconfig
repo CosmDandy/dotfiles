@@ -1,7 +1,7 @@
 [user]
 	name = Timofey Kondrashin
-	email = tkondrashin@icloud.com
-	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
+	email = i@cosmdandy.dev
+	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILWul3sEo7u/26LMKrLENzGhnCAxOe4AojX3wZDSSRkM
 [core]
 	editor = nvim
 	autocrlf = input
@@ -11,6 +11,10 @@
 	fsckObjects = true
 [fetch]
 	fsckObjects = true
+	# Без prune ветки, удалённые на remote, бесконечно копятся в refs/remotes —
+	# зомби-ветки в git branch -r и в автодополнении.
+	prune = true
+	prunetags = true
 [receive]
 	fsckObjects = true
 [commit]
@@ -25,13 +29,47 @@
 	defaultBranch = main
 [pull]
 	rebase = true
+[rebase]
+	# Пара к pull.rebase: без autostash `git pull` на грязном дереве просто
+	# отказывается работать (rebase не может начать с незакоммиченными правками).
+	autostash = true
 [push]
 	autoSetupRemote = true
+	# Родитель хранит сабмодуль как gitlink — 20 байт хеша, и по умолчанию push
+	# не проверяет, достижим ли этот объект на remote сабмодуля. Запушенный
+	# указатель на незапушенный коммит ломает клоны: fetch падает с
+	# "upload-pack: not our ref". Случалось трижды (35f30a2, 155b0c0, abe813b).
+	# on-demand сам пушит сабмодуль перед родителем; при detached HEAD пушить
+	# ему некуда — тогда он не молчит, а падает, как check.
+	recurseSubmodules = on-demand
 [rerere]
 	enabled = true
+[merge]
+	# Дефолтный diff3-стиль не показывает общего предка; zdiff3 (git ≥2.35)
+	# добавляет его И выносит совпадающие строки за пределы маркеров конфликта —
+	# меньше шума при разрешении, особенно вместе с rerere и pull.rebase.
+	conflictstyle = zdiff3
+[submodule]
+	# Зеркало push.recurseSubmodules, только на входящей стороне: pull и checkout
+	# сами доводят сабмодуль до указателя родителя. Без этого новый указатель
+	# приезжает, а содержимое остаётся старым — и git status показывает " m private",
+	# будто правил руками. Побочно влияет на checkout: смена ветки двигает сабмодуль.
+	recurse = true
+[status]
+	# false: с true git форкал legacy-скрипт git-submodule дважды на сабмодуль,
+	# 310 мс → 62 мс на каждом status, причём и в репозиториях без сабмодулей.
+	# Строки `modified: private (modified content)` и ` +<submodule>` остаются;
+	# исчезает только блок с перечнем коммитов — он есть в `git submodule summary`.
+	submoduleSummary = false
 [diff]
 	algorithm = histogram
-[includeIf "gitdir:/workspaces/"]
-	path = ~/.gitconfig-work
-[includeIf "gitdir:~/Work/"]
-	path = ~/.gitconfig-work
+	# Сообщения коммитов сабмодуля вместо пары сырых хешей
+	submodule = log
+# Рабочие идентичности подключаются отсюда, но условия и адреса живут в приватном
+# сабмодуле: этот репозиторий публичный, а домен работодателя — не то, что стоит
+# в нём светить. includes.conf сам состоит из includeIf по URL remote (вложенность
+# include → includeIf работает), поэтому здесь достаточно безусловной строки.
+# Если сабмодуль private не развёрнут, путь висячий — git молча игнорирует
+# несуществующий include, личная идентичность остаётся рабочей.
+[include]
+	path = ~/.config/git-identities/includes.conf
