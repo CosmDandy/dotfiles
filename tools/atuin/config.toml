@@ -74,10 +74,11 @@ common_subcommands = [
 [keys]
 prefix = 'h'
 
-# Внутри tmux поиск открывается всплывающим окном, а не занимает текущую панель.
-# Требует tmux >= 3.2. Апстрим отмечает несовместимость с iTerm2 — у нас ghostty.
+# Выключено намеренно: поиск идёт в текущей панели. При enabled = true atuin внутри
+# tmux открывает его всплывающим окном по центру (80x60 %, tmux >= 3.2) — размер
+# правится через width/height здесь же.
 [tmux]
-enabled = true
+enabled = false
 
 [sync]
 records = true
