@@ -40,7 +40,30 @@ in
     # ~/.claude/{agents,commands,skills,rules} НЕ здесь: ими владеет
     # tools/claude/custom/install.sh (хук installClaudeCustom) — сабмодуль
     # может отсутствовать на момент linkGeneration
-  };
+  }
+  # ТОЛЬКО Linux: приватных ключей в контейнере нет, они приезжают проброшенным
+  # агентом. Но `IdentitiesOnly yes` из Host * заставляет ssh взять ключ из
+  # агента лишь при наличии рядом ПУБЛИЧНОЙ половины: без .pub он ключ даже не
+  # предлагает — «no such identity … / Permission denied (publickey)». Так в
+  # контейнере отваливались оба форжа и git fetch (поймано на живом).
+  # На macOS не нужно: там .pub лежат рядом с приватными, и симлинк конфликтовал
+  # бы с реальным файлом.
+  // lib.optionalAttrs (!pkgs.stdenv.isDarwin) (
+    builtins.listToAttrs (
+      map
+        (n: {
+          name = ".ssh/id_ed25519_${n}.pub";
+          value.source = link "private/ssh/keys/id_ed25519_${n}.pub";
+        })
+        [
+          "personal"
+          "kvt"
+          "untrusted"
+          "forge"
+          "sign"
+        ]
+    )
+  );
 
   xdg.configFile = {
     # Рабочие идентичности — из сабмодуля private/, каталогом целиком: домены

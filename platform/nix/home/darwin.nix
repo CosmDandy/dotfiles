@@ -78,10 +78,7 @@ in
       run ln -sfn "${dotfiles}/tools/homebrew/trust.json" "$HOME/.config/homebrew/trust.json"
     '';
 
-    # ControlMaster в private/ssh/config держит мультиплекс-сокеты здесь
-    sshSockets = after ''
-      run mkdir -p "$HOME/.ssh/sockets"
-    '';
+    # sshSockets переехал в общий hooks.nix — каталог нужен и в контейнерах
 
     # Раскладка Graphite — копией, а не симлинком через home.file: Text Input
     # Sources не принимает симлинк-бандлы, а цель в /nix/store вдобавок не
