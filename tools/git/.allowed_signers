@@ -6,3 +6,10 @@
 # %G? становится U вместо G, а --show-signature продолжает писать "Good signature".
 tkondrashin@icloud.com namespaces="git",valid-after="20251201" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
 tkondrashin@icloud.com namespaces="git",valid-after="20251210" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP0KWH5ph7kkqsX9k2mm8wSRPKUPshfuy5tXAgIRlbnA cosmdandy@macbook-cosmdandy
+# Ключ sign проверяется под ДВУМЯ адресами: под старым — коммиты, сделанные им
+# 11 августа до смены почты, под новым — всё, что после. Строка на один адрес
+# оставила бы вторую половину неверифицируемой: ssh-keygen сверяет principal с
+# email коммита, а не с ключом.
+tkondrashin@icloud.com namespaces="git",valid-after="20260811" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILWul3sEo7u/26LMKrLENzGhnCAxOe4AojX3wZDSSRkM sign
+i@cosmdandy.dev namespaces="git",valid-after="20260811" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILWul3sEo7u/26LMKrLENzGhnCAxOe4AojX3wZDSSRkM sign
+kvt@cosmdandy.dev namespaces="git",valid-after="20260811" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILWul3sEo7u/26LMKrLENzGhnCAxOe4AojX3wZDSSRkM sign

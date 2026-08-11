@@ -22,7 +22,6 @@ in
     ".zsh/completions".source = link "tools/zsh/completions";
     ".gitignore_global".source = link "tools/git/.gitignore_global";
     ".gitconfig".source = link "tools/git/.gitconfig";
-    ".gitconfig-work".source = link "tools/git/.gitconfig-work";
     ".allowed_signers".source = link "tools/git/.allowed_signers";
     ".git-hooks".source = link "tools/git/hooks";
     ".claude/CLAUDE.md".source = link "tools/claude/CLAUDE.md";
@@ -35,6 +34,14 @@ in
   };
 
   xdg.configFile = {
+    # Рабочие идентичности — из сабмодуля private/, каталогом целиком: домены
+    # работодателей не место в публичном репозитории, а новый <имя>.conf должен
+    # подхватываться без правки этого списка. ~/.gitconfig делает безусловный
+    # include ~/.config/git-identities/includes.conf, а условия по URL remote —
+    # уже внутри. Каталог отдельный, а НЕ ~/.config/git: там лежит собственный
+    # `ignore`, и симлинк на весь каталог его бы снёс. Плюс git читает
+    # ~/.config/git/config как второй глобальный конфиг — лишний риск.
+    "git-identities".source = link "private/git";
     # Общий для обеих платформ: use_sops нужен и на маке, и в dev-контейнере
     "direnv/direnvrc".source = link "tools/direnv/direnvrc";
     "lazygit/config.yml".source = link "tools/lazygit/config.yml";

@@ -1,7 +1,7 @@
 [user]
 	name = Timofey Kondrashin
-	email = tkondrashin@icloud.com
-	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
+	email = i@cosmdandy.dev
+	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILWul3sEo7u/26LMKrLENzGhnCAxOe4AojX3wZDSSRkM
 [core]
 	editor = nvim
 	autocrlf = input
@@ -65,7 +65,11 @@
 	algorithm = histogram
 	# Сообщения коммитов сабмодуля вместо пары сырых хешей
 	submodule = log
-[includeIf "gitdir:/workspaces/"]
-	path = ~/.gitconfig-work
-[includeIf "gitdir:~/Work/"]
-	path = ~/.gitconfig-work
+# Рабочие идентичности подключаются отсюда, но условия и адреса живут в приватном
+# сабмодуле: этот репозиторий публичный, а домен работодателя — не то, что стоит
+# в нём светить. includes.conf сам состоит из includeIf по URL remote (вложенность
+# include → includeIf работает), поэтому здесь достаточно безусловной строки.
+# Если сабмодуль private не развёрнут, путь висячий — git молча игнорирует
+# несуществующий include, личная идентичность остаётся рабочей.
+[include]
+	path = ~/.config/git-identities/includes.conf
