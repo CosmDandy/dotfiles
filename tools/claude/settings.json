@@ -252,7 +252,6 @@
       "Bash(shfmt:*)",
       "Bash(deadnix:*)",
       "Bash(delta:*)",
-      "Bash(difft:*)",
       "Bash(bat:*)",
       "Bash(starship:*)",
       "Bash(bindkey:*)",

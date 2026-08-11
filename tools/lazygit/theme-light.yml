@@ -4,11 +4,8 @@ gui:
     selectedLineBgColor:
       - '#eee8d5'
 git:
-  # См. комментарий в theme-dark.yml: список diffRenderers повторяется целиком,
-  # оба элемента, иначе переключать клавишей `|` будет нечего.
+  # См. комментарий в theme-dark.yml: diffRenderers подменяется целиком, а не
+  # сливается поэлементно, поэтому строка повторяется здесь со светлой палитрой.
   diffRenderers:
     - colorArg: always
       command: "delta --paging=never --wrap-max-lines 0 --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --hunk-header-style=omit --hyperlinks --light --syntax-theme='Solarized (light)' --minus-style='syntax #f6d0c4' --plus-style='syntax #e3ecc8'"
-    - colorArg: always
-      command: "difft --color=always --display=inline --background=light"
-      type: extDiff
