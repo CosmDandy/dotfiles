@@ -23,7 +23,7 @@ set -uo pipefail
 
 SOCK_DIR="$HOME/.local/state/ssh-agents"
 SOCK="$SOCK_DIR/devpod.sock"
-KEYS=(private_ed25519 work_ed25519)
+KEYS=(id_ed25519_kvt id_ed25519_forge id_ed25519_sign)
 
 mkdir -p "$SOCK_DIR"
 chmod 700 "$SOCK_DIR"
