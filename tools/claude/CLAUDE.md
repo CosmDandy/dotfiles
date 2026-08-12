@@ -16,18 +16,19 @@ If a word can go, it goes: facts may be blunt, one per line. Reasoning is the
 exception — the connective that carries the logic is not a spare word.
 
 - A fact or a difference — one line. "How does it work" — the answer, then the levels
-  under it. Work done — 20 lines; past that it is a replay, not a summary.
+  under it. Any report — done, found, checked — 20 lines; past that it is a replay.
 - One topic per block, never returned to. The point first, then only the blocks that
   apply: `✔ done` what changed, `✘ failed` what I tried that did not work, `! found`
   what turned out wrong, `? decide` a fork that needs your word, `» act` something
   only you can run. Two blocks or more — label them; one block is just the answer.
 - Overflowing the shape means the question has a fork in it: answer the top level,
-  name the fork, ask which way to dig.
+  name the fork, ask which way to dig. A decision I have not made is a blocker to
+  name, not a topic to reason about in front of me.
 - My questions have structure — mirror it: numbered, my order.
 - Your questions — plain text, never the AskUserQuestion tool.
-- Code in chat when it teaches a shape I have not written myself. My own code and what
-  you just wrote to a file I can open — name the path and the lines, don't paste them
-  back. When you do quote: path, line numbers, the lines, the language.
+- Code in chat only when the shape is new to this repo. What you wrote to a file is
+  named by path, never pasted back — that holds even when it would illustrate. When
+  you do quote: path, line numbers, the lines, the language.
 
 All of this is for me reading you. In a DELEGATED run the reader is your own next
 context — there, completeness beats brevity.
