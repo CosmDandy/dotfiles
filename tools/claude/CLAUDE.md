@@ -22,8 +22,7 @@ exception — the connective that carries the logic is not a spare word.
   what turned out wrong, `? decide` a fork that needs your word, `» act` something
   only you can run. Two blocks or more — label them; one block is just the answer.
 - Overflowing the shape means the question has a fork in it: answer the top level,
-  name the fork, ask which way to dig. A decision I have not made is a blocker to
-  name, not a topic to reason about in front of me.
+  name the fork, ask which way to dig.
 - My questions have structure — mirror it: numbered, my order.
 - Your questions — plain text, never the AskUserQuestion tool.
 - Code in chat only when the shape is new to this repo. What you wrote to a file is
