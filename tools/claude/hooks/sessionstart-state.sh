@@ -36,9 +36,9 @@ if [[ -d "$sub/.git" || -f "$sub/.git" ]]; then
   fi
 fi
 
-# Ищем от КОРНЯ репозитория, а не от cwd: stop-progress.sh и precompact-snapshot.sh
+# Ищем от КОРНЯ репозитория, а не от cwd: precompact-snapshot.sh и sessionend-fold.sh
 # работают от корня, и если claude запущен из подкаталога, пути разъезжаются —
-# фрагмент пишется в подкаталог, Stop его там не находит и напоминает зря.
+# фрагмент пишется в подкаталог, а свёртка ищет его в корне и не находит.
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
 [[ -n "$root" ]] || root="."
 

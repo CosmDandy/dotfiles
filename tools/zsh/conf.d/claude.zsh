@@ -10,13 +10,16 @@
 # оболочки при том же settings.json — 819К и ни одного автокомпакта.
 export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=65
 
-# Ежедневный: промптов нет, но поверх deny-правил и хуков работает классификатор
-# auto-режима — он блокирует по смыслу (подмена remote/эндпоинта, снос чужих
-# stateful-ресурсов, пуш секретов) и слушает границы, сказанные словами: «не пушь».
-alias cl='claude --permission-mode auto'
-# Всё разрешено, проверок по смыслу нет. По докам — только изолированные
-# контейнеры и VM: «Isolated containers and VMs only».
-alias cly='claude --permission-mode bypassPermissions'
+# Ежедневный. Классификатор auto-режима выключен: аудит пяти контейнеров показал,
+# что он давал 100% прерываний в фоне, а в интерактиве 135 из 136 вопросов
+# одобрялись без правок. Барьером остаются deny-правила settings.json и
+# pretooluse-guard.sh — он писался именно под этот режим и действует в нём весь.
+# Флаг дублирует defaultMode из settings.json намеренно: он не зависит от того,
+# уважает ли клиент bypass из файла.
+alias cl='claude --permission-mode bypassPermissions'
+# Откат к проверкам по смыслу, если понадобится разово: подмена remote/эндпоинта,
+# снос чужих stateful-ресурсов, пуш секретов, границы, сказанные словами.
+alias cla='claude --permission-mode auto'
 # Исследования в песочнице: запись только в рабочий каталог, сеть по белому
 # списку, ~/.ssh и токены закрыты. Строгий режим — фолбэка наружу нет.
 alias cls='claude --settings ~/.dotfiles/tools/claude/settings.sandbox.json --permission-mode auto'

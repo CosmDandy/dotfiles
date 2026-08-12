@@ -17,7 +17,6 @@
     "pr": ""
   },
   "permissions": {
-    "defaultMode": "auto",
     "allow": [
       "Read",
       "Edit",
@@ -367,21 +366,13 @@
       "Bash(pip install * --break-system-packages*)"
     ],
     "ask": [
-      "Bash(terraform apply:*)",
-      "Bash(kubectl apply:*)",
-      "Bash(helm install:*)",
-      "Bash(helm upgrade:*)",
-      "Bash(nomad job run:*)",
-      "Bash(docker run:*)",
-      "Bash(docker exec:*)",
-      "Bash(git push:*)",
       "Bash(gh pr create:*)",
       "Bash(glab mr create:*)",
       "Bash(kubectl * --context=*prod*)",
       "Bash(helm * --kube-context=*prod*)",
-      "Bash(terraform workspace select prod*)",
-      "Bash(source:*)"
-    ]
+      "Bash(terraform workspace select prod*)"
+    ],
+    "defaultMode": "bypassPermissions"
   },
   "model": "opus[1m]",
   "fallbackModel": [
@@ -396,26 +387,6 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/precompact-snapshot.sh"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/stop-progress.sh"
-          },
-          {
-            "type": "command",
-            "command": "printf '\\a'"
-          },
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/progress.sh reset",
-            "async": true
           }
         ]
       }
@@ -449,11 +420,6 @@
       {
         "matcher": "Bash",
         "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/progress.sh maybe-start",
-            "async": true
-          },
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
@@ -507,11 +473,6 @@
           },
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/progress.sh error",
-            "async": true
-          },
-          {
-            "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
             "async": true
           }
@@ -539,7 +500,7 @@
   "outputStyle": "default",
   "language": "Russian",
   "feedbackSurveyRate": 0,
-  "effortLevel": "high",
+  "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
   "voice": {

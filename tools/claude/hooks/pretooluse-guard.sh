@@ -244,7 +244,12 @@ if seg_head '(cat|less|more|head|tail|bat)[[:space:]]+[^|;&]*\.env(\.[[:alnum:]_
    && ! has '\.env\.(example|sample|template|dist)'; then deny "reading a plaintext .env file"; fi
 at '(printenv|env|set)\b[^|]*\|[^|]*(base64|curl|wget|nc|xxd)' && deny "environment-variable exfiltration"
 at '(curl|wget)\b[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)\b' && deny "pipe-to-shell from network"
-has '>[[:space:]]*/dev/tcp/'                          && deny "reverse shell"
+# audit 2026-08-12: 6 false, 0 true — one-way probes like `echo >/dev/tcp/h/22`
+# matched the old bare pattern. A genuine reverse shell needs an interactive
+# shell (-i) or a duplex bind back to stdin (0>&1, 0<&1, <>); a probe writes
+# one-way and has neither.
+if has '/dev/tcp/' && { has '\b(bash|sh|zsh|dash|ksh)[[:space:]]+-[a-zA-Z]*i[a-zA-Z]*\b' \
+   || has '(0>&1|0<&1|<>[[:space:]]*/dev/tcp/)'; }; then deny "reverse shell"; fi
 # Раньше матчились только id_* и файлы с "key" в имени — реальные ключи
 # (private_ed25519, work_ed25519, cluster-autossh, utm_test) проходили свободно.
 # Теперь блокируется весь ~/.ssh целиком по литералу ".ssh" с границей слова
@@ -317,12 +322,9 @@ if has "$INTERP"; then
                                                      && deny "recursive tree delete from an interpreter"
   has '\b(urllib|requests|httpx|http\.client|socket|ftplib|smtplib|paramiko)\b|\bfetch\(|\baxios\b' \
                                                      && ask "interpreter opening the network — confirm?"
-  # Quote class includes a backslash: inside `python3 -c "..."` the inner quotes
-  # arrive escaped (open(\"f\",\"w\")), so a bare ['"] class misses the real case.
-  has "open\([^)]*[\\'\"][wax][+bt]?[\\'\"]|\.write_(text|bytes)\(|\bfs\.(writeFile|appendFile|createWriteStream)|\bwriteFileSync\(" \
-                                                     && ask "interpreter writing a file — confirm?"
-  has 'os\.(remove|unlink|rmdir)\(|\.unlink\(\)|\b(unlink|rm|rmdir)Sync\(|\bfs\.(unlink|rm|rmdir)\(' \
-                                                     && ask "interpreter deleting a file — confirm?"
+  # NOTE: file write/delete asks removed 2026-08-12 — audit of 4 containers showed
+  # 9/9 fires were routine in-CWD edits (the Edit tool does the same silently);
+  # shell-out and recursive tree delete above stay as hard denies.
 fi
 
 # ---- ASK: mutating infrastructure (confirm in the moment) ----
@@ -355,12 +357,11 @@ seg_without 'ansible-playbook\b' '(^|[[:space:]])(--check|-C)([[:space:]]|$)' \
 seg_with 'curl\b' '(-X[[:space:]]*(POST|PUT|DELETE|PATCH)|--request[[:space:]]+(POST|PUT|DELETE|PATCH)|--json\b|(^|[[:space:]])(-d|--data(-raw|-binary|-urlencode)?|-F|--form|-T|--upload-file)([[:space:]]|=|@))' \
                                               && ask "curl with a mutating method or body — confirm?"
 
-# git config --get/--list only read; everything else edits identity or repo
-# config. Per segment, or `git config --list && git config core.hooksPath evil`
-# reads as a plain lookup — and core.hooksPath is arbitrary code on the next
-# git operation in that repo.
-seg_without "${GITPFX}config\b" '(--get|--list|--name-only)' \
-                                              && ask "git config writes — confirm?"
+# git config writes are routine (user.name/email in fresh clones; 13 asks over
+# history, all benign per the 2026-08-12 audit). The one dangerous key is
+# core.hooksPath — arbitrary code on the next git operation — so gate that alone.
+seg_with "${GITPFX}config\b" 'hooksPath' \
+                                              && ask "git config core.hooksPath runs arbitrary code — confirm?"
 
 # `git -c core.hooksPath=X <что угодно>` — та же подмена хуков, что и запись через
 # `git config`, только разово и мимо правила выше: GITPFX глотает `-c k=v` как
@@ -381,11 +382,24 @@ seg_head 'docker[[:space:]]+volume[[:space:]]+rm\b' \
 # Recursive rm. The blanket `Bash(rm:*)` ask was dropped because deleting a
 # scratch file is routine — `-r` is where it stops being routine. The deny above
 # only fires when the target is exactly / ~ or $HOME, so `rm -Rf ~/Documents`
-# had nothing on it at all. 18 recursive rm across the whole transcript history,
-# so this costs almost nothing, and under bypass it is the only gate left.
-# Per segment, or `ls -r && rm scratch.txt` would read ls's -r as rm's.
+# had nothing on it at all. Per segment, or `ls -r && rm scratch.txt` would read
+# ls's -r as rm's.
+#
+# Scratch roots are exempt PER TARGET (same principle as curl -o below): the
+# 2026-08-12 audit showed the top recursive-rm asks were /tmp, _site,
+# node_modules and scratchpad cleanups, all approved. A target hidden in a
+# variable cannot be resolved here, so it stays gated.
+rm_has_unsafe_target() {
+  segs \
+    | grep -E '^[[:space:]]*rm\b' \
+    | grep -E -- '(^|[[:space:]])-[a-zA-Z]*[rR]' \
+    | grep -Eo -- '(^|[[:space:]])[^-[:space:]][^[:space:]]*' \
+    | sed -E "s/^[[:space:]]+//; s/^[\"']//" \
+    | grep -vxE 'rm' \
+    | grep -vE '^/(private/)?tmp/|CLAUDE_JOB_DIR|/scratchpad(/|$)|(^|/)_site(/|$)|(^|/)node_modules(/|$)|(^|/)\.turbo(/|$)' >/dev/null
+}
 seg_with 'rm\b' '(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)' \
-                                              && ask "recursive rm — confirm the target?"
+  && rm_has_unsafe_target                     && ask "recursive rm outside scratch — confirm the target?"
 
 # curl writing to disk: -o/-O put remote content into a local file, and
 # `curl -o ~/.zshrc URL` is a remote-controlled overwrite of a startup file.
@@ -404,8 +418,8 @@ curl_writes_a_file() {
   segs \
     | grep -E '^[[:space:]]*curl\b' \
     | grep -Eo -- '(^|[[:space:]])(-[a-zA-Z]*o|--output)([[:space:]]|=)*[^[:space:]]*' \
-    | sed -E 's/^[[:space:]]*(-[a-zA-Z]*o|--output)[[:space:]=]*//' \
-    | grep -vE '^(/dev/null)?$' >/dev/null
+    | sed -E 's/^[[:space:]]*(-[a-zA-Z]*o|--output)[[:space:]=]*//; s/^["'"'"']//' \
+    | grep -vE '^(/dev/null)?$|^/(private/)?tmp/|CLAUDE_JOB_DIR|/scratchpad(/|$)' >/dev/null
 }
 # -O/--remote-name lets the server pick the filename; bundles as -sSLO, which is
 # one of the most common curl idioms there is.

