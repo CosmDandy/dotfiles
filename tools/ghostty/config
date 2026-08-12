@@ -58,7 +58,7 @@ window-padding-y = 0
 window-padding-balance = true
 
 # blueprint, chalkboard, microchip, gclass, holographic, paper, retro, xray
-macos-icon = microchip
+macos-icon = xray
 
 unfocused-split-opacity = 0.8
 

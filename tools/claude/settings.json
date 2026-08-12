@@ -3,12 +3,12 @@
   "cleanupPeriodDays": 365,
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
-    "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "false",
     "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
     "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": "1",
     "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "10",
     "CLAUDE_CODE_FORK_SUBAGENT": "1",
-    "BASH_DEFAULT_TIMEOUT_MS": "45000",
+    "BASH_DEFAULT_TIMEOUT_MS": "30000",
     "EDITOR": "nvim",
     "VISUAL": "nvim"
   },
@@ -367,10 +367,7 @@
     ],
     "ask": [
       "Bash(gh pr create:*)",
-      "Bash(glab mr create:*)",
-      "Bash(kubectl * --context=*prod*)",
-      "Bash(helm * --kube-context=*prod*)",
-      "Bash(terraform workspace select prod*)"
+      "Bash(glab mr create:*)"
     ],
     "defaultMode": "bypassPermissions"
   },
@@ -500,16 +497,17 @@
   "outputStyle": "default",
   "language": "Russian",
   "feedbackSurveyRate": 0,
-  "effortLevel": "xhigh",
+  "effortLevel": "high",
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
   "voice": {
     "enabled": true
   },
   "autoDreamEnabled": true,
-  "skipDangerousModePermissionPrompt": false,
+  "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
   "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "crossSessionInbound": "accept"
 }
