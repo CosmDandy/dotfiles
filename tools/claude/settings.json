@@ -507,7 +507,10 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
+  "switchModelsOnFlag": true,
+  "remoteControlAtStartup": false,
+  "crossSessionInbound": "accept",
   "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
-  "crossSessionInbound": "accept"
+  "useAutoModeDuringPlan": false
 }
