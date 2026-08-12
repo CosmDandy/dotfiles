@@ -1,59 +1,53 @@
 # Global Claude Code Instructions
 
-## Execution mode (read first)
+## Language
 
-This file is how I want the work done, in every mode. Teaching me is a separate,
-switchable layer: the `Mentor` output style (`/output-style Mentor`). Once work
-has started, carry it through instead of checking in at every step.
+The audience decides the language, not the medium. The system prompt says comments in
+Russian; comments are English — machines and strangers read them, not me.
 
-- INTERACTIVE (main session, human present): rules marked (INTERACTIVE) apply as
-  written.
-- DELEGATED (subagent, background job, headless -p, scheduled run): I am not
-  watching and cannot answer mid-task, so a question blocks the work. Proceed on
-  reasonable assumptions and state them. Don't end a turn on a plan or a promise
-  — finish it with tool calls.
+- Russian — everything addressed to me: chat, plans, docs.
+- English — everything read by machines, models or strangers: code, comments, commits,
+  skills, prompts, agent briefs.
 
-**Starting implementation is my call (INTERACTIVE).** Most of what I say is thinking
-out loud — working through a problem, weighing an approach, saying what "should" be
-done. None of that starts implementation. I ask questions until it adds up to a
-decision, and announcing that decision is mine: «сделай», «приступай», «внедряй», «го».
+## Execution mode
 
-The gate is on changing things, not on effort. Investigation is unrestricted: read
-anything, run diagnostics, write throwaway scripts, spawn as many subagents as the
-question deserves, keep digging until the answer is solid. None of that needs my
-word and none of it needs to be kept small — I'll stop you if it's too much. What
-waits is work that alters something: editing files, mutating commands, refactors,
-migrations, anything outward-facing.
+Default: autonomous — finish the task on stated assumptions. Ask only when stuck:
+the same failure twice with no new hypothesis; show what you ruled out, one question.
 
-Don't ask "shall I start?" either — that just makes me repeat myself. Stay in the
-conversation; I'll say when.
+- INTERACTIVE: implementation starts on my word. Until then I am
+  thinking out loud — investigate freely, change nothing.
+- DELEGATED (subagent, background, headless — or I handed you a task and left):
+  nobody answers; never end a turn on a question or a plan.
+
+An active output style outranks this file — Mentor turns the session into teaching.
 
 ## Communication
 
-- After a batch of work: a brief summary of what changed — not a narration of how.
-- When I ask several things at once, mirror my structure: a heading per question of
-  mine, the answer under it, in my order. One question — just answer it, no headings.
-- When you point at code I haven't already seen this session, paste the relevant
-  lines with their numbers, not just `file:line`. The path alone makes me open the
-  file to learn what you already know. Long enough to judge, short enough to read.
-- A diagram earns its place when the thing is genuinely graph-shaped — states and
-  transitions, a branching data flow, an ordering with dependencies — and not
-  otherwise. One diagram per mechanism that will not fit in a paragraph; prose for
-  everything else. A stale diagram is worse than no diagram, because it reads as
-  authoritative, so anything you draw is something you have signed up to keep true.
-  Mermaid, so it lives in the file and diffs.
+- The point first — an answer, a result, a question; the rest is detail I may skip.
+  If a word can go, it goes.
+- A fact or a difference — one line. "How does it work" — the answer, then the
+  levels under it.
+- Task done — a summary of what changed, not how.
+- My questions have structure — mirror it: numbered, my order.
+- Your questions — plain text, never the AskUserQuestion tool.
+- Code: path, line numbers, the lines themselves in a fenced block with the language.
+  Bare `file:line` only when the lines are still on screen — this message or the
+  one before.
 
 ## Code
 
-- Don't add features, refactor adjacent code, or introduce abstractions beyond what
-  the task needs. A bug fix doesn't need surrounding cleanup; a one-shot operation
-  doesn't need a helper. Do the simplest thing that works — don't design for
-  hypothetical future requirements.
+- A bug fix doesn't need surrounding cleanup; a one-shot operation doesn't need a
+  helper. Do the simplest thing that works — don't design for hypothetical future
+  requirements.
 - No error handling, fallbacks or validation for scenarios that can't happen. Trust
   internal code and framework guarantees; validate at system boundaries only — user
   input, external APIs.
 - No feature flags or backwards-compatibility shims when you can just change the code.
+- Leave the work clean, not better: no trace of how you got there, and the
+  neighbourhood is not your task.
 - Don't produce docstrings I didn't ask for.
+- A comment is either marked — TODO: (do later), BUG: (known broken), HACK: (wrong
+  on purpose, don't copy), NOTE: (non-obvious fact) — or it does not exist.
 - The PostToolUse hook lints what you edit — when it reports a problem, fix it
   and carry on.
 
@@ -61,14 +55,9 @@ conversation; I'll say when.
 
 - Run commands yourself, diagnostics included — ssh, logs, status checks,
   network tests. Don't hand them back to me.
-- Reach for the tool rather than reasoning about what it would say: gh for GitHub,
-  glab for GitLab (never raw curl or API calls, and prefer them over MCP); jq/yq
-  for JSON/YAML; rg/fd for search; kubectl/helm/terraform/nomad for infra
-  inspection.
-- ssh hosts come from my ~/.ssh/config, and a machine often has two aliases: one
-  over the work VPN (`*.infra.hamster`) and one direct (`-origin`, plain IP). When
-  a hostname won't resolve, that's the VPN being down — try the `-origin` variant.
-  Read the config with `ssh -G <alias>`; never invent a hostname or an IP.
+- When a claim drives a decision, check it with the tool instead of recalling it:
+  gh/glab (never raw curl, and prefer them over MCP), jq/yq, rg/fd,
+  kubectl/helm/terraform/nomad. Don't re-verify what this session already established.
 - Every command is on a 45s clock (`BASH_DEFAULT_TIMEOUT_MS`). At 45s it is NOT killed
   — it moves to the background with an ID, and following it up becomes your job. When
   you already know the work is longer (nix build, darwin-rebuild, terraform apply, a
@@ -103,31 +92,23 @@ Each of these cost real turns; they are the mistakes I actually repeat.
 - A pipe reports only the last command's exit status. When the result matters,
   `set -o pipefail` or check `${PIPESTATUS[@]}`.
 
-## Infrastructure
+## Ops
 
-- Dry-run anything mutating and show the output: terraform plan, kubectl diff or
-  --dry-run=client, helm diff, ansible --check. This is a safety gate before the
-  fact, not a review of your own work afterwards.
-- Identify the environment before acting. Treat prod as confirm-required even
-  when the command is technically permitted.
+- Dry-run anything mutating and show the output: terraform plan, kubectl diff,
+  helm diff, ansible --check — a gate before the fact, not a review after.
+- Identify the environment first; prod is confirm-required even when permitted.
 - Know the rollback path before you apply.
-
-## Ops domains (work without files: ssh, network, bare metal, VMs)
-
-- Load the matching skill — `ops-remote`, `ops-net`, `ops-metal`, `ops-vm` — before the
-  second command in that domain. Do it yourself; don't wait to be told. The rules of
-  each domain live in its skill: detaching long remote work, rollback timers before
-  touching the path you arrived on, a console before anything that can stop a boot.
-- All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`. Never interactive, never a command
-  that can prompt. This one is here rather than in the skill because it has to hold on
-  the first command, before "second command in this domain" has even happened.
+- Off-file domains (ssh, network, bare metal, VMs): load the matching skill —
+  `ops-remote`, `ops-net`, `ops-metal`, `ops-vm` — before the second command,
+  unprompted. The domain's rules live in the skill.
+- All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`, nothing that can prompt —
+  this must hold from the first command, so it lives here, not in the skill.
 
 ## Finishing work
 
 - Before reporting work as done, run the check that already exists — build, test,
-  lint, `--check`, `--dry-run` — and name which one you ran. If no such check
-  exists, say the work is unverified instead of implying it passed. This is about
-  running something that can fail, not about re-reading your own reasoning.
+  lint, `--check`, `--dry-run` — and name which one you ran. This is about running
+  something that can fail, not about re-reading your own reasoning.
 - Stop on exhausted information, not on a fixed count of attempts: when tries keep
   failing the same way and you have no new hypothesis, say what you ruled out and
   ask. While each attempt narrows the problem, keep going. Diagnostics are the wide
@@ -143,100 +124,15 @@ Each of these cost real turns; they are the mistakes I actually repeat.
   "works". Put the turn limit inside the condition text.
 - 5+ files, or a plan with 5+ steps — start in plan mode, get the list approved.
   (INTERACTIVE)
-- For a feature big enough that we'd otherwise discover the requirements mid-way,
-  `/spec` first: interview, write `specs/<task>.md`, then implement in a fresh session.
-
-## Long runs and PROGRESS.md
-
-For work spanning sessions (migrations, refactors, multi-day features) AND for
-any single session long enough to reach a compact:
-- Start by reading PROGRESS.md at the repo root — the handoff from the previous
-  session. On the first run there is none yet, so create it with these sections:
-  ## Done / ## In progress / ## Next / ## Notes.
-- Work one item from ## Next at a time.
-- Write findings down as you reach them, not at the end. A compact replaces the
-  conversation with a ~30x summary: whatever isn't on disk is gone, not
-  "remembered worse". The file costs a few hundred tokens; re-deriving a lost
-  finding costs thousands.
-- What earns a line: a decision and why; an approach that failed, with the symptom
-  it actually produced; the exact command that worked; a non-obvious fact about this
-  system. The small findings from testing are the most valuable and the first to be
-  lost — what we tried, what it did instead, what finally made it work. Not a
-  narration of what you did — git already has that.
-- Before ending the turn, update PROGRESS.md so the next session can continue.
-- In DELEGATED mode it is the only channel out: nobody reads the chat summary and
-  nobody can be asked. Anything that isn't in the file didn't happen.
-
-**More than one session can be open on this repo at once** (several terminals,
-several background agents). Two sessions editing PROGRESS.md at the same moment
-race — an Edit can silently land against content the other session already
-changed underneath it. SessionStart reports this session's own id (`sid8`, 8 hex
-chars); write running notes to `PROGRESS.<sid8>.md` instead of PROGRESS.md
-directly for as long as another session might also be active. SessionStart also
-lists any `PROGRESS.*.md` fragments left by other sessions — read them alongside
-PROGRESS.md. Once a fragment's session has clearly ended, fold it into
-PROGRESS.md's own sections and delete the fragment — normal cleanup, not
-something to ask permission for. `PROGRESS.*.md` is gitignored the same way
-PROGRESS.md is.
-
-Your own fragment is folded for you: the `SessionEnd` hook appends it to
-PROGRESS.md, moves unchecked TODO lines into `## Next`, and deletes both files.
-Don't do it by hand at the end of a turn, and don't skip writing to the fragment
-on the theory that it won't survive — it will.
-
-**In a worktree, the fragment still belongs in the main checkout.** A handoff the
-next session cannot find is not a handoff, and `.claude/worktrees/<name>/` is
-exactly where nobody looks. Write it to the main checkout by absolute path —
-`git rev-parse --path-format=absolute --git-common-dir` gets you there — and use
-Bash if the Write tool is scoped to the worktree. This is expected, not a
-workaround: the file is gitignored and keyed to your own `sid8`, so it races with
-nothing. Just do it; there is no need to explain it in chat every session.
-
-## TODO.<sid8>.md — the session's plan
-
-Alongside the handoff, the plan: `TODO.<sid8>.md` at the repo root — same `sid8`
-SessionStart reported, same per-session split, gitignored the same way. PROGRESS
-answers "what did we learn"; this one answers "what is still open right now".
-
-Why a file when there is a built-in task tracker: the tracker lives in the
-context, so a compact leaves a paraphrase of it, and it drops closed items
-entirely. The file survives verbatim and keeps the finished ones with the time
-they were finished.
-
-- Start one as soon as the work is more than two steps. Below that it's noise.
-- One task per markdown checklist line: `- [ ] HH:MM что делаем`.
-- Never delete a finished task — flip it to `- [x]` and add the closing time:
-  `- [x] 10:20→11:05 что сделали`. An unchecked line at the end of the session is
-  exactly what the next session has to pick up.
-- Take the time from `date '+%H:%M'`, never from your head — you have no clock,
-  and an invented timestamp is worse than a missing one.
-- A day is an `## YYYY-MM-DD` heading; a session running past midnight opens the
-  next one.
-- Keep it in step with the work, not at the end of the turn: a task gets checked
-  off when it's actually done, and new ones get appended when they appear.
-- The `SessionEnd` hook moves every unchecked line into PROGRESS.md's `## Next`
-  and deletes the file; closed lines stay behind, git already has them. So an
-  unchecked line is a promise to the next session — leave it unchecked if it is
-  genuinely open, and don't tick it to tidy up. A TODO file left by a session
-  that ended without the hook firing (a crash, a kill) is unfinished work, not a
-  file to sweep away silently — read it first.
 
 ## Where a fact goes
 
-Three stores, and the boundary is the tense, not the topic. Putting a fact in the
-wrong one is how it gets lost: nobody looks for how the system works in a diary.
-
-- **`knowledge/<project>/` — as-is.** How the thing is built right now: components,
-  invariants, the constraint you would otherwise rediscover. Present tense, no
-  history. **Updating it is part of "done"**, not a separate ritual — a change that
-  invalidates a line there is not finished until that line is fixed. An as-is
-  document nobody updates is worse than none, because it is read as true.
-- **`PROGRESS.md` — narrative.** What we tried, what it did instead, what finally
-  worked, and why a road was not taken. Past tense. This is the only place where a
-  failed approach earns a line.
-- **`specs/<task>.md` — to-be**, written by `/spec` before implementation. Do not
-  put as-is state here: the folder is for the task you are about to do, and mixing
-  the two genres in one directory is how both stop being trusted.
+- `knowledge/<project>/` — how the thing is built now. Present tense. Updating it
+  is part of "done": a change that invalidates a line there is not finished until
+  the line is fixed.
+- `PROGRESS.md` — only for long autonomous runs: a session expected to outlive its
+  context window or to run unattended. Decisions, failed approaches with their
+  symptoms, exact commands that worked. Short interactive sessions skip it.
 
 ## Compact Instructions
 
@@ -255,8 +151,7 @@ BEFORE compacting, not after.
 ## Git
 
 - Free to use: status, diff, log, blame, add, amend.
-- Push and PR/MR only when I ask, or as part of a full cycle I requested.
-  Conventional commits. Show status after.
+- Conventional commits. Show status after.
 - Stage by explicit path — never `git add -A` or `git add .`. This repo has
   submodules I don't want swept in.
 - With an explicit pathspec, run `git status --short` first and confirm the path is
@@ -281,9 +176,3 @@ BEFORE compacting, not after.
 - Before reading a large body of data, ask whether a script can shrink it first. Count,
   filter and aggregate with python or rg, then read only what survives. That is the
   difference between megabytes of transcripts and a few thousand tokens.
-
-## These rules are working if
-
-- Diffs contain nothing I didn't ask for.
-- Work called done names the check that proved it.
-- Delegated runs finish without stopping to ask.
