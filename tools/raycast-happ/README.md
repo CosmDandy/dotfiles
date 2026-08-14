@@ -1,110 +1,92 @@
 # Happ for Raycast
 
-Control the [Happ](https://www.happ.su) VPN client from Raycast: toggle the
-tunnel, switch servers, read connection state — without opening the app.
+See and switch the [Happ](https://www.happ.su) VPN tunnel from Raycast: what is
+connected, for how long, how every server responds — and connect or disconnect
+without opening the app.
 
-Local only. This extension never talks to a panel or an API; everything it knows
-comes from Happ's own storage on this Mac.
+Local only. This extension never talks to a panel or an API; it reads Happ's own
+storage on this Mac and, if you give it one, your subscription URL.
 
-## How it works
+## What is possible, and what is not
 
-Happ exposes seven App Intents (`Metadata.appintents` inside the app bundle):
-`ToggleVPN`, `ConnectVPN`, `DisconnectVPN`, `SelectServer`,
-`CheckCurrentConnection`, `Refresh`, `ChangeServerPage`. The `happ://` URL
-scheme covers subscription import only — nothing there connects, disconnects or
-selects. So **actions go through Shortcuts**, which is the only documented path.
+Happ exposes seven App Intents, but only three of them are marked
+`isDiscoverable: true` — `Connect TUNNEL`, `Disconnect TUNNEL`, `Toggle TUNNEL`.
+The other four (`Select Server`, `Ping`, `Refresh widget`, `Change Server Page`)
+are internal to the interactive widget: they never appear in the Shortcuts app,
+and no automation can reach them.
 
-**State is read directly** from `group.su.ffg.happ.plist` in Happ's group
+**So the tunnel can be toggled from here; the server cannot be switched.**
+Switching stays inside Happ, and every list here offers ⌘↵ to open it. If the
+author ever flips that flag, one-click switching becomes possible without any
+other change.
+
+The `happ://` URL scheme does not help either — it covers subscription import
+and nothing else.
+
+## Where the data comes from
+
+**Connection state** is read from `group.su.ffg.happ.plist` in Happ's group
 container: active config UUID, the full config JSON of the running connection
-(with its human-readable `remarks`), connection timestamp, local proxy ports,
-connection counters. Reading has no side effects, so status never disturbs the
-tunnel.
+(including its human-readable `remarks`), connection timestamp, local proxy
+ports, connection counters. Reading has no side effects.
 
-Two things are worth knowing about the design:
+Two details worth knowing. Connection state comes from the `Tunnel.appex`
+process, not from `isLibXrayRunXrayJsonRunning` — that flag was `false` while
+the tunnel was demonstrably carrying traffic; it tracks the JSON-config run
+mode. And server names cannot be read from disk at all: every stored config is
+encrypted, and the only name in the clear belongs to whatever is active.
 
-**Connection state comes from the tunnel process, not from a flag.**
-`isLibXrayRunXrayJsonRunning` looks like the obvious indicator and is not — it
-was `false` while the tunnel was carrying traffic. The extension checks for the
-`Tunnel.appex` network extension process instead.
-
-**Server names have to come from somewhere.** Every stored config under
-`subscriptionConfigs/<subscription>/<uuid>/config.json` is encrypted, so the
-UUIDs are visible but the names are not, and the only name in the clear belongs
-to the *active* config.
-
-Hence the subscription URL, which is worth setting even though it is optional:
-it is the one place names, hosts and ports exist in the clear. With it the list
-arrives complete on first run, and per-server latency becomes possible at all —
-without it, only the active connection can be measured.
-
-What the subscription cannot give is Happ's config UUID, which is what
-`SelectServerIntent` wants. That join is by name and fills in two ways:
-passively, every time the list is opened (the running server names itself), and
-all at once via **Rebuild Server Map**.
+**The server list** therefore comes from the subscription URL, which is the one
+place names, hosts and ports exist in the clear. It also carries the profile
+title and the downloaded volume, both shown in the header row.
 
 ## Setup
 
-0. Paste your subscription URL into the extension's preferences. Optional, but
-   it is what turns the list from UUIDs into named servers with latency. It is
-   stored in the Keychain and only ever read.
-1. Import the extension: Raycast → `Import Extension` → this folder.
-2. Create **two** shortcuts in the Shortcuts app. Both take input, and both
-   are single-action; the names are defaults and can be changed in the
-   extension's preferences.
+1. Paste your subscription URL into the extension's preferences. Optional, but
+   without it there is no server list at all. Stored in the Keychain, only read.
+2. Create one shortcut in the Shortcuts app:
 
 | Shortcut name | Happ action | Input |
 |---|---|---|
 | `Happ Toggle` | Toggle TUNNEL | Shortcut Input → `Is Turned On` |
-| `Happ Select` | Select Server | Shortcut Input → `Selected config ID` |
 
-`Toggle TUNNEL` takes a boolean, so connecting and disconnecting go through the
-same shortcut — separate Connect and Disconnect wrappers are not needed.
+   In the shortcut's settings (ⓘ) enable **Accept input**, then wire *Shortcut
+   Input* into `Is Turned On`. The extension passes `true` to connect and
+   `false` to disconnect, so this single shortcut covers both directions —
+   separate Connect and Disconnect wrappers are not needed.
 
-In each shortcut open the settings (ⓘ), enable **Accept input**, and wire
-*Shortcut Input* into the action's parameter. The extension passes the value on
-stdin; without this step both shortcuts run but do nothing.
+3. Import the extension: Raycast → `Import Extension` → this folder.
 
-Two more are optional and only unlock their own commands: `Happ Refresh`
-(Refresh widget) and `Happ Ping` (Ping).
-
-If a shortcut is missing, the extension says which one and offers to open
-Shortcuts rather than failing silently.
+If the shortcut is missing, the extension names it and offers to open Shortcuts
+rather than failing silently.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| **Toggle VPN** | Connects or disconnects, whichever is the opposite of now |
-| **Select Server** | Server list grouped by country flag, with the active one marked |
-| **VPN Status** | Menu bar: current server, uptime, TCP connections |
-| **Copy Proxy URL** | Local HTTP and SOCKS addresses — useful for `HTTPS_PROXY` in a container |
-| **Open Log** | Opens the current Xray log |
-| **Refresh Subscription** | Asks Happ to refresh |
-| **Rebuild Server Map** | Learns which UUID is which server |
+| Command | What it does | Needs the shortcut |
+|---|---|---|
+| **VPN Status** | Menu bar: current server, uptime, TCP connections | only to toggle |
+| **Toggle VPN** | Connects or disconnects | yes |
+| **Servers** | Every server with latency, active one marked | no |
+| **Copy Proxy URL** | Local HTTP and SOCKS addresses | no |
+| **Open Log** | Opens the current Xray log | no |
 
-## About Rebuild Server Map
+## About latency
 
-It starts with a probe: select one config *without* connecting and see whether
-Happ republishes the active config anyway. If it does, the whole calibration is
-silent and the tunnel is never touched. If it does not, naming every server
-requires connecting to each in turn — the run says so before it starts, and the
-original server is restored at the end.
+Two different measurements, and only one of them is available here.
 
-The map is invalidated by a subscription refresh if Happ recreates its config
-directories. The extension notices (remembered UUIDs that no longer exist) and
-offers to rebuild.
+`Measure Latency` (⌘P in the server list) opens a TCP connection to every
+endpoint from the subscription. That is the path *to* the server, not the speed
+*through* the tunnel — and for Hysteria2 servers, which are UDP-only, it means
+nothing at all, so those rows are marked `UDP` instead of showing a misleading
+number.
+
+Happ's own `Ping` action, which measures the live connection properly, is one
+of the four intents that never reach Shortcuts.
 
 ## Limits
 
-- Two kinds of latency, and they answer different questions. `Ping Active` asks
-  Happ about the tunnel it is carrying. `Measure Latency` (⌘⇧P) opens a TCP
-  connection to every server from the subscription — that is the path to the
-  endpoint, not the speed through it, and for Hysteria2 servers, which are
-  UDP-only, a TCP probe says nothing at all.
-- Shortcuts cannot be created programmatically. `shortcuts sign` rejects both
-  XML and binary plists ("isn't in the correct format"), so the five wrappers
-  are set up by hand once.
+- Switching servers is not automatable (see above).
 - Settings like fragmentation, mux and routing are readable but not writable —
   Happ owns that file and would overwrite anything written behind its back.
-- Everything here relies on Happ's private storage layout, not on a public API.
+- Everything here relies on Happ's private storage layout, not a public API.
   An update can move a key; commands degrade to "unknown" rather than crash.

@@ -11,13 +11,7 @@ type ExtensionPreferences = {
   /** Subscription URL - Optional but recommended. The same subscription link Happ uses. It is the only place server names, addresses and ports exist in the clear, so it gives the full list without calibration and makes per-server latency possible. Stored in the Keychain. */
   "subscriptionUrl"?: string,
   /** Toggle Shortcut - Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both. */
-  "shortcutToggle": string,
-  /** Select Server Shortcut - Name of the shortcut wrapping Select Server. It must accept the config ID as its input. */
-  "shortcutSelect": string,
-  /** Refresh Shortcut - Optional. Shortcut wrapping Refresh widget. */
-  "shortcutRefresh": string,
-  /** Ping Shortcut - Optional. Shortcut wrapping Ping. Only the active connection can be measured. */
-  "shortcutPing": string
+  "shortcutToggle": string
 }
 
 /** Preferences accessible in all the extension's commands */
@@ -34,10 +28,6 @@ declare namespace Preferences {
   export type CopyProxyUrl = ExtensionPreferences & {}
   /** Preferences accessible in the `open-log` command */
   export type OpenLog = ExtensionPreferences & {}
-  /** Preferences accessible in the `refresh-subscription` command */
-  export type RefreshSubscription = ExtensionPreferences & {}
-  /** Preferences accessible in the `rebuild-server-map` command */
-  export type RebuildServerMap = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -51,9 +41,5 @@ declare namespace Arguments {
   export type CopyProxyUrl = {}
   /** Arguments passed to the `open-log` command */
   export type OpenLog = {}
-  /** Arguments passed to the `refresh-subscription` command */
-  export type RefreshSubscription = {}
-  /** Arguments passed to the `rebuild-server-map` command */
-  export type RebuildServerMap = {}
 }
 

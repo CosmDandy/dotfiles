@@ -10,50 +10,46 @@ import {
 } from "@raycast/api";
 import { useEffect, useState } from "react";
 import {
+  HAPP_APP,
   HappState,
   formatUptime,
-  listConfigIds,
   readState,
   runShortcut,
   splitServerName,
 } from "./lib/happ";
 import { reportFailure } from "./lib/feedback";
-import { ServerMap, loadServerMap, rememberServer } from "./lib/server-map";
+import { rememberServer } from "./lib/server-map";
 import {
   SubscriptionInfo,
-  SubscriptionServer,
   formatBytes,
   getSubscription,
 } from "./lib/subscription";
 import { pingAll } from "./lib/ping";
-import RebuildServerMap from "./rebuild-server-map";
 
 type Preferences = {
   subscriptionUrl?: string;
-  shortcutSelect: string;
   shortcutToggle: string;
-  shortcutPing: string;
 };
 
-/**
- * A row is a server as the subscription describes it, joined — when possible —
- * to the config UUID Happ needs in order to switch.
- *
- * The join is by name, and it is the weak link: the subscription knows names,
- * Happ knows UUIDs, and nothing carries both. The map fills in as servers are
- * used, or all at once via Rebuild Server Map.
- */
 type Row = {
-  key: string;
   name: string;
   location: string;
   transport?: string;
-  configId?: string;
-  host?: string;
-  port?: number;
+  protocol: string;
+  host: string;
+  port: number;
   latency?: number;
 };
 
+/**
+ * Servers with their latency, and which one is live.
+ *
+ * There is deliberately no "connect to this one" action: Happ marks
+ * SelectServerIntent as `isDiscoverable: false`, so it never reaches Shortcuts
+ * and no automation can reach it either. Switching stays inside the app —
+ * ⌘↵ opens it. What this list does give is the comparison the app itself
+ * does not: every endpoint probed at once.
+ */
 export default function Command() {
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<HappState | null>(null);
@@ -63,58 +59,32 @@ export default function Command() {
 
   const prefs = getPreferenceValues<Preferences>();
 
-  function build(
-    current: HappState,
-    ids: string[],
-    map: ServerMap,
-    subscription?: SubscriptionInfo,
-  ): Row[] {
-    const idByName = new Map(
-      Object.entries(map).map(([id, name]) => [name, id]),
-    );
-
-    if (subscription && subscription.servers.length > 0) {
-      return subscription.servers.map((server: SubscriptionServer) => {
-        const { location, transport } = splitServerName(server.name);
-        return {
-          key: server.name,
-          name: server.name,
-          location,
-          transport,
-          configId: idByName.get(server.name),
-          host: server.host,
-          port: server.port,
-        };
-      });
-    }
-
-    // No subscription: fall back to what Happ stores, where only UUIDs and the
-    // active config's name are readable.
-    return ids.map((id) => {
-      const name = map[id] ?? id.slice(0, 8);
-      const { location, transport } = splitServerName(name);
-      return { key: id, name, location, transport, configId: id };
-    });
-  }
-
   async function refresh(forceSubscription = false) {
     setLoading(true);
-    const [current, ids, map, subscription] = await Promise.all([
+    const [current, subscription] = await Promise.all([
       readState(),
-      listConfigIds(),
-      loadServerMap(),
       getSubscription(prefs.subscriptionUrl, forceSubscription),
     ]);
 
-    // Whatever is running names itself, so every visit teaches one more pair.
     if (current.configId && current.serverName) {
       await rememberServer(current.configId, current.serverName);
-      map[current.configId] = current.serverName;
     }
 
     setState(current);
     setSub(subscription);
-    setRows(build(current, ids, map, subscription));
+    setRows(
+      (subscription?.servers ?? []).map((server) => {
+        const { location, transport } = splitServerName(server.name);
+        return {
+          name: server.name,
+          location,
+          transport,
+          protocol: server.protocol,
+          host: server.host,
+          port: server.port,
+        };
+      }),
+    );
     setLoading(false);
   }
 
@@ -123,77 +93,38 @@ export default function Command() {
   }, []);
 
   async function measure() {
-    const targets = rows.filter(
-      (r): r is Row & { host: string; port: number } =>
-        r.host !== undefined && r.port !== undefined,
-    );
-    if (targets.length === 0) {
+    if (rows.length === 0) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Nothing to probe",
-        message:
-          "Latency needs the subscription URL — addresses are not stored in the clear",
+        message: "Add the subscription URL in preferences",
       });
       return;
     }
-
     setPinging(true);
-    const results = await pingAll(targets);
+    const results = await pingAll(rows);
     setRows((previous) =>
-      previous.map((row) =>
-        row.host && row.port
-          ? { ...row, latency: results.get(`${row.host}:${row.port}`) }
-          : row,
-      ),
+      previous.map((row) => ({
+        ...row,
+        latency: results.get(`${row.host}:${row.port}`),
+      })),
     );
     setPinging(false);
   }
 
-  async function connectTo(row: Row) {
-    if (!row.configId) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "This server has no config ID yet",
-        message: "Run Rebuild Server Map, or switch to it once inside Happ",
-      });
-      return;
-    }
-
-    const toast = await showToast({
-      style: Toast.Style.Animated,
-      title: `Switching to ${row.name}`,
-    });
+  async function toggle() {
     try {
-      await runShortcut(prefs.shortcutSelect, row.configId);
-      await runShortcut(prefs.shortcutToggle, "true");
-      toast.style = Toast.Style.Success;
-      toast.title = `Connected to ${row.name}`;
-      setTimeout(() => refresh(), 1500);
-    } catch (error) {
-      await toast.hide();
-      await reportFailure(error, "switch servers");
-    }
-  }
-
-  async function disconnect() {
-    try {
-      await runShortcut(prefs.shortcutToggle, "false");
-      await showToast({ style: Toast.Style.Success, title: "Disconnected" });
-      setTimeout(() => refresh(), 1000);
-    } catch (error) {
-      await reportFailure(error, "disconnect");
-    }
-  }
-
-  async function pingActive() {
-    try {
-      const result = await runShortcut(prefs.shortcutPing);
+      await runShortcut(
+        prefs.shortcutToggle,
+        state?.connected ? "false" : "true",
+      );
       await showToast({
         style: Toast.Style.Success,
-        title: result ? `Ping ${result}` : "Happ returned nothing",
+        title: state?.connected ? "Disconnecting" : "Connecting",
       });
+      setTimeout(() => refresh(), 1500);
     } catch (error) {
-      await reportFailure(error, "measure the connection");
+      await reportFailure(error, "toggle the tunnel");
     }
   }
 
@@ -205,24 +136,10 @@ export default function Command() {
   }
 
   const quota =
-    sub?.download !== undefined
-      ? `${formatBytes(sub.download)}${sub.total ? ` of ${formatBytes(sub.total)}` : ""}`
-      : undefined;
+    sub?.download !== undefined ? formatBytes(sub.download) : undefined;
 
   return (
-    <List
-      isLoading={loading || pinging}
-      searchBarPlaceholder="Search servers…"
-      actions={
-        <ActionPanel>
-          <Action
-            title="Measure Latency"
-            icon={Icon.Gauge}
-            onAction={measure}
-          />
-        </ActionPanel>
-      }
-    >
+    <List isLoading={loading || pinging} searchBarPlaceholder="Search servers…">
       {state && (
         <List.Section title={sub?.title ?? "Connection"}>
           <List.Item
@@ -244,26 +161,22 @@ export default function Command() {
             ]}
             actions={
               <ActionPanel>
-                {state.connected && (
-                  <Action
-                    title="Disconnect"
-                    icon={Icon.BoltDisabled}
-                    onAction={disconnect}
-                  />
-                )}
-                {state.connected && (
-                  <Action
-                    title="Ping Active"
-                    icon={Icon.Gauge}
-                    shortcut={{ modifiers: ["cmd"], key: "p" }}
-                    onAction={pingActive}
-                  />
-                )}
+                <Action
+                  title={state.connected ? "Disconnect" : "Connect"}
+                  icon={state.connected ? Icon.BoltDisabled : Icon.Bolt}
+                  onAction={toggle}
+                />
                 <Action
                   title="Measure Latency"
                   icon={Icon.Gauge}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+                  shortcut={{ modifiers: ["cmd"], key: "p" }}
                   onAction={measure}
+                />
+                <Action.Open
+                  title="Switch Server in Happ"
+                  icon={Icon.AppWindow}
+                  target={HAPP_APP}
+                  shortcut={{ modifiers: ["cmd"], key: "return" }}
                 />
                 <Action
                   title="Refresh"
@@ -284,50 +197,53 @@ export default function Command() {
           subtitle={`${list.length}`}
         >
           {list.map((row) => {
-            const active = row.configId
-              ? row.configId === state?.configId
-              : row.name === state?.serverName;
+            const active = row.name === state?.serverName;
             return (
               <List.Item
-                key={row.key}
+                key={row.name}
                 icon={
                   active
                     ? { source: Icon.CircleFilled, tintColor: Color.Green }
-                    : row.configId
-                      ? Icon.Circle
-                      : Icon.QuestionMarkCircle
+                    : Icon.Circle
                 }
                 title={row.transport ?? row.name}
                 accessories={[
                   ...(row.latency !== undefined
-                    ? [{ text: `${row.latency} ms` }]
+                    ? [
+                        {
+                          text: `${row.latency} ms`,
+                          tooltip: "TCP handshake to the endpoint",
+                        },
+                      ]
                     : []),
-                  ...(active && state?.connected ? [{ text: "active" }] : []),
+                  // A TCP probe tells nothing about a UDP-only server, so say so
+                  // rather than showing a dash that reads as "down".
+                  ...(row.protocol.startsWith("hysteria")
+                    ? [
+                        {
+                          text: "UDP",
+                          tooltip: "TCP probe is not meaningful here",
+                        },
+                      ]
+                    : []),
+                  ...(active ? [{ text: "active" }] : []),
                 ]}
                 actions={
                   <ActionPanel>
-                    <Action
-                      title="Connect"
-                      icon={Icon.Bolt}
-                      onAction={() => connectTo(row)}
+                    <Action.Open
+                      title="Switch Server in Happ"
+                      icon={Icon.AppWindow}
+                      target={HAPP_APP}
                     />
-                    {state?.connected && (
-                      <Action
-                        title="Disconnect"
-                        icon={Icon.BoltDisabled}
-                        onAction={disconnect}
-                      />
-                    )}
                     <Action
                       title="Measure Latency"
                       icon={Icon.Gauge}
-                      shortcut={{ modifiers: ["cmd", "shift"], key: "p" }}
+                      shortcut={{ modifiers: ["cmd"], key: "p" }}
                       onAction={measure}
                     />
-                    <Action.Push
-                      title="Rebuild Server Map"
-                      icon={Icon.List}
-                      target={<RebuildServerMap />}
+                    <Action.CopyToClipboard
+                      title="Copy Server Name"
+                      content={row.name}
                     />
                     <Action
                       title="Refresh"
@@ -346,11 +262,7 @@ export default function Command() {
       <List.EmptyView
         icon={Icon.Globe}
         title="No servers"
-        description={
-          prefs.subscriptionUrl
-            ? "The subscription returned nothing and Happ has no configs on disk."
-            : "Add the subscription URL in preferences to see every server, or connect once in Happ."
-        }
+        description="Add the subscription URL in preferences — it is the only source of server names and addresses."
       />
     </List>
   );

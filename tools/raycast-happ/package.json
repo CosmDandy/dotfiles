@@ -20,9 +20,9 @@
     },
     {
       "name": "select-server",
-      "title": "Select Server",
+      "title": "Servers",
       "subtitle": "Happ",
-      "description": "Pick a server from the subscription and connect to it.",
+      "description": "Every server from the subscription with its latency, and which one is active. Switching happens in Happ: its Select Server action is not exposed to Shortcuts.",
       "mode": "view"
     },
     {
@@ -46,20 +46,6 @@
       "subtitle": "Happ",
       "description": "Open the current Xray log file.",
       "mode": "no-view"
-    },
-    {
-      "name": "refresh-subscription",
-      "title": "Refresh Subscription",
-      "subtitle": "Happ",
-      "description": "Ask Happ to refresh its subscription and widget.",
-      "mode": "no-view"
-    },
-    {
-      "name": "rebuild-server-map",
-      "title": "Rebuild Server Map",
-      "subtitle": "Happ",
-      "description": "Learn which config UUID belongs to which server name. Switches through every config once.",
-      "mode": "view"
     }
   ],
   "preferences": [
@@ -77,30 +63,6 @@
       "type": "textfield",
       "required": false,
       "default": "Happ Toggle"
-    },
-    {
-      "name": "shortcutSelect",
-      "description": "Name of the shortcut wrapping Select Server. It must accept the config ID as its input.",
-      "type": "textfield",
-      "required": false,
-      "default": "Happ Select",
-      "title": "Select Server Shortcut"
-    },
-    {
-      "name": "shortcutRefresh",
-      "description": "Optional. Shortcut wrapping Refresh widget.",
-      "type": "textfield",
-      "required": false,
-      "default": "Happ Refresh",
-      "title": "Refresh Shortcut"
-    },
-    {
-      "name": "shortcutPing",
-      "title": "Ping Shortcut",
-      "description": "Optional. Shortcut wrapping Ping. Only the active connection can be measured.",
-      "type": "textfield",
-      "required": false,
-      "default": "Happ Ping"
     }
   ],
   "dependencies": {

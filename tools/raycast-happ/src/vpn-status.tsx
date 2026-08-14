@@ -14,7 +14,7 @@ import { HappState, formatUptime, readState, runShortcut } from "./lib/happ";
 import { rememberServer } from "./lib/server-map";
 import { reportFailure } from "./lib/feedback";
 
-type Preferences = { shortcutToggle: string; shortcutPing: string };
+type Preferences = { shortcutToggle: string };
 
 export default function Command() {
   const [state, setState] = useState<HappState | null>(null);
@@ -91,25 +91,6 @@ export default function Command() {
             })
           }
         />
-        {state?.connected && (
-          <MenuBarExtra.Item
-            icon={Icon.Gauge}
-            title="Ping"
-            // Happ measures only the connection it is currently carrying —
-            // there is no way to probe a server we are not connected to,
-            // because its address lives in an encrypted config.
-            onAction={async () => {
-              try {
-                const result = await runShortcut(prefs.shortcutPing);
-                await showHUD(
-                  result ? `Ping: ${result}` : "Happ returned nothing",
-                );
-              } catch (error) {
-                await reportFailure(error, "measure the connection");
-              }
-            }}
-          />
-        )}
       </MenuBarExtra.Section>
 
       <MenuBarExtra.Section>
