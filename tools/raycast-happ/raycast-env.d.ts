@@ -17,7 +17,9 @@ type ExtensionPreferences = {
   /** Select Server Shortcut - Name of the shortcut wrapping Select Server. It must accept the config ID as its input. */
   "shortcutSelect": string,
   /** Refresh Shortcut - Name of the shortcut wrapping Refresh widget. */
-  "shortcutRefresh": string
+  "shortcutRefresh": string,
+  /** Ping Shortcut - Name of the shortcut wrapping Happ's Ping action (CheckCurrentConnection). Only the active connection can be measured. */
+  "shortcutPing": string
 }
 
 /** Preferences accessible in all the extension's commands */

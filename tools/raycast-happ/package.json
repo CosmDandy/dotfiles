@@ -102,6 +102,14 @@
       "required": false,
       "default": "Happ Refresh",
       "title": "Refresh Shortcut"
+    },
+    {
+      "name": "shortcutPing",
+      "title": "Ping Shortcut",
+      "description": "Name of the shortcut wrapping Happ's Ping action (CheckCurrentConnection). Only the active connection can be measured.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Ping"
     }
   ],
   "dependencies": {

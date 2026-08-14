@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { HappState, formatUptime, readState, runShortcut } from "./lib/happ";
 import { rememberServer } from "./lib/server-map";
 
-type Preferences = { shortcutToggle: string };
+type Preferences = { shortcutToggle: string; shortcutPing: string };
 
 export default function Command() {
   const [state, setState] = useState<HappState | null>(null);
@@ -83,6 +83,21 @@ export default function Command() {
             })
           }
         />
+        {state?.connected && (
+          <MenuBarExtra.Item
+            icon={Icon.Gauge}
+            title="Ping"
+            // Happ measures only the connection it is currently carrying —
+            // there is no way to probe a server we are not connected to,
+            // because its address lives in an encrypted config.
+            onAction={async () => {
+              const result = await runShortcut(prefs.shortcutPing);
+              await showHUD(
+                result ? `Ping: ${result}` : "Happ returned nothing",
+              );
+            }}
+          />
+        )}
       </MenuBarExtra.Section>
 
       <MenuBarExtra.Section>

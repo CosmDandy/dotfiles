@@ -31,6 +31,7 @@ type Preferences = {
   shortcutSelect: string;
   shortcutConnect: string;
   shortcutDisconnect: string;
+  shortcutPing: string;
 };
 
 type Row = { id: string; name?: string };
@@ -88,6 +89,25 @@ export default function Command() {
     }
   }
 
+  /**
+   * Latency of the live connection.
+   *
+   * Only the active server can be measured: Happ's Ping action reports on what
+   * it is carrying right now, and the addresses of the other configs sit in
+   * encrypted files, so there is nothing to probe them with.
+   */
+  async function pingActive() {
+    try {
+      const result = await runShortcut(prefs.shortcutPing);
+      await showToast({
+        style: Toast.Style.Success,
+        title: result ? `Ping ${result}` : "Happ returned nothing",
+      });
+    } catch (error) {
+      await reportFailure(error, "measure the connection");
+    }
+  }
+
   async function disconnect() {
     try {
       await runShortcut(prefs.shortcutDisconnect);
@@ -142,6 +162,14 @@ export default function Command() {
                     title="Disconnect"
                     icon={Icon.BoltDisabled}
                     onAction={disconnect}
+                  />
+                )}
+                {state.connected && (
+                  <Action
+                    title="Ping"
+                    icon={Icon.Gauge}
+                    shortcut={{ modifiers: ["cmd"], key: "p" }}
+                    onAction={pingActive}
                   />
                 )}
                 <Action

@@ -49,6 +49,7 @@ each config once and reads back what became active.
 | `Happ Disconnect` | Disconnect TUNNEL | — |
 | `Happ Select` | Select Server | Shortcut Input → `Selected config ID` |
 | `Happ Refresh` | Refresh widget | — |
+| `Happ Ping` | Ping | — |
 
 For `Happ Toggle` and `Happ Select`, open the shortcut's settings and enable
 **Accept input**, then wire *Shortcut Input* into the action's parameter — the
@@ -83,9 +84,13 @@ offers to rebuild.
 
 ## Limits
 
-- Ping is available only for the active connection (`CheckCurrentConnection`);
-  per-server latency would need the addresses, which are encrypted alongside
-  the configs.
+- Ping is available only for the active connection (`CheckCurrentConnection`),
+  offered in the menu bar and as ⌘P in the server list. Per-server latency
+  would need the addresses, and those are encrypted alongside the configs —
+  there is nothing to probe an inactive server with.
+- Shortcuts cannot be created programmatically. `shortcuts sign` rejects both
+  XML and binary plists ("isn't in the correct format"), so the five wrappers
+  are set up by hand once.
 - Settings like fragmentation, mux and routing are readable but not writable —
   Happ owns that file and would overwrite anything written behind its back.
 - Everything here relies on Happ's private storage layout, not on a public API.
