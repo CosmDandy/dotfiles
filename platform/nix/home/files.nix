@@ -48,7 +48,9 @@ in
     # `ignore`, и симлинк на весь каталог его бы снёс. Плюс git читает
     # ~/.config/git/config как второй глобальный конфиг — лишний риск.
     "git-identities".source = link "private/git";
-    # Общий для обеих платформ: use_sops нужен и на маке, и в dev-контейнере
+    # Общий для обеих платформ: подключает nix-direnv (кэш nix-окружений), а он
+    # нужен и на маке, и в dev-контейнере. Проектных функций тут нет намеренно —
+    # они живут в корневом .envrc самого репозитория, см. шапку файла.
     "direnv/direnvrc".source = link "tools/direnv/direnvrc";
     "lazygit/config.yml".source = link "tools/lazygit/config.yml";
     "lazygit/theme-light.yml".source = link "tools/lazygit/theme-light.yml";
