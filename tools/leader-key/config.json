@@ -258,6 +258,21 @@
               "value": "/Applications/OpenVPN Connect/OpenVPN Connect.app"
             },
             {
+              "iconPath": "/Applications/Happ.app",
+              "key": "o",
+              "label": "Open Happ",
+              "type": "application",
+              "value": "/Applications/Happ.app"
+            }
+          ],
+          "iconPath": "network",
+          "key": "v",
+          "label": "Vpn",
+          "type": "group"
+        },
+        {
+          "actions": [
+            {
               "iconPath": "/Applications/Tailscale.app",
               "key": "t",
               "label": "Toggle",
@@ -300,9 +315,9 @@
               "value": "raycast://extensions/tailscale/tailscale/netcheck"
             }
           ],
-          "iconPath": "network",
-          "key": "v",
-          "label": "Vpn",
+          "iconPath": "/Applications/Tailscale.app",
+          "key": "m",
+          "label": "Mesh",
           "type": "group"
         },
         {
@@ -326,11 +341,6 @@
           "label": "Bounce",
           "type": "url",
           "value": "raycast://extensions/raycast/raycast/toggle-bounce-animation"
-        },
-        {
-          "key": "m",
-          "type": "application",
-          "value": "/System/Applications/iPhone Mirroring.app"
         },
         {
           "iconPath": "/Applications/BetterDisplay.app",
