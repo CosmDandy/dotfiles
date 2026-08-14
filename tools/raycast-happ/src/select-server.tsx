@@ -215,13 +215,16 @@ export default function Command() {
                         },
                       ]
                     : []),
-                  // A TCP probe tells nothing about a UDP-only server, so say so
-                  // rather than showing a dash that reads as "down".
+                  // Hysteria2 carries traffic over QUIC, so the TCP number next
+                  // to it says the port is reachable — not that the transport
+                  // works. Measured: all twelve answer TCP anyway, which is
+                  // exactly why the distinction has to be visible.
                   ...(row.protocol.startsWith("hysteria")
                     ? [
                         {
                           text: "UDP",
-                          tooltip: "TCP probe is not meaningful here",
+                          tooltip:
+                            "Carries traffic over QUIC; the number is a TCP reachability check, not the real path",
                         },
                       ]
                     : []),

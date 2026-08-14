@@ -80,10 +80,13 @@ rather than failing silently.
 Two different measurements, and only one of them is available here.
 
 `Measure Latency` (⌘P in the server list) opens a TCP connection to every
-endpoint from the subscription. That is the path *to* the server, not the speed
-*through* the tunnel — and for Hysteria2 servers, which are UDP-only, it means
-nothing at all, so those rows are marked `UDP` instead of showing a misleading
-number.
+endpoint from the subscription — 27 probes take about 200 ms. That is the path
+*to* the server, not the speed *through* the tunnel.
+
+Hysteria2 servers carry traffic over QUIC, so their number means something
+narrower: the port is reachable over TCP. Measured against a real subscription,
+all twelve answer TCP even though none of them uses it — which is why those
+rows are marked `UDP` rather than left to look like an ordinary result.
 
 Happ's own `Ping` action, which measures the live connection properly, is one
 of the four intents that never reach Shortcuts.
