@@ -8,6 +8,8 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
+  /** Subscription URL - Optional but recommended. The same subscription link Happ uses. It is the only place server names, addresses and ports exist in the clear, so it gives the full list without calibration and makes per-server latency possible. Stored in the Keychain. */
+  "subscriptionUrl"?: string,
   /** Toggle Shortcut - Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both. */
   "shortcutToggle": string,
   /** Select Server Shortcut - Name of the shortcut wrapping Select Server. It must accept the config ID as its input. */

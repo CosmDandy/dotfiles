@@ -27,16 +27,26 @@ Two things are worth knowing about the design:
 was `false` while the tunnel was carrying traffic. The extension checks for the
 `Tunnel.appex` network extension process instead.
 
-**Server names have to be learned.** Every stored config under
+**Server names have to come from somewhere.** Every stored config under
 `subscriptionConfigs/<subscription>/<uuid>/config.json` is encrypted, so the
-UUIDs are visible but the names are not. The only place a name appears in the
-clear is the *active* config. The extension therefore keeps a UUID → name map,
-filled in two ways: passively, every time you look at the list (the running
-server names itself), and actively via **Rebuild Server Map**, which selects
-each config once and reads back what became active.
+UUIDs are visible but the names are not, and the only name in the clear belongs
+to the *active* config.
+
+Hence the subscription URL, which is worth setting even though it is optional:
+it is the one place names, hosts and ports exist in the clear. With it the list
+arrives complete on first run, and per-server latency becomes possible at all —
+without it, only the active connection can be measured.
+
+What the subscription cannot give is Happ's config UUID, which is what
+`SelectServerIntent` wants. That join is by name and fills in two ways:
+passively, every time the list is opened (the running server names itself), and
+all at once via **Rebuild Server Map**.
 
 ## Setup
 
+0. Paste your subscription URL into the extension's preferences. Optional, but
+   it is what turns the list from UUIDs into named servers with latency. It is
+   stored in the Keychain and only ever read.
 1. Import the extension: Raycast → `Import Extension` → this folder.
 2. Create **two** shortcuts in the Shortcuts app. Both take input, and both
    are single-action; the names are defaults and can be changed in the
@@ -86,10 +96,11 @@ offers to rebuild.
 
 ## Limits
 
-- Ping is available only for the active connection (`CheckCurrentConnection`),
-  offered in the menu bar and as ⌘P in the server list. Per-server latency
-  would need the addresses, and those are encrypted alongside the configs —
-  there is nothing to probe an inactive server with.
+- Two kinds of latency, and they answer different questions. `Ping Active` asks
+  Happ about the tunnel it is carrying. `Measure Latency` (⌘⇧P) opens a TCP
+  connection to every server from the subscription — that is the path to the
+  endpoint, not the speed through it, and for Hysteria2 servers, which are
+  UDP-only, a TCP probe says nothing at all.
 - Shortcuts cannot be created programmatically. `shortcuts sign` rejects both
   XML and binary plists ("isn't in the correct format"), so the five wrappers
   are set up by hand once.

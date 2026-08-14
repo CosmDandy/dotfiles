@@ -64,6 +64,13 @@
   ],
   "preferences": [
     {
+      "name": "subscriptionUrl",
+      "title": "Subscription URL",
+      "description": "Optional but recommended. The same subscription link Happ uses. It is the only place server names, addresses and ports exist in the clear, so it gives the full list without calibration and makes per-server latency possible. Stored in the Keychain.",
+      "type": "password",
+      "required": false
+    },
+    {
       "name": "shortcutToggle",
       "title": "Toggle Shortcut",
       "description": "Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both.",
