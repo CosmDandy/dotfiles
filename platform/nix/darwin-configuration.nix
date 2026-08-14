@@ -123,7 +123,6 @@ in
       # Коммуникации
       "telegram"
       # Системные утилиты
-      "bitwarden"
       "onyx"
       "ukelele"
       "betterdisplay"
@@ -134,6 +133,21 @@ in
       "nikitabobko/tap/aerospace"
       "spokenly"
     ];
+    brews = [
+      # Нужен ровно для masApps ниже: brew bundle не умеет строки `mas "…"`
+      # без этого бинаря и валит активацию целиком.
+      "mas"
+    ];
+    # Приложения из App Store. mas ставит только то, что уже привязано к Apple ID
+    # («получено» хотя бы раз вручную) — на чистой машине это единственный ручной
+    # шаг во всей раскатке.
+    masApps = {
+      # VPN-клиент к своему Remnawave. Через cask брать нельзя: там desktop-ветка
+      # (3.3.6), а App Store-сборка ушла вперёд (5.5.0) — разные линейки нумерации.
+      # На проверку после обновления: в инбаундах выпилен `mode: auto` для XHTTP
+      # из-за битого XHTTP-auto именно в Happ (knowledge/cloud-lab, dpi_landscape).
+      "Happ" = 6504287215;
+    };
     taps = [
       "nikitabobko/tap"
     ];
@@ -146,7 +160,23 @@ in
   system.activationScripts.postActivation.text = ''
     find /opt/homebrew/Caskroom -maxdepth 3 -type f \
       \( -name '*.pkg' -o -name '*.dmg' -o -name '*.zip' \) -delete 2>/dev/null || true
+
+    # Sleep policy per power source. Not power.sleep: that goes through
+    # systemsetup, which cannot split AC from battery.
+    # AC: never idle-sleep the system (background agents keep running), blank
+    # the display after 5 min — dark display + immediate password requirement
+    # (system.defaults.screensaver) = locked Mac.
+    # Battery: normal timers + Low Power Mode, pinned so a fresh machine
+    # behaves the same.
+    pmset -c sleep 0 displaysleep 5
+    pmset -b sleep 1 displaysleep 2 lowpowermode 1
   '';
+
+  # The Mac runs unattended background agents: come back up after a kernel
+  # freeze. restartAfterPowerFailure is not supported on Apple Silicon
+  # laptops — the battery rides out outages, and a drained-dead MacBook
+  # powers on by itself when AC returns.
+  power.restartAfterFreeze = true;
 
   # ===============================
   # CLI Tools & Development Environment
@@ -203,7 +233,14 @@ in
     lazydocker
     lima # декларативные Linux-VM (PXE-стенд)
     iperf3 # замеры пропускной способности (PXE-стенд, будущий 10G)
+    # Путь пакета и потери на нём: первое, что нужно на «интернет работает через
+    # раз». dig/host/nslookup/nc/file на маке системные, поэтому bind.dnsutils
+    # сюда не дублируется — в контейнере их нет вовсе, там пакет нужен.
+    mtr
     ansible
+    # Линтер плейбуков рядом с ansible: PostToolUse-хук зовёт его через шеловый
+    # PATH, а копия из mason видна только внутри Neovim.
+    ansible-lint
     gdu
     gitleaks
     restic # бэкап в Hetzner Object Storage, automation/backup/backup.sh
