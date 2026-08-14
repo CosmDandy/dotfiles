@@ -1,10 +1,12 @@
 import { closeMainWindow, getPreferenceValues, showHUD } from "@raycast/api";
-import { readState, runShortcut } from "./lib/happ";
+import { readState, setTunnel } from "./lib/happ";
 import { reportFailure } from "./lib/feedback";
 import { rememberServer } from "./lib/server-map";
 
 type Preferences = {
-  shortcutToggle: string;
+  shortcutConnect: string;
+  shortcutDisconnect: string;
+  shortcutToggle?: string;
 };
 
 export default async function Command() {
@@ -21,10 +23,9 @@ export default async function Command() {
 
   try {
     await closeMainWindow();
-    // The Toggle shortcut takes a boolean, so the desired state is passed
-    // explicitly rather than relying on Happ to invert the current one —
-    // two rapid invocations would otherwise race each other.
-    await runShortcut(prefs.shortcutToggle, state.connected ? "false" : "true");
+    // The desired state is passed explicitly rather than letting Happ invert
+    // the current one — two rapid invocations would otherwise race.
+    await setTunnel(!state.connected, prefs);
     await showHUD(
       target === "connect"
         ? `Happ connecting${state.serverName ? ` — ${state.serverName}` : ""}`

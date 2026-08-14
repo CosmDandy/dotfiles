@@ -10,7 +10,11 @@
 type ExtensionPreferences = {
   /** Subscription URL - Optional but recommended. The same subscription link Happ uses. It is the only place server names, addresses and ports exist in the clear, so it gives the full list without calibration and makes per-server latency possible. Stored in the Keychain. */
   "subscriptionUrl"?: string,
-  /** Toggle Shortcut - Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both. */
+  /** Connect Shortcut - Shortcut wrapping Happ's Connect TUNNEL action. It takes no parameters — one action and nothing else. */
+  "shortcutConnect": string,
+  /** Disconnect Shortcut - Shortcut wrapping Disconnect TUNNEL. Also parameterless. */
+  "shortcutDisconnect": string,
+  /** Toggle Shortcut (optional) - Optional single shortcut wrapping Toggle TUNNEL. Used only if it exists and its Is Turned On field is wired to Shortcut Input; otherwise the Connect/Disconnect pair is used. */
   "shortcutToggle": string
 }
 

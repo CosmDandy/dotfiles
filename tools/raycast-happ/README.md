@@ -44,16 +44,21 @@ title and the downloaded volume, both shown in the header row.
 
 1. Paste your subscription URL into the extension's preferences. Optional, but
    without it there is no server list at all. Stored in the Keychain, only read.
-2. Create one shortcut in the Shortcuts app:
+2. Create two shortcuts in the Shortcuts app. Each is one action dragged in and
+   nothing else — no parameters, no input wiring:
 
-| Shortcut name | Happ action | Input |
-|---|---|---|
-| `Happ Toggle` | Toggle TUNNEL | Shortcut Input → `Is Turned On` |
+| Shortcut name | Happ action |
+|---|---|
+| `Happ Connect` | Connect TUNNEL |
+| `Happ Disconnect` | Disconnect TUNNEL |
 
-   In the shortcut's settings (ⓘ) enable **Accept input**, then wire *Shortcut
-   Input* into `Is Turned On`. The extension passes `true` to connect and
-   `false` to disconnect, so this single shortcut covers both directions —
-   separate Connect and Disconnect wrappers are not needed.
+   Any names work; set yours in the extension's preferences.
+
+   `Toggle TUNNEL` would do both in one shortcut, but only if its `Is Turned On`
+   field is wired to *Shortcut Input* — and while the shortcut's header still
+   reads "receive input from Nowhere", it accepts the value and ignores it,
+   silently. The parameterless pair avoids that trap entirely. If you do set up
+   a working Toggle, name it in preferences and it takes precedence.
 
 3. Import the extension: Raycast → `Import Extension` → this folder.
 

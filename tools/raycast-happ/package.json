@@ -57,9 +57,25 @@
       "required": false
     },
     {
+      "name": "shortcutConnect",
+      "title": "Connect Shortcut",
+      "description": "Shortcut wrapping Happ's Connect TUNNEL action. It takes no parameters — one action and nothing else.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Connect"
+    },
+    {
+      "name": "shortcutDisconnect",
+      "title": "Disconnect Shortcut",
+      "description": "Shortcut wrapping Disconnect TUNNEL. Also parameterless.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Disconnect"
+    },
+    {
       "name": "shortcutToggle",
-      "title": "Toggle Shortcut",
-      "description": "Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both.",
+      "title": "Toggle Shortcut (optional)",
+      "description": "Optional single shortcut wrapping Toggle TUNNEL. Used only if it exists and its Is Turned On field is wired to Shortcut Input; otherwise the Connect/Disconnect pair is used.",
       "type": "textfield",
       "required": false,
       "default": "Happ Toggle"

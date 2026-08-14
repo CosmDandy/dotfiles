@@ -213,6 +213,39 @@ export async function runShortcut(
   return stdout.trim();
 }
 
+export type ToggleShortcuts = {
+  shortcutConnect: string;
+  shortcutDisconnect: string;
+  shortcutToggle?: string;
+};
+
+/**
+ * Bring the tunnel up or down.
+ *
+ * Prefers separate Connect/Disconnect shortcuts because those actions take no
+ * parameters: wrapping them is one drag and nothing else. `Toggle TUNNEL` does
+ * the same job in a single shortcut, but only if its boolean is wired to
+ * Shortcut Input — and a shortcut whose header still says "receive input from
+ * Nowhere" silently ignores what it is given. So Toggle is used when the user
+ * has set it up, and the simple pair otherwise.
+ */
+export async function setTunnel(
+  desired: boolean,
+  shortcuts: ToggleShortcuts,
+): Promise<void> {
+  const known = await listShortcuts();
+  const toggle = shortcuts.shortcutToggle?.trim();
+
+  if (toggle && known.includes(toggle)) {
+    await runShortcut(toggle, desired ? "true" : "false");
+    return;
+  }
+
+  await runShortcut(
+    desired ? shortcuts.shortcutConnect : shortcuts.shortcutDisconnect,
+  );
+}
+
 export function formatUptime(since?: Date): string | undefined {
   if (!since || Number.isNaN(since.getTime())) return undefined;
   const seconds = Math.floor((Date.now() - since.getTime()) / 1000);

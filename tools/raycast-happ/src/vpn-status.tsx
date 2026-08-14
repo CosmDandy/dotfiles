@@ -10,11 +10,15 @@ import {
   showHUD,
 } from "@raycast/api";
 import { useEffect, useState } from "react";
-import { HappState, formatUptime, readState, runShortcut } from "./lib/happ";
+import { HappState, formatUptime, readState, setTunnel } from "./lib/happ";
 import { rememberServer } from "./lib/server-map";
 import { reportFailure } from "./lib/feedback";
 
-type Preferences = { shortcutToggle: string };
+type Preferences = {
+  shortcutConnect: string;
+  shortcutDisconnect: string;
+  shortcutToggle?: string;
+};
 
 export default function Command() {
   const [state, setState] = useState<HappState | null>(null);
@@ -69,10 +73,7 @@ export default function Command() {
             // surfaces as a crash trace instead of a message, and a missing
             // shortcut is the expected failure on a fresh install.
             try {
-              await runShortcut(
-                prefs.shortcutToggle,
-                state?.connected ? "false" : "true",
-              );
+              await setTunnel(!state?.connected, prefs);
               await showHUD(
                 state?.connected ? "Happ disconnecting" : "Happ connecting",
               );

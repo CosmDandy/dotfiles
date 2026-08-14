@@ -14,7 +14,7 @@ import {
   HappState,
   formatUptime,
   readState,
-  runShortcut,
+  setTunnel,
   splitServerName,
 } from "./lib/happ";
 import { reportFailure } from "./lib/feedback";
@@ -28,7 +28,9 @@ import { pingAll } from "./lib/ping";
 
 type Preferences = {
   subscriptionUrl?: string;
-  shortcutToggle: string;
+  shortcutConnect: string;
+  shortcutDisconnect: string;
+  shortcutToggle?: string;
 };
 
 type Row = {
@@ -114,10 +116,7 @@ export default function Command() {
 
   async function toggle() {
     try {
-      await runShortcut(
-        prefs.shortcutToggle,
-        state?.connected ? "false" : "true",
-      );
+      await setTunnel(!state?.connected, prefs);
       await showToast({
         style: Toast.Style.Success,
         title: state?.connected ? "Disconnecting" : "Connecting",
