@@ -124,16 +124,16 @@ export default function Command() {
     rows.map((r) => r.id),
   );
 
-  // Group by the flag that starts every remark; anything unnamed lands in its
-  // own section so the calibration hint stays visible instead of scattering.
+  // Group by location, label by transport: the section header carries
+  // "🇸🇪 HHH-STO" once and each row is just gRPC / Vision / XHTTP, instead of
+  // repeating the city on every line.
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
     if (!row.name) continue;
-    const { flag } = splitServerName(row.name);
-    const key = flag ?? "Other";
-    const list = groups.get(key) ?? [];
+    const { location } = splitServerName(row.name);
+    const list = groups.get(location) ?? [];
     list.push(row);
-    groups.set(key, list);
+    groups.set(location, list);
   }
 
   return (
@@ -185,10 +185,17 @@ export default function Command() {
         </List.Section>
       )}
 
-      {[...groups.entries()].map(([flag, list]) => (
-        <List.Section key={flag} title={flag === "Other" ? "Servers" : flag}>
+      {[...groups.entries()].map(([location, list]) => (
+        <List.Section
+          key={location}
+          title={location}
+          subtitle={`${list.length}`}
+        >
           {list.map((row) => {
-            const { label } = splitServerName(row.name ?? "");
+            const { transport, location: whole } = splitServerName(
+              row.name ?? "",
+            );
+            const label = transport ?? whole;
             const active = row.id === state?.configId;
             return (
               <List.Item

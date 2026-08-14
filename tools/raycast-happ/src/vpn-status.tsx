@@ -12,6 +12,7 @@ import {
 import { useEffect, useState } from "react";
 import { HappState, formatUptime, readState, runShortcut } from "./lib/happ";
 import { rememberServer } from "./lib/server-map";
+import { reportFailure } from "./lib/feedback";
 
 type Preferences = { shortcutToggle: string; shortcutPing: string };
 
@@ -64,13 +65,20 @@ export default function Command() {
           icon={state?.connected ? Icon.BoltDisabled : Icon.Bolt}
           title={state?.connected ? "Disconnect" : "Connect"}
           onAction={async () => {
-            await runShortcut(
-              prefs.shortcutToggle,
-              state?.connected ? "false" : "true",
-            );
-            await showHUD(
-              state?.connected ? "Happ disconnecting" : "Happ connecting",
-            );
+            // Menu bar commands have no error boundary: an unhandled throw
+            // surfaces as a crash trace instead of a message, and a missing
+            // shortcut is the expected failure on a fresh install.
+            try {
+              await runShortcut(
+                prefs.shortcutToggle,
+                state?.connected ? "false" : "true",
+              );
+              await showHUD(
+                state?.connected ? "Happ disconnecting" : "Happ connecting",
+              );
+            } catch (error) {
+              await reportFailure(error, "toggle the tunnel");
+            }
           }}
         />
         <MenuBarExtra.Item
@@ -91,10 +99,14 @@ export default function Command() {
             // there is no way to probe a server we are not connected to,
             // because its address lives in an encrypted config.
             onAction={async () => {
-              const result = await runShortcut(prefs.shortcutPing);
-              await showHUD(
-                result ? `Ping: ${result}` : "Happ returned nothing",
-              );
+              try {
+                const result = await runShortcut(prefs.shortcutPing);
+                await showHUD(
+                  result ? `Ping: ${result}` : "Happ returned nothing",
+                );
+              } catch (error) {
+                await reportFailure(error, "measure the connection");
+              }
             }}
           />
         )}

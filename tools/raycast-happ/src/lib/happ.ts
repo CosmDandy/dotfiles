@@ -226,16 +226,19 @@ export function formatUptime(since?: Date): string | undefined {
 }
 
 /**
- * Split "🇸🇪 HHH-STO · gRPC" into a country marker and the rest.
+ * Split "🇸🇪 HHH-STO · gRPC" into the location and the transport.
  *
- * The shape comes from the panel's own naming, so it is stable for this user
- * but not universal — everything falls back to the raw string.
+ * The middle dot is how the panel names servers, so the location groups rows
+ * and the transport labels them — otherwise every row repeats the same city.
+ * Names without a separator stay whole and become their own group, which is
+ * what any other naming scheme degrades to.
  */
 export function splitServerName(name: string): {
-  flag?: string;
-  label: string;
+  location: string;
+  transport?: string;
 } {
-  const match = name.match(/^(\p{RI}\p{RI})\s*(.*)$/u);
-  if (!match) return { label: name };
-  return { flag: match[1], label: match[2] || name };
+  const parts = name.split(/\s*[·|]\s*/);
+  if (parts.length < 2) return { location: name };
+  const transport = parts.slice(1).join(" · ").trim();
+  return { location: parts[0].trim(), transport: transport || undefined };
 }
