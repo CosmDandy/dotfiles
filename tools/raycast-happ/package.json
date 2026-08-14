@@ -1,0 +1,126 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "happ",
+  "title": "Happ",
+  "description": "Control the Happ VPN client: toggle the tunnel, switch servers, read connection state.",
+  "icon": "icon.png",
+  "author": "cosmdandy",
+  "categories": [
+    "System",
+    "Security"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "toggle-vpn",
+      "title": "Toggle VPN",
+      "subtitle": "Happ",
+      "description": "Connect or disconnect the tunnel, whichever is the opposite of the current state.",
+      "mode": "no-view"
+    },
+    {
+      "name": "select-server",
+      "title": "Select Server",
+      "subtitle": "Happ",
+      "description": "Pick a server from the subscription and connect to it.",
+      "mode": "view"
+    },
+    {
+      "name": "vpn-status",
+      "title": "VPN Status",
+      "subtitle": "Happ",
+      "description": "Current server, uptime and connection counters in the menu bar.",
+      "mode": "menu-bar",
+      "interval": "30s"
+    },
+    {
+      "name": "copy-proxy-url",
+      "title": "Copy Proxy URL",
+      "subtitle": "Happ",
+      "description": "Copy the local HTTP or SOCKS proxy address exposed by Happ.",
+      "mode": "no-view"
+    },
+    {
+      "name": "open-log",
+      "title": "Open Log",
+      "subtitle": "Happ",
+      "description": "Open the current Xray log file.",
+      "mode": "no-view"
+    },
+    {
+      "name": "refresh-subscription",
+      "title": "Refresh Subscription",
+      "subtitle": "Happ",
+      "description": "Ask Happ to refresh its subscription and widget.",
+      "mode": "no-view"
+    },
+    {
+      "name": "rebuild-server-map",
+      "title": "Rebuild Server Map",
+      "subtitle": "Happ",
+      "description": "Learn which config UUID belongs to which server name. Switches through every config once.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "shortcutToggle",
+      "title": "Toggle Shortcut",
+      "description": "Name of the Shortcuts shortcut wrapping Happ's Toggle TUNNEL action.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Toggle"
+    },
+    {
+      "name": "shortcutConnect",
+      "description": "Name of the shortcut wrapping Connect TUNNEL.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Connect",
+      "title": "Connect Shortcut"
+    },
+    {
+      "name": "shortcutDisconnect",
+      "description": "Name of the shortcut wrapping Disconnect TUNNEL.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Disconnect",
+      "title": "Disconnect Shortcut"
+    },
+    {
+      "name": "shortcutSelect",
+      "description": "Name of the shortcut wrapping Select Server. It must accept the config ID as its input.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Select",
+      "title": "Select Server Shortcut"
+    },
+    {
+      "name": "shortcutRefresh",
+      "description": "Name of the shortcut wrapping Refresh widget.",
+      "type": "textfield",
+      "required": false,
+      "default": "Happ Refresh",
+      "title": "Refresh Shortcut"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.0",
+    "@raycast/utils": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "eslint": "^8.57.0",
+    "@raycast/eslint-config": "^1.0.11",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}

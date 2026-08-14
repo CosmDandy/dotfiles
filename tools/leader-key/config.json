@@ -259,6 +259,34 @@
             },
             {
               "iconPath": "/Applications/Happ.app",
+              "key": "t",
+              "label": "Toggle Happ",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/toggle-vpn"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "s",
+              "label": "Select Server",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/select-server"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "p",
+              "label": "Copy Proxy URL",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/copy-proxy-url"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
+              "key": "l",
+              "label": "Open Log",
+              "type": "url",
+              "value": "raycast://extensions/cosmdandy/happ/open-log"
+            },
+            {
+              "iconPath": "/Applications/Happ.app",
               "key": "o",
               "label": "Open Happ",
               "type": "application",

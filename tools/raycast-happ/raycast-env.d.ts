@@ -1,0 +1,59 @@
+/// <reference types="@raycast/api">
+
+/* 🚧 🚧 🚧
+ * This file is auto-generated from the extension's manifest.
+ * Do not modify manually. Instead, update the `package.json` file.
+ * 🚧 🚧 🚧 */
+
+/* eslint-disable @typescript-eslint/ban-types */
+
+type ExtensionPreferences = {
+  /** Toggle Shortcut - Name of the Shortcuts shortcut wrapping Happ's Toggle TUNNEL action. */
+  "shortcutToggle": string,
+  /** Connect Shortcut - Name of the shortcut wrapping Connect TUNNEL. */
+  "shortcutConnect": string,
+  /** Disconnect Shortcut - Name of the shortcut wrapping Disconnect TUNNEL. */
+  "shortcutDisconnect": string,
+  /** Select Server Shortcut - Name of the shortcut wrapping Select Server. It must accept the config ID as its input. */
+  "shortcutSelect": string,
+  /** Refresh Shortcut - Name of the shortcut wrapping Refresh widget. */
+  "shortcutRefresh": string
+}
+
+/** Preferences accessible in all the extension's commands */
+declare type Preferences = ExtensionPreferences
+
+declare namespace Preferences {
+  /** Preferences accessible in the `toggle-vpn` command */
+  export type ToggleVpn = ExtensionPreferences & {}
+  /** Preferences accessible in the `select-server` command */
+  export type SelectServer = ExtensionPreferences & {}
+  /** Preferences accessible in the `vpn-status` command */
+  export type VpnStatus = ExtensionPreferences & {}
+  /** Preferences accessible in the `copy-proxy-url` command */
+  export type CopyProxyUrl = ExtensionPreferences & {}
+  /** Preferences accessible in the `open-log` command */
+  export type OpenLog = ExtensionPreferences & {}
+  /** Preferences accessible in the `refresh-subscription` command */
+  export type RefreshSubscription = ExtensionPreferences & {}
+  /** Preferences accessible in the `rebuild-server-map` command */
+  export type RebuildServerMap = ExtensionPreferences & {}
+}
+
+declare namespace Arguments {
+  /** Arguments passed to the `toggle-vpn` command */
+  export type ToggleVpn = {}
+  /** Arguments passed to the `select-server` command */
+  export type SelectServer = {}
+  /** Arguments passed to the `vpn-status` command */
+  export type VpnStatus = {}
+  /** Arguments passed to the `copy-proxy-url` command */
+  export type CopyProxyUrl = {}
+  /** Arguments passed to the `open-log` command */
+  export type OpenLog = {}
+  /** Arguments passed to the `refresh-subscription` command */
+  export type RefreshSubscription = {}
+  /** Arguments passed to the `rebuild-server-map` command */
+  export type RebuildServerMap = {}
+}
+
