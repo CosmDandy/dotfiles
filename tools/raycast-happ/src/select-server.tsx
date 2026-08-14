@@ -29,8 +29,7 @@ import RebuildServerMap from "./rebuild-server-map";
 
 type Preferences = {
   shortcutSelect: string;
-  shortcutConnect: string;
-  shortcutDisconnect: string;
+  shortcutToggle: string;
   shortcutPing: string;
 };
 
@@ -78,7 +77,9 @@ export default function Command() {
     });
     try {
       await runShortcut(prefs.shortcutSelect, row.id);
-      await runShortcut(prefs.shortcutConnect);
+      // Toggle takes a boolean, so connecting and disconnecting go through the
+      // same shortcut — one wrapper instead of three.
+      await runShortcut(prefs.shortcutToggle, "true");
       toast.style = Toast.Style.Success;
       toast.title = `Connected to ${row.name ?? row.id.slice(0, 8)}`;
       // Give Happ a moment to publish the new config, then learn its name.
@@ -110,7 +111,7 @@ export default function Command() {
 
   async function disconnect() {
     try {
-      await runShortcut(prefs.shortcutDisconnect);
+      await runShortcut(prefs.shortcutToggle, "false");
       await showToast({ style: Toast.Style.Success, title: "Disconnected" });
       setTimeout(refresh, 1000);
     } catch (error) {

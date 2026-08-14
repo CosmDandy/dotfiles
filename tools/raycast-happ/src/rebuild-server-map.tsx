@@ -13,7 +13,7 @@ import { listConfigIds, readState, runShortcut } from "./lib/happ";
 import { reportFailure } from "./lib/feedback";
 import { ServerMap, loadServerMap, saveServerMap } from "./lib/server-map";
 
-type Preferences = { shortcutSelect: string; shortcutConnect: string };
+type Preferences = { shortcutSelect: string; shortcutToggle: string };
 
 type Phase = "idle" | "probing" | "running" | "done" | "aborted";
 
@@ -96,7 +96,7 @@ export default function RebuildServerMap() {
           return;
         }
         await runShortcut(prefs.shortcutSelect, id);
-        if (connectEach) await runShortcut(prefs.shortcutConnect);
+        if (connectEach) await runShortcut(prefs.shortcutToggle, "true");
         await sleep(SETTLE_MS);
 
         const now = await readState();
@@ -113,7 +113,7 @@ export default function RebuildServerMap() {
       if (start.configId) {
         await runShortcut(prefs.shortcutSelect, start.configId);
         if (connectEach && start.connected) {
-          await runShortcut(prefs.shortcutConnect);
+          await runShortcut(prefs.shortcutToggle, "true");
         }
       }
 

@@ -5,8 +5,6 @@ import { rememberServer } from "./lib/server-map";
 
 type Preferences = {
   shortcutToggle: string;
-  shortcutConnect: string;
-  shortcutDisconnect: string;
 };
 
 export default async function Command() {

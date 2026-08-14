@@ -66,26 +66,10 @@
     {
       "name": "shortcutToggle",
       "title": "Toggle Shortcut",
-      "description": "Name of the Shortcuts shortcut wrapping Happ's Toggle TUNNEL action.",
+      "description": "Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both.",
       "type": "textfield",
       "required": false,
       "default": "Happ Toggle"
-    },
-    {
-      "name": "shortcutConnect",
-      "description": "Name of the shortcut wrapping Connect TUNNEL.",
-      "type": "textfield",
-      "required": false,
-      "default": "Happ Connect",
-      "title": "Connect Shortcut"
-    },
-    {
-      "name": "shortcutDisconnect",
-      "description": "Name of the shortcut wrapping Disconnect TUNNEL.",
-      "type": "textfield",
-      "required": false,
-      "default": "Happ Disconnect",
-      "title": "Disconnect Shortcut"
     },
     {
       "name": "shortcutSelect",
@@ -97,7 +81,7 @@
     },
     {
       "name": "shortcutRefresh",
-      "description": "Name of the shortcut wrapping Refresh widget.",
+      "description": "Optional. Shortcut wrapping Refresh widget.",
       "type": "textfield",
       "required": false,
       "default": "Happ Refresh",
@@ -106,7 +90,7 @@
     {
       "name": "shortcutPing",
       "title": "Ping Shortcut",
-      "description": "Name of the shortcut wrapping Happ's Ping action (CheckCurrentConnection). Only the active connection can be measured.",
+      "description": "Optional. Shortcut wrapping Ping. Only the active connection can be measured.",
       "type": "textfield",
       "required": false,
       "default": "Happ Ping"

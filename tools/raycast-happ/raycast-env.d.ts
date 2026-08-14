@@ -8,17 +8,13 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Toggle Shortcut - Name of the Shortcuts shortcut wrapping Happ's Toggle TUNNEL action. */
+  /** Toggle Shortcut - Name of the shortcut wrapping Happ's Toggle TUNNEL action. It must accept input — the extension passes true to connect and false to disconnect, so this one shortcut covers both. */
   "shortcutToggle": string,
-  /** Connect Shortcut - Name of the shortcut wrapping Connect TUNNEL. */
-  "shortcutConnect": string,
-  /** Disconnect Shortcut - Name of the shortcut wrapping Disconnect TUNNEL. */
-  "shortcutDisconnect": string,
   /** Select Server Shortcut - Name of the shortcut wrapping Select Server. It must accept the config ID as its input. */
   "shortcutSelect": string,
-  /** Refresh Shortcut - Name of the shortcut wrapping Refresh widget. */
+  /** Refresh Shortcut - Optional. Shortcut wrapping Refresh widget. */
   "shortcutRefresh": string,
-  /** Ping Shortcut - Name of the shortcut wrapping Happ's Ping action (CheckCurrentConnection). Only the active connection can be measured. */
+  /** Ping Shortcut - Optional. Shortcut wrapping Ping. Only the active connection can be measured. */
   "shortcutPing": string
 }
 

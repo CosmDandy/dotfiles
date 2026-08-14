@@ -38,22 +38,24 @@ each config once and reads back what became active.
 ## Setup
 
 1. Import the extension: Raycast → `Import Extension` → this folder.
-2. Create five shortcuts in the Shortcuts app. Each is a single Happ action;
-   the names below are the defaults and can be changed in the extension's
-   preferences.
+2. Create **two** shortcuts in the Shortcuts app. Both take input, and both
+   are single-action; the names are defaults and can be changed in the
+   extension's preferences.
 
 | Shortcut name | Happ action | Input |
 |---|---|---|
 | `Happ Toggle` | Toggle TUNNEL | Shortcut Input → `Is Turned On` |
-| `Happ Connect` | Connect TUNNEL | — |
-| `Happ Disconnect` | Disconnect TUNNEL | — |
 | `Happ Select` | Select Server | Shortcut Input → `Selected config ID` |
-| `Happ Refresh` | Refresh widget | — |
-| `Happ Ping` | Ping | — |
 
-For `Happ Toggle` and `Happ Select`, open the shortcut's settings and enable
-**Accept input**, then wire *Shortcut Input* into the action's parameter — the
-extension passes the value on stdin.
+`Toggle TUNNEL` takes a boolean, so connecting and disconnecting go through the
+same shortcut — separate Connect and Disconnect wrappers are not needed.
+
+In each shortcut open the settings (ⓘ), enable **Accept input**, and wire
+*Shortcut Input* into the action's parameter. The extension passes the value on
+stdin; without this step both shortcuts run but do nothing.
+
+Two more are optional and only unlock their own commands: `Happ Refresh`
+(Refresh widget) and `Happ Ping` (Ping).
 
 If a shortcut is missing, the extension says which one and offers to open
 Shortcuts rather than failing silently.
