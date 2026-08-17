@@ -84,6 +84,13 @@ updm() {
   _upd_step "flake check"           nix flake check --no-build --all-systems --no-warn-dirty ~/.dotfiles/platform/nix || return
   # $HOME, а не ~: тильда внутри кавычек не раскрывается и уехала бы в nix буквально.
   _upd_step "darwin-rebuild switch" sudo darwin-rebuild switch --option warn-dirty false --flake "$HOME/.dotfiles/platform/nix#macbook-cosmdandy" || return
+  # onActivation.upgrade = false (darwin-configuration.nix) — brew bundle выше
+  # ставит новые каски, но не трогает версии уже стоящих, апгрейд остаётся
+  # ручным шагом. Без --greedy `brew outdated` молчит про каски с
+  # auto_updates/version:latest (тут это arc, ghostty, karabiner-elements,
+  # microsoft-teams, raycast, timing) — они якобы обновляются сами, но версии
+  # годами не менялись, потому что Homebrew их без --greedy не проверяет.
+  _upd_step "brew outdated (casks)" brew outdated --cask --greedy || return
   _upd_step "zinit"                 _upd_zinit || return
   _upd_step "GC поколений"          _upd_gc_darwin || return
   # Command Line Tools живут вне nix и brew — обновляются только через softwareupdate,
