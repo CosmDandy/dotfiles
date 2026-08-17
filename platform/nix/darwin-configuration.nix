@@ -63,8 +63,14 @@ let
   cleanupMacScript = pkgs.writeShellScriptBin "cleanup-mac" (
     builtins.readFile ../../automation/launchd/scripts/cleanup-mac.sh
   );
+  orphanCheckScript = pkgs.writeShellScriptBin "orphan-check" (
+    builtins.readFile ../../automation/launchd/scripts/orphan-check.sh
+  );
   sshDevpodAgentScript = pkgs.writeShellScriptBin "ssh-devpod-agent" (
     builtins.readFile ../../automation/launchd/scripts/ssh-devpod-agent.sh
+  );
+  sshSignKeyScript = pkgs.writeShellScriptBin "ssh-sign-key" (
+    builtins.readFile ../../automation/launchd/scripts/ssh-sign-key.sh
   );
 in
 {
@@ -340,6 +346,27 @@ in
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/cleanup-mac.log";
     };
 
+    # Отчёт-only: ищет висячие ссылки на снесённый софт (LaunchAgents на
+    # исчезнувший бинарь, TCC на устаревший nix-store хэш и т.п.), ничего не
+    # удаляет. Час спустя cleanup-mac, тем же воскресеньем — чтобы не
+    # соревноваться с ним за диск/Spotlight, а не потому что зависит от него.
+    orphan-check.serviceConfig = {
+      ProgramArguments = [
+        "${orphanCheckScript}/bin/orphan-check"
+        "--quiet"
+      ];
+      StartCalendarInterval = [
+        {
+          Weekday = 0;
+          Hour = 13;
+          Minute = 0;
+        }
+      ];
+      RunAtLoad = false;
+      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/orphan-check.log";
+      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/orphan-check.log";
+    };
+
     # Отдельный ssh-agent для dev-контейнеров: держит только те два ключа,
     # которыми ходят изнутри контейнера, вместо всего системного агента.
     # Подробности — в шапке самого скрипта; на стороне ssh это `IdentityAgent`
@@ -358,6 +385,27 @@ in
       KeepAlive = true;
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-devpod-agent.log";
+    };
+
+    # Кладёт ключ подписи коммитов в СИСТЕМНЫЙ агент. git подписывает формой
+    # `key::ssh-ed25519 …`, при которой ssh-keygen ищет приватную половину
+    # только в агенте; сам по себе этот ключ туда не попадает, потому что
+    # ssh-подключений им не делают, а `AddKeysToAgent` наполняет агент лишь
+    # побочно. Без этого после каждой перезагрузки `git commit` падает на
+    # «No private key found for public key».
+    #
+    # KeepAlive выключен, в отличие от devpod-агента: работа разовая — добавить
+    # ключ и выйти, а не держать процесс. Сокет системного агента приходит от
+    # launchd в наследуемом окружении, свой процесс поднимать не нужно.
+    ssh-sign-key.serviceConfig = {
+      ProgramArguments = [ "${sshSignKeyScript}/bin/ssh-sign-key" ];
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/usr/local/bin:/usr/bin:/bin";
+      };
+      RunAtLoad = true;
+      KeepAlive = false;
+      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-sign-key.log";
+      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/ssh-sign-key.log";
     };
 
     # Демон переключения раскладки при подключении BT-клавиатуры. Бинарь
