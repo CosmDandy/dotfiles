@@ -48,6 +48,19 @@ RUN usermod -l cosmdandy -d /home/cosmdandy -m vscode \
   && ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime \
   && echo "$TZ" > /etc/timezone \
   && chsh -s /usr/bin/zsh cosmdandy \
+  # Тот же PATH, что и в ENV ниже, но на уровне zsh. Дублирование намеренное:
+  # lifecycle-хуки из devcontainer.json (postCreateCommand и соседи) devpod
+  # запускает через su, а тот сбрасывает окружение на системный дефолт — ENV
+  # образа теряется вместе с ~/.nix-profile/bin. Восстановить его в этот момент
+  # некому: ~/.zprofile от home-manager ведёт в ~/dotfiles, а тот снимается
+  # ниже и появляется заново только при клонировании dotfiles, то есть уже
+  # ПОСЛЕ хуков. /etc/zsh/zshenv читает любой zsh, включая `zsh -c`, и на
+  # висячие симлинки в $HOME не смотрит. Без этого `postCreateCommand: npm ci`
+  # падает с exit 127, хотя npm в образе есть.
+  && printf '%s\n' \
+       'if [[ -d "$HOME/.nix-profile/bin" && ":$PATH:" != *":$HOME/.nix-profile/bin:"* ]]; then' \
+       '  export PATH="$HOME/.nix-profile/bin:$PATH"' \
+       'fi' >> /etc/zsh/zshenv \
   && mkdir -m 0755 /nix && chown cosmdandy:cosmdandy /nix \
   # маркер для .devcontainer/setup.sh: системная подготовка уже в образе,
   # повторять её при каждом создании воркспейса незачем
