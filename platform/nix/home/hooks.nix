@@ -6,7 +6,7 @@
 }:
 let
   dotfiles = "${config.home.homeDirectory}/${
-    if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"
+    if pkgs.stdenv.hostPlatform.isDarwin then ".dotfiles" else "dotfiles"
   }";
   # Активация может бежать при сборке образа (сети/клона может не быть) и при
   # каждом switch — каждый хук идемпотентен и толерантен к оффлайну

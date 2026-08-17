@@ -8,7 +8,7 @@ let
   # Живой working copy репо: на Linux devpod клонирует в ~/dotfiles
   # (~/.dotfiles — bridge-симлинк), на macOS репо живёт в ~/.dotfiles
   dotfiles = "${config.home.homeDirectory}/${
-    if pkgs.stdenv.isDarwin then ".dotfiles" else "dotfiles"
+    if pkgs.stdenv.hostPlatform.isDarwin then ".dotfiles" else "dotfiles"
   }";
   # Симлинк на файл в клоне, НЕ на копию в store: правка в репо видна сразу,
   # без home-manager switch (та же семантика, что были ln -s в install.sh)
