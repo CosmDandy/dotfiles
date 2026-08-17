@@ -270,6 +270,33 @@ alias dc='docker compose'
 alias lzd='lazydocker'
 
 # =============================================================================
+# DEVPOD
+# =============================================================================
+
+# `devpod ssh` tunnels the caller's SSH_AUTH_SOCK itself and never reads the
+# `Host *.devpod` IdentityAgent from ~/.ssh/config — without this wrapper it
+# forwards the full main agent into the container. Point it at the dedicated
+# devpod agent (launchd org.nixos.ssh-devpod-agent) when its socket is live;
+# in containers fall through unchanged, and warn if the agent is down.
+devpod() {
+    local sock="$HOME/.local/state/ssh-agents/devpod.sock"
+    if [[ -S "$sock" ]]; then
+        SSH_AUTH_SOCK="$sock" command devpod "$@"
+    else
+        # Falling through silently once cost a whole `devpod up`: the launchd
+        # agent had been dead for a day, the container got the main agent
+        # instead, and the dotfiles clone died with a bare git exit 128.
+        # macOS only — inside a container the socket is legitimately absent.
+        if [[ "$OSTYPE" == darwin* ]]; then
+            local label="org.nixos.ssh-devpod-agent"
+            print -u2 "devpod: dedicated agent socket is down, container gets the main agent instead"
+            print -u2 "  restart: launchctl bootout gui/\$UID/$label; launchctl bootstrap gui/\$UID ~/Library/LaunchAgents/$label.plist"
+        fi
+        command devpod "$@"
+    fi
+}
+
+# =============================================================================
 # KUBERNETES
 # =============================================================================
 

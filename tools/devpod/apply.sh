@@ -15,7 +15,9 @@ typeset -A DEVPOD_CONTEXT=(
   DOTFILES_URL                  git@github.com:CosmDandy/dotfiles.git
   # Подпись коммитов внутри контейнера выключена: ключ подписи остаётся на маке
   GIT_SSH_SIGNATURE_FORWARDING  false
-  SSH_ADD_PRIVATE_KEYS          true
+  # Never ssh-add local keys into the agent on connect: it pollutes the curated
+  # devpod agent (3 keys) with every passphraseless key and trips MaxAuthTries
+  SSH_ADD_PRIVATE_KEYS          false
   SSH_AGENT_FORWARDING          true
   SSH_INJECT_DOCKER_CREDENTIALS true
   # Git-креды не инжектим: ходим по ssh-агенту, а не по токену в контейнере
