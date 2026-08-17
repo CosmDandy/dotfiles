@@ -184,7 +184,14 @@ if [[ -d /Library/PrivilegedHelperTools ]]; then
     [[ -e "$helper" ]] || continue
     name=$(basename "$helper")
     grep -q "\"$name\"" "$claims" 2>/dev/null && continue
-    echo "$name — не найден в SMPrivilegedExecutables ни одного приложения" >> "$c6"
+    # Второй источник: pkg-инсталляторы (Microsoft Office и подобные) кладут
+    # helper мимо SMPrivilegedExecutables, но оставляют receipt. Живой receipt
+    # — такой же владелец, как запись в Info.plist.
+    pkgid=$(pkgutil --file-info "$helper" 2>/dev/null | awk '/^pkgid:/ {print $2; exit}')
+    if [[ -n "$pkgid" ]] && pkgutil --pkg-info "$pkgid" &>/dev/null; then
+      continue
+    fi
+    echo "$name — не заявлен ни в SMPrivilegedExecutables, ни в pkg-receipt" >> "$c6"
   done
 fi
 print_section "PrivilegedHelperTools без заявившего приложения" "$c6"
