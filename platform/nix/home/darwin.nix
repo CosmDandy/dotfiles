@@ -42,7 +42,8 @@ in
 
   home.file = {
     ".hushlogin".source = link "tools/zsh/.hushlogin";
-    ".aerospace.toml".source = link "tools/aerospace/.aerospace.toml";
+    # .aerospace.toml и Leader Key/config.json НЕ здесь: их читают login items
+    # раньше, чем монтируется /nix; см. хук loginItemConfigs ниже
     # known_hosts НЕ здесь: ssh (UpdateHostKeys) пересоздаёт файл, уничтожая
     # симлинк, — каждый следующий switch упирался бы в бэкап; см. хук ниже
     # приватные конфиги — из сабмодуля private/; до его init симлинки висячие
@@ -56,7 +57,6 @@ in
     ".ssh/config.d".source = link "private/ssh/config.d";
     # rbw на macOS игнорирует XDG_CONFIG_HOME и читает конфиг из Library
     "Library/Application Support/rbw/config.json".source = link "private/rbw/config.json";
-    "Library/Application Support/Leader Key/config.json".source = link "tools/leader-key/config.json";
     "Library/Application Support/Cursor/User/settings.json".source = link "tools/vscode/settings.json";
     "Library/Application Support/Cursor/User/keybindings.json".source =
       link "tools/vscode/keybindings.json";
@@ -72,6 +72,23 @@ in
   };
 
   home.activation = {
+    # Конфиги login items — ПРЯМЫМИ симлинками, не через home.file. /nix живёт
+    # на отдельном ЗАШИФРОВАННОМ томе, который нельзя смонтировать до
+    # разблокировки ключом пользователя, то есть до логина. Замер загрузки
+    # 2026-08-16: 12:40:20 первая попытка монтирования падает («Failed to
+    # unwrap metadata crypto state»), 12:40:40 стартуют AeroSpace и Leader Key,
+    # и только 12:40:51 том смонтирован. Симлинк через /nix/store в эти 11
+    # секунд висячий — приложение молча берёт дефолтный конфиг, отсюда вечное
+    # «нажми reload config» у AeroSpace. Прямой симлинк в .dotfiles не
+    # пересекает /nix и читается всегда. Тот же довод, что у trust.json ниже.
+    loginItemConfigs = after ''
+      run ln -sfn "${dotfiles}/tools/aerospace/.aerospace.toml" \
+        "$HOME/.aerospace.toml"
+      run mkdir -p "$HOME/Library/Application Support/Leader Key"
+      run ln -sfn "${dotfiles}/tools/leader-key/config.json" \
+        "$HOME/Library/Application Support/Leader Key/config.json"
+    '';
+
     # trust.json — ПРЯМЫМИ симлинками, не через home.file: brew пишет в trust
     # store и отказывается работать с целью в /nix/store («insecure trust
     # store: target directory not owned by the current user»), что валит
