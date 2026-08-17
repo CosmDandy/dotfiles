@@ -52,16 +52,6 @@ setup_app "Things3" \
     "Быстрый ввод с: Command + F3" \
     "Показывать события из календаря в списках задач «Сегодня» и «Планы» → on"
 
-setup_app "SuperWhisper" \
-    "Create mode → Voice to text → Voice Model → Ultra V3 Turbo" \
-    "Toggle Recording → Command + F1" \
-    "Automatically check for updates → off" \
-    "Launch on login → on" \
-    "Mini Recording window → on" \
-    "Always show Mini Recording Window → off" \
-    "Show in Dock → off" \
-    "Dynamic normalization → on"
-
 setup_app "CleanShot X" \
     "Startup: Start at login → on" \
     "Menu bar: Show icon → off" \
@@ -99,18 +89,10 @@ setup_app "Arc" \
 
 "$DOTFILES_ROOT/platform/macos/install-arc-extension.sh"
 
-setup_app "Cursor" \
-    "Login to account" \
-    "Keybindings → Vim" \
-    "Open Cursor from Terminal → Install"
-
 setup_app "Visual Studio Code" \
     "Cmd + Shift + P → Shell Command: Install 'code' command in PATH"
 
 "$DOTFILES_ROOT/tools/vscode/install_common.sh"
-
-setup_app "ChatGPT" \
-    "Login to account"
 
 setup_app "Claude" \
     "Login to account"
@@ -119,26 +101,12 @@ setup_app "Telegram" \
     "Login to My account" \
     "Login to Work account"
 
-setup_app "WhatsApp" \
-    "Login to account"
-
 setup_app "Microsoft Teams" \
     "Login to account"
-
-setup_app "iStatistica Pro" \
-    "Download iStatistica Sensors Plugin"
-
-setup_app "Transmit"
 
 setup_app "UTM"
 
 setup_app "Onyx"
-
-setup_app "Ukelele"
-
-setup_app "Kaleidoscope"
-
-setup_app "Network Radar"
 
 setup_app "Final Cut Pro"
 

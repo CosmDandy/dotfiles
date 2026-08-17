@@ -44,16 +44,6 @@
           "value": "/Applications/OrbStack.app"
         },
         {
-          "key": "t",
-          "type": "application",
-          "value": "/Applications/Transmit.app"
-        },
-        {
-          "key": "n",
-          "type": "application",
-          "value": "/Applications/Network Radar.app"
-        },
-        {
           "key": "u",
           "type": "application",
           "value": "/Applications/UTM.app"
@@ -70,11 +60,6 @@
           "key": "o",
           "type": "application",
           "value": "/Applications/Obsidian.app"
-        },
-        {
-          "key": "t",
-          "type": "application",
-          "value": "/Applications/Texifier.app"
         },
         {
           "iconPath": "pencil.line",
@@ -354,11 +339,6 @@
           "value": "/Applications/OnyX.app"
         },
         {
-          "key": "i",
-          "type": "application",
-          "value": "/Applications/iStatistica Pro.app"
-        },
-        {
           "key": "p",
           "label": "Confetti",
           "type": "url",
@@ -390,13 +370,6 @@
     },
     {
       "actions": [
-        {
-          "iconPath": "homekit",
-          "key": "h",
-          "label": "Homepage",
-          "type": "url",
-          "value": "https://homepage.cosmdandy.dev"
-        },
         {
           "key": "g",
           "label": "GitHub",
