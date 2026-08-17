@@ -107,7 +107,11 @@ in
       "karabiner-elements"
       "microsoft-teams"
       "openvpn-connect"
-      "amneziavpn"
+      # amneziavpn снят 2026-08-18: подпись бандла битая (отсутствует
+      # Contents/Resources/AmneziaVPN.plist, который она покрывает — codesign и
+      # Gatekeeper ругаются одинаково), при этом в системе жил root-демон, а
+      # использование за месяц — 0.7 минуты. Основной канал — Happ.
+      # cleanup = "zap" снесёт приложение с данными на ближайшей активации.
       # "secretive"
       "orbstack"
       "leader-key"
