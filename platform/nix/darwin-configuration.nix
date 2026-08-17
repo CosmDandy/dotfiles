@@ -66,6 +66,9 @@ let
   orphanCheckScript = pkgs.writeShellScriptBin "orphan-check" (
     builtins.readFile ../../automation/launchd/scripts/orphan-check.sh
   );
+  waitNixReloadScript = pkgs.writeShellScriptBin "wait-nix-reload" (
+    builtins.readFile ../../automation/launchd/scripts/wait-nix-reload.sh
+  );
   sshDevpodAgentScript = pkgs.writeShellScriptBin "ssh-devpod-agent" (
     builtins.readFile ../../automation/launchd/scripts/ssh-devpod-agent.sh
   );
@@ -130,7 +133,9 @@ in
       "telegram"
       # Системные утилиты
       "onyx"
-      "ukelele"
+      # ukelele снят 2026-08-17: он редактор раскладок, а не установщик. Сама
+      # раскладка ставится хуком installKeyboardLayout из assets/keymap, так что
+      # для повседневной работы он не нужен — вернуть, если понадобится править.
       "betterdisplay"
       # "jordanbaird-ice"
       # Дополнительные утилиты
@@ -138,6 +143,11 @@ in
       # Оконный менеджер
       "nikitabobko/tap/aerospace"
       "spokenly"
+      # Утилиты
+      "logi-options+"
+      "tailscale-app"
+      "yandextelemost"
+      "horos"
     ];
     brews = [
       # Нужен ровно для masApps ниже: brew bundle не умеет строки `mas "…"`
@@ -148,10 +158,6 @@ in
     # («получено» хотя бы раз вручную) — на чистой машине это единственный ручной
     # шаг во всей раскатке.
     masApps = {
-      # VPN-клиент к своему Remnawave. Через cask брать нельзя: там desktop-ветка
-      # (3.3.6), а App Store-сборка ушла вперёд (5.5.0) — разные линейки нумерации.
-      # На проверку после обновления: в инбаундах выпилен `mode: auto` для XHTTP
-      # из-за битого XHTTP-auto именно в Happ (knowledge/cloud-lab, dpi_landscape).
       "Happ" = 6504287215;
     };
     taps = [
@@ -198,6 +204,12 @@ in
     ripgrep
     fzf # интерактивный выбор: dpkey (воркспейс devpod), kubectx/kubens. В Linux-профиле уже есть (home/default.nix)
     ipmitool # IPMI-доступ к BMC серверов (IMM/iLO/iDRAC): питание, SOL-консоль, сенсоры
+    # Замена Network Radar. ARP-запрос обрабатывает сетевой стек, а не
+    # приложение, поэтому отвечает и хост с закрытыми портами — скан полнее
+    # ping-обхода. Нужен root (/dev/bpf) и только свой L2-сегмент: за роутером
+    # и в Tailscale ARP не существует.
+    arp-scan
+    nmap # вторая половина того же вопроса: arp-scan говорит, кто в сети, nmap — что у него открыто
     unzip
     curl
     jq
@@ -365,6 +377,20 @@ in
       RunAtLoad = false;
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/orphan-check.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/orphan-check.log";
+    };
+
+    # Второй рубеж против гонки загрузки: /nix монтируется на 11 секунд позже,
+    # чем стартуют login items (замер в самом скрипте). Ждёт том и просит
+    # AeroSpace перечитать конфиг. PATH нужен ради aerospace — CLI ставится
+    # каском в /opt/homebrew/bin, а в launchd PATH пустой.
+    wait-nix-reload.serviceConfig = {
+      ProgramArguments = [ "${waitNixReloadScript}/bin/wait-nix-reload" ];
+      EnvironmentVariables = {
+        PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+      };
+      RunAtLoad = true;
+      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/wait-nix-reload.log";
+      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/wait-nix-reload.log";
     };
 
     # Отдельный ssh-agent для dev-контейнеров: держит только те два ключа,
