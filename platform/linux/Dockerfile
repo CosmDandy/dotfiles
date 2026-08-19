@@ -28,6 +28,14 @@ ENV TZ=Europe/Moscow \
 # делом в стадии, пока под ним никто не залогинен (usermod -m переносит
 # домашний каталог) и до любого USER.
 #
+# uid обязан остаться 1000: devpod создаёт каталог воркспейса на хосте с uid
+# пользователя контейнера, и все существующие воркспейсы лежат под 1000.
+# Расхождение uid контейнера с хостом devpod чинит сам — рекурсивным chown по
+# домашнему каталогу, и это НЕ дешёвая операция: 1.5 ГБ / 54847 файлов поверх
+# overlay2 с metacopy=false копируются целиком (замерено на kvt-d-01: 8.5 минут
+# и сломанный /nix в результате). Отключено через updateRemoteUserUID в
+# .devcontainer/devcontainer.json — см. комментарий там.
+#
 # Правило sudo лежит отдельным файлом /etc/sudoers.d/vscode со строкой
 # `vscode ALL=(root) NOPASSWD:ALL` (его пишет фича common-utils), и usermod за
 # ним НЕ следует: без правки sudo у cosmdandy просто нет, а на него опирается
@@ -135,15 +143,33 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   # || true — оболочка может вернуть ненулевой код из-за мелочей вроде
   # отсутствующего TERM, но плагины к этому моменту уже склонированы
   && (zsh -i -c exit >/dev/null 2>&1 || true) \
+  # MCP server binaries, baked so a fresh workspace does not download them:
+  # tools/claude/custom/install.sh guards on these exact paths and only
+  # registers the servers when the binaries are already present. The submodule
+  # itself cannot be baked (private repo, public image) — only its PyPI/npm
+  # dependencies can. uv/npm come from the profile installed by switch above.
+  && uv tool install mcp-atlassian \
+  && npm install -g --prefix "$HOME/.npm-global" @upstash/context7-mcp \
   && rm -f "$HOME/dotfiles" \
   # кэши сборки mason (npm ~71 МБ, go ~66 МБ, pip ~121 МБ) — мусор, сами пакеты
   # уже в ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout.
   # pip кэширует колёса venv'ов (mypy, yamllint, ansible-lint, debugpy) и по
-  # объёму крупнее двух других вместе взятых.
+  # объёму крупнее двух других вместе взятых. ~/.cache/uv — колёса mcp-atlassian.
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
-            "$HOME/.cache/pip" \
+            "$HOME/.cache/pip" "$HOME/.cache/uv" \
   && nix-collect-garbage -d \
-  && echo core > "$HOME/.dotfiles-profile"
+  && echo core > "$HOME/.dotfiles-profile" \
+  # Generation marker: hash of everything the baked home-manager generation was
+  # built from. platform/linux/install.sh computes the same hash over the fresh
+  # clone and skips the switch (plus all activation hooks) when they match —
+  # this is what makes devpod up on a current image take seconds. MUST stay
+  # byte-identical with generation_hash() in platform/linux/install.sh; the
+  # darwin exclusions mirror the CI rebuild triggers.
+  && (cd /opt/dotfiles && find platform/nix tools/nvim -type f \
+        ! -path platform/nix/darwin-configuration.nix \
+        ! -path platform/nix/home/darwin.nix -print0 \
+      | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1) \
+     > "$HOME/.dotfiles-generation"
 
 # --- devops: core + IaC/K8s/container ---
 # Наследует core целиком, поэтому в слой ложится только дельта пакетов

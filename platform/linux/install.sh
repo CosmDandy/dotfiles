@@ -75,20 +75,67 @@ fi
 FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
 HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 
-print_section "Activating home-manager configuration: ${HM_CONFIG}"
-# В пребилт-образе home-manager уже в профиле (programs.home-manager.enable), и
-# CLI — тонкая обёртка: он строит "<flake>#…activationPackage", то есть модули и
-# пакеты приезжают из flake.lock, а не из бинаря. А `nix run` пересобирал бы сам
-# пакет home-manager со всем замыканием (nix, nixos-option, man-db) — его вымел
-# nix-collect-garbage при сборке образа (Dockerfile:99,110), поэтому оно качалось
-# заново на КАЖДЫЙ devpod up: 106 путей, 66.8 MiB, ~50 секунд.
-# Голый образ без профиля уходит в else — там `nix run` единственный способ.
-# --inputs-from: home-manager резолвится по flake.lock репо, а не по свежему master;
-# -b: файлы, которые HM отказался бы перезаписать, уезжают в *.hm-backup
-if command -v home-manager &> /dev/null; then
-  home-manager switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+# Generation marker: the prebuilt image bakes the home-manager generation and
+# stamps ~/.dotfiles-generation with a hash of everything that generation was
+# built from. When the clone hashes to the same value, the baked generation is
+# already exactly what a switch would produce (out-of-store symlinks resolve
+# through ~/dotfiles, so they start pointing into the fresh clone by
+# themselves) — and the switch is skipped entirely. That saves the flake eval
+# plus every activation hook (Lazy! sync, treesitter, mason, MCP) on the hot
+# path of devpod up. Freshness is NOT this script's job: updl and the nightly
+# devpod-update.sh still switch unconditionally.
+#
+# The hash must be computed identically here and in platform/linux/Dockerfile.
+# darwin-only files are excluded to mirror the CI rebuild triggers
+# (.github/workflows/devcontainer-image.yml): they never affect the Linux
+# generation, but a mac-only commit would otherwise flip the hash without a
+# rebuilt image and force a pointless full switch until the next weekly build.
+generation_hash() {
+  (cd "$DOTFILES_ROOT" \
+    && find platform/nix tools/nvim -type f \
+         ! -path platform/nix/darwin-configuration.nix \
+         ! -path platform/nix/home/darwin.nix -print0 \
+       | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+}
+GEN_FILE="$HOME/.dotfiles-generation"
+CURRENT_GEN="$(generation_hash)"
+# The marker only vouches for the profile the image itself baked: rolling
+# PROFILE=devops onto a :core image must still go through a full switch.
+BAKED_PROFILE="$(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo none)"
+
+if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == "$BAKED_PROFILE" ]]; then
+  print_section "Prebuilt generation matches — skipping home-manager switch"
+  # The two per-workspace steps the skipped activation hooks would have done
+  # (installClaudeCustom in home/hooks.nix): the custom submodule cannot be
+  # baked into a public image, and MCP registration writes into this
+  # workspace's ~/.claude.json. Both are cheap — the MCP binaries themselves
+  # are baked into the image. Soft-fail like the hook: no ssh key must not
+  # break the whole setup.
+  if [[ ! -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]]; then
+    git -C "$DOTFILES_ROOT" submodule update --init tools/claude/custom \
+      || echo "warn: claude custom submodule skipped (нет ssh-агента или ключа)"
+  fi
+  if [[ -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]]; then
+    PATH="$HOME/.local/bin:$PATH" "$DOTFILES_ROOT/tools/claude/custom/install.sh" \
+      || echo "warn: MCP install failed"
+  fi
 else
-  nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+  print_section "Activating home-manager configuration: ${HM_CONFIG}"
+  # В пребилт-образе home-manager уже в профиле (programs.home-manager.enable), и
+  # CLI — тонкая обёртка: он строит "<flake>#…activationPackage", то есть модули и
+  # пакеты приезжают из flake.lock, а не из бинаря. А `nix run` пересобирал бы сам
+  # пакет home-manager со всем замыканием (nix, nixos-option, man-db) — его вымел
+  # nix-collect-garbage при сборке образа (Dockerfile:99,110), поэтому оно качалось
+  # заново на КАЖДЫЙ devpod up: 106 путей, 66.8 MiB, ~50 секунд.
+  # Голый образ без профиля уходит в else — там `nix run` единственный способ.
+  # --inputs-from: home-manager резолвится по flake.lock репо, а не по свежему master;
+  # -b: файлы, которые HM отказался бы перезаписать, уезжают в *.hm-backup
+  if command -v home-manager &> /dev/null; then
+    home-manager switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+  else
+    nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
+  fi
+  echo "$CURRENT_GEN" > "$GEN_FILE"
 fi
 
 # Маркер профиля — читает cron-обновление (automation/cron/devpod-update.sh)
