@@ -134,22 +134,21 @@ if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == 
   # in home/hooks.nix): the custom submodule. It cannot live in a public image,
   # so it is cloned here — shallow, we only ever read its working tree.
   # Soft-fail like the hook: a missing ssh key must not break the whole setup.
-  # Нужен ли он СЕЙЧАС, решает сверка ниже: если образ запечён под тот же
-  # коммит сабмодуля, установщик не побежит, и содержимое понадобится только
-  # когда пользователь запустит claude — то есть заметно позже. Тогда клон
-  # уходит в фон и не стоит трёх секунд на горячем пути. Гонки нет: git-операций
-  # после этой точки в скрипте не остаётся.
+  # СИНХРОННО, и это не оплошность. Отложить клон в фон было заманчиво — он
+  # стоит ~3с, а содержимое нужно только когда пользователь запустит claude, —
+  # но клон идёт по ssh, а проброшенный агент привязан к сессии провижининга.
+  # В devpod-пути фоновая задача её переживала и ключи сохраняла (проверено:
+  # ls-remote через 8с после закрытия сессии отработал), а вот при собственном
+  # пробросе агента каталог оставался создан и ПУСТ — ни ошибки, ни warn'а,
+  # только пропавшие у Claude skills/rules/knowledge. Перемежающийся тихий
+  # отказ хуже стабильного, и трёх секунд он не стоит: убрать их можно только
+  # запеканием сабмодуля в образ, то есть сделав образ приватным.
   BAKED_CUSTOM="$(cat "$HOME/.claude/.mcp-baked-from" 2>/dev/null || echo none)"
   PINNED_CUSTOM="$(git -C "$DOTFILES_ROOT" ls-tree HEAD tools/claude/custom | awk '{print $3}')"
 
   if [[ ! -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]]; then
-    if [[ "$BAKED_CUSTOM" == "$PINNED_CUSTOM" ]]; then
-      submodule_init tools/claude/custom >/dev/null 2>&1 &
-      disown
-    else
-      submodule_init tools/claude/custom \
-        || echo "warn: claude custom submodule skipped (нет ssh-агента или ключа)"
-    fi
+    submodule_init tools/claude/custom \
+      || echo "warn: claude custom submodule skipped (нет ssh-агента или ключа)"
   fi
   # Its installer is only needed when the image did not already bake its result:
   # ~/.claude/* symlinks and the MCP registrations in ~/.claude.json both live in
