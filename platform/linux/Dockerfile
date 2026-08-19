@@ -143,13 +143,25 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   # || true — оболочка может вернуть ненулевой код из-за мелочей вроде
   # отсутствующего TERM, но плагины к этому моменту уже склонированы
   && (zsh -i -c exit >/dev/null 2>&1 || true) \
-  # MCP server binaries, baked so a fresh workspace does not download them:
-  # tools/claude/custom/install.sh guards on these exact paths and only
-  # registers the servers when the binaries are already present. The submodule
-  # itself cannot be baked (private repo, public image) — only its PyPI/npm
-  # dependencies can. uv/npm come from the profile installed by switch above.
+  # MCP servers, baked whole: the binaries AND their registration in
+  # ~/.claude.json, which lives in $HOME and therefore ships with the image.
+  # platform/linux/install.sh checks exactly this end state and skips the
+  # submodule's installer when it holds — worth 6 s of every devpod up (3 s of
+  # `uv sync` for the timing project, which on Linux is reached over http and
+  # needs no local venv, plus 3 s of respawning `claude` twice per server).
+  # The submodule itself cannot be baked (private repo, public image); its
+  # ~/.claude/* symlinks can, and are — they dangle until the workspace clones
+  # it, which is legal and resolves by itself.
+  # Paths are absolute: ENV PATH here has no ~/.local/bin (zshrc adds it).
+  # The timing url must match the one in tools/claude/custom/install.sh.
   && uv tool install mcp-atlassian \
   && npm install -g --prefix "$HOME/.npm-global" @upstash/context7-mcp \
+  && "$HOME/.local/bin/claude" mcp add -s user atlassian -- "$HOME/.local/bin/mcp-atlassian" \
+  && "$HOME/.local/bin/claude" mcp add -s user context7 -- "$HOME/.npm-global/bin/context7-mcp" \
+  && "$HOME/.local/bin/claude" mcp add -s user -t http timing "http://100.64.0.1:7233/mcp" \
+  && for d in skills agents commands rules labs output-styles; do \
+       ln -sfn "$HOME/dotfiles/tools/claude/custom/$d" "$HOME/.claude/$d"; \
+     done \
   && rm -f "$HOME/dotfiles" \
   # кэши сборки mason (npm ~71 МБ, go ~66 МБ, pip ~121 МБ) — мусор, сами пакеты
   # уже в ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout.

@@ -56,8 +56,9 @@ fi
 # коммитам в истории, когда чинить дорого. Поэтому лучше не подняться совсем.
 # Проверяется не только код возврата, но и реальный файл: `submodule update`
 # отдаёт 0 и на пустом каталоге, если сабмодуль зарегистрирован, но не выкачан.
+# --depth 1: только рабочее дерево, история сабмодуля здесь никому не нужна
 print_section "Initializing private submodule"
-if ! git -C "$DOTFILES_ROOT" submodule update --init private \
+if ! git -C "$DOTFILES_ROOT" submodule update --init --depth 1 private \
    || [[ ! -f "$DOTFILES_ROOT/private/git/includes.conf" ]]; then
   echo "✖ FATAL: сабмодуль private не подтянулся." >&2
   echo "  Без него git подставит личную идентичность в рабочих репозиториях" >&2
@@ -105,17 +106,23 @@ BAKED_PROFILE="$(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo none)"
 
 if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == "$BAKED_PROFILE" ]]; then
   print_section "Prebuilt generation matches — skipping home-manager switch"
-  # The two per-workspace steps the skipped activation hooks would have done
-  # (installClaudeCustom in home/hooks.nix): the custom submodule cannot be
-  # baked into a public image, and MCP registration writes into this
-  # workspace's ~/.claude.json. Both are cheap — the MCP binaries themselves
-  # are baked into the image. Soft-fail like the hook: no ssh key must not
-  # break the whole setup.
+  # The one thing the skipped activation hooks still owe us (installClaudeCustom
+  # in home/hooks.nix): the custom submodule. It cannot live in a public image,
+  # so it is cloned here — shallow, we only ever read its working tree.
+  # Soft-fail like the hook: a missing ssh key must not break the whole setup.
   if [[ ! -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]]; then
-    git -C "$DOTFILES_ROOT" submodule update --init tools/claude/custom \
+    git -C "$DOTFILES_ROOT" submodule update --init --depth 1 tools/claude/custom \
       || echo "warn: claude custom submodule skipped (нет ssh-агента или ключа)"
   fi
-  if [[ -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]]; then
+  # Its installer is only needed when the image did not already bake its result:
+  # ~/.claude/* symlinks and the MCP registrations in ~/.claude.json both live in
+  # $HOME, which the image carries. Running it anyway cost 6s of the 12s this
+  # branch used to take — 3s of `uv sync` for the timing project (which on Linux
+  # is reached over http and needs no local venv at all) and 3s of respawning
+  # `claude` twice per server. Guard on the end state, not on a marker file.
+  if [[ -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]] \
+     && { [[ ! -L "$HOME/.claude/skills" ]] \
+          || ! grep -q '"atlassian"' "$HOME/.claude.json" 2>/dev/null; }; then
     PATH="$HOME/.local/bin:$PATH" "$DOTFILES_ROOT/tools/claude/custom/install.sh" \
       || echo "warn: MCP install failed"
   fi
