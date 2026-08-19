@@ -12,6 +12,9 @@ on:
       - '!platform/nix/darwin-configuration.nix'
       - '!platform/nix/home/darwin.nix'
       - 'platform/linux/Dockerfile'
+      # обёртка провижининга копируется в образ, значит её правка требует
+      # пересборки ровно так же, как правка Dockerfile
+      - 'platform/linux/dotfiles-provision'
       # конфиг nvim запекается в образ (плагины + mason), поэтому его правки
       # тоже требуют пересборки
       - 'tools/nvim/**'
