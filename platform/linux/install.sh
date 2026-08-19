@@ -100,11 +100,19 @@ HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 # (.github/workflows/devcontainer-image.yml): they never affect the Linux
 # generation, but a mac-only commit would otherwise flip the hash without a
 # rebuilt image and force a pointless full switch until the next weekly build.
+#
+# lazy-lock.json is excluded because it is NOT part of the source tree: it is
+# gitignored, absent from a fresh clone, and written by `Lazy! sync` — inside the
+# image while it builds, and inside a workspace on the first nightly updl. Left
+# in, the hash would describe two different trees on the two sides and the skip
+# would silently never fire (verified: 6326fc7b… in the image against 0d7daed3…
+# for the same commit freshly cloned).
 generation_hash() {
   (cd "$DOTFILES_ROOT" \
     && find platform/nix tools/nvim -type f \
          ! -path platform/nix/darwin-configuration.nix \
-         ! -path platform/nix/home/darwin.nix -print0 \
+         ! -path platform/nix/home/darwin.nix \
+         ! -name lazy-lock.json -print0 \
        | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
 }
 GEN_FILE="$HOME/.dotfiles-generation"

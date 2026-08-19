@@ -131,6 +131,25 @@ COPY --chown=cosmdandy:cosmdandy tools/nvim /opt/dotfiles/tools/nvim
 # асинхронно, но планировщик успевает отработать до выхода (проверено).
 COPY --chown=cosmdandy:cosmdandy tools/zsh /opt/dotfiles/tools/zsh
 
+# Generation marker: hash of the source tree the baked home-manager generation
+# is built from. platform/linux/install.sh computes the same hash over the fresh
+# clone and, on a match, skips the switch and every activation hook — that is
+# what makes devpod up on a current image take seconds instead of a minute and a
+# half. MUST stay byte-identical with generation_hash() there; the darwin
+# exclusions mirror the CI rebuild triggers, and lazy-lock.json is out because it
+# is gitignored and therefore absent from a clone.
+#
+# Stamped HERE, in the pristine tree straight after the COPY, and not next to the
+# switch below: `Lazy! sync` writes lazy-lock.json into tools/nvim while the core
+# stage runs, so a hash taken afterwards described a tree no clone can reproduce
+# — the marker never matched and the skip silently did nothing.
+RUN (cd /opt/dotfiles && find platform/nix tools/nvim -type f \
+       ! -path platform/nix/darwin-configuration.nix \
+       ! -path platform/nix/home/darwin.nix \
+       ! -name lazy-lock.json -print0 \
+     | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1) \
+    > "$HOME/.dotfiles-generation"
+
 # --- core: редактор, шелл, git, CI ---
 # ~/.dotfiles-profile — тот же файл, что пишет platform/linux/install.sh и
 # читают updl с devpod-update.sh: запечённый в образ, он даёт рабочий updl
@@ -170,18 +189,7 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
             "$HOME/.cache/pip" "$HOME/.cache/uv" \
   && nix-collect-garbage -d \
-  && echo core > "$HOME/.dotfiles-profile" \
-  # Generation marker: hash of everything the baked home-manager generation was
-  # built from. platform/linux/install.sh computes the same hash over the fresh
-  # clone and skips the switch (plus all activation hooks) when they match —
-  # this is what makes devpod up on a current image take seconds. MUST stay
-  # byte-identical with generation_hash() in platform/linux/install.sh; the
-  # darwin exclusions mirror the CI rebuild triggers.
-  && (cd /opt/dotfiles && find platform/nix tools/nvim -type f \
-        ! -path platform/nix/darwin-configuration.nix \
-        ! -path platform/nix/home/darwin.nix -print0 \
-      | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1) \
-     > "$HOME/.dotfiles-generation"
+  && echo core > "$HOME/.dotfiles-profile"
 
 # --- devops: core + IaC/K8s/container ---
 # Наследует core целиком, поэтому в слой ложится только дельта пакетов
