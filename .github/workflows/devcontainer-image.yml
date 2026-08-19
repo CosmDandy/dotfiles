@@ -81,6 +81,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Коммит сабмодуля tools/claude/custom, под который запекается набор MCP.
+      # Берётся из дерева (ls-tree), а не из рабочей копии: сабмодуль здесь не
+      # инициализируется, но указатель на него в дереве есть всегда.
+      # platform/linux/install.sh сверяет запечённое значение с указателем в
+      # клоне и, если они разошлись, всё-таки прогоняет установщик сабмодуля.
+      - id: custom-sha
+        run: |
+          set -euo pipefail
+          sha=$(git ls-tree HEAD tools/claude/custom | awk '{print $3}')
+          [ -n "$sha" ] || { echo "gitlink tools/claude/custom не найден" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       # push-by-digest: слои и манифест уходят в реестр БЕЗ тега, наружу отдаётся
       # только digest. Промежуточные :<profile>-<arch> теги больше не нужны —
       # они были изменяемым общим состоянием, через которое джобы обменивались
@@ -93,6 +104,7 @@ jobs:
           context: .
           file: platform/linux/Dockerfile
           target: core
+          build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       # Второй build идёт на том же билдере сразу после первого: стадия core
       # берётся из его локального кэша, а не собирается заново. Именно это
@@ -103,6 +115,7 @@ jobs:
           context: .
           file: platform/linux/Dockerfile
           target: devops
+          build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       # Матричные джобы не умеют надёжно отдавать outputs (последняя затирает
       # остальные), поэтому digest'ы едут в merge-джобу через артефакты

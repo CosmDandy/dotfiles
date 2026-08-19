@@ -147,7 +147,7 @@ RUN (cd /opt/dotfiles && find platform/nix tools/nvim -type f \
        ! -path platform/nix/darwin-configuration.nix \
        ! -path platform/nix/home/darwin.nix \
        ! -name lazy-lock.json -print0 \
-     | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1) \
+     | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1) \
     > "$HOME/.dotfiles-generation"
 
 # --- core: редактор, шелл, git, CI ---
@@ -155,6 +155,15 @@ RUN (cd /opt/dotfiles && find platform/nix tools/nvim -type f \
 # читают updl с devpod-update.sh: запечённый в образ, он даёт рабочий updl
 # сразу, ещё до первого запуска install.sh
 FROM base AS core
+# Коммит сабмодуля tools/claude/custom, под который запечён набор MCP ниже.
+# Его пишет CI (.github/workflows/devcontainer-image.yml), а install.sh сверяет
+# с указателем в клоне: разошлись — значит набор в сабмодуле менялся после
+# сборки образа, и установщик сабмодуля надо всё-таки прогнать. Без этой сверки
+# новый сервер (или, как было, исправленный адрес timing) не доехал бы до
+# контейнеров до самой ближайшей пересборки образа, молча.
+# unknown — на случай сборки руками: тогда сверка не сойдётся и установщик
+# отработает, то есть ошибка в безопасную сторону.
+ARG CUSTOM_SHA=unknown
 RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "/opt/dotfiles/platform/nix#cosmdandy-core-$(uname -m)-linux" -b hm-backup \
@@ -178,9 +187,20 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && "$HOME/.local/bin/claude" mcp add -s user atlassian -- "$HOME/.local/bin/mcp-atlassian" \
   && "$HOME/.local/bin/claude" mcp add -s user context7 -- "$HOME/.npm-global/bin/context7-mcp" \
   && "$HOME/.local/bin/claude" mcp add -s user -t http timing "http://100.64.0.1:7233/mcp" \
+  # rm before ln, and assert afterwards: `ln -sfn` onto a destination that is a
+  # REAL directory neither replaces it nor fails — -n only guards a symlink to a
+  # directory, so ln follows the real one and quietly creates the link INSIDE it,
+  # exit 0. None of the six exist as directories at this point today, but the
+  # floating `claude` binary runs twice just above and could start creating one;
+  # the failure would ship as ~/.claude/<d> being a real directory, and only
+  # `skills` is checked at runtime — the rest would be silently absent from every
+  # workspace, with both the build and install.sh green.
   && for d in skills agents commands rules labs output-styles; do \
-       ln -sfn "$HOME/dotfiles/tools/claude/custom/$d" "$HOME/.claude/$d"; \
+       rm -rf "$HOME/.claude/$d" \
+       && ln -s "$HOME/dotfiles/tools/claude/custom/$d" "$HOME/.claude/$d" \
+       && [ -L "$HOME/.claude/$d" ] || exit 1; \
      done \
+  && echo "$CUSTOM_SHA" > "$HOME/.claude/.mcp-baked-from" \
   && rm -f "$HOME/dotfiles" \
   # кэши сборки mason (npm ~71 МБ, go ~66 МБ, pip ~121 МБ) — мусор, сами пакеты
   # уже в ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout.

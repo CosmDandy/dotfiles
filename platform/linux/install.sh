@@ -101,6 +101,13 @@ HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 # generation, but a mac-only commit would otherwise flip the hash without a
 # rebuilt image and force a pointless full switch until the next weekly build.
 #
+# LC_ALL=C on both sides: `sort` collates by locale, and this very file set
+# already orders differently between C and en_US.UTF-8 (tools/nvim/.stylua.toml
+# moves from position 10 to 47). Ambient locale agreeing between the build and
+# every runtime invocation is not something to rely on — an ssh client sending
+# LC_* is enough to break it, and the only symptom would be the skip quietly
+# never firing.
+#
 # lazy-lock.json is excluded because it is NOT part of the source tree: it is
 # gitignored, absent from a fresh clone, and written by `Lazy! sync` — inside the
 # image while it builds, and inside a workspace on the first nightly updl. Left
@@ -113,7 +120,7 @@ generation_hash() {
          ! -path platform/nix/darwin-configuration.nix \
          ! -path platform/nix/home/darwin.nix \
          ! -name lazy-lock.json -print0 \
-       | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+       | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
 }
 GEN_FILE="$HOME/.dotfiles-generation"
 CURRENT_GEN="$(generation_hash)"
@@ -136,10 +143,19 @@ if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == 
   # $HOME, which the image carries. Running it anyway cost 6s of the 12s this
   # branch used to take — 3s of `uv sync` for the timing project (which on Linux
   # is reached over http and needs no local venv at all) and 3s of respawning
-  # `claude` twice per server. Guard on the end state, not on a marker file.
+  # `claude` twice per server.
+  #
+  # What the image baked is only valid for the submodule commit it was built
+  # against, and that commit is in neither the generation hash nor the CI rebuild
+  # triggers — so a changed MCP roster (a new server, or the timing address fix
+  # we already had once) would never reach a new container while the marker
+  # matched. Hence the comparison against the pinned commit rather than a probe
+  # for one server name: it also self-heals, because a stale image simply fails
+  # the comparison and the installer runs.
+  BAKED_CUSTOM="$(cat "$HOME/.claude/.mcp-baked-from" 2>/dev/null || echo none)"
+  PINNED_CUSTOM="$(git -C "$DOTFILES_ROOT" ls-tree HEAD tools/claude/custom | awk '{print $3}')"
   if [[ -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]] \
-     && { [[ ! -L "$HOME/.claude/skills" ]] \
-          || ! grep -q '"atlassian"' "$HOME/.claude.json" 2>/dev/null; }; then
+     && [[ "$BAKED_CUSTOM" != "$PINNED_CUSTOM" || ! -L "$HOME/.claude/skills" ]]; then
     PATH="$HOME/.local/bin:$PATH" "$DOTFILES_ROOT/tools/claude/custom/install.sh" \
       || echo "warn: MCP install failed"
   fi
