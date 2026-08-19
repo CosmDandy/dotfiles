@@ -51,6 +51,15 @@ if [[ -f "$DOTFILES_DIR/.env" ]]; then
     }
 fi
 
+# Claude Code stores credentials in the macOS Keychain, which Linux containers
+# do not have. There they authenticate with the long-lived OAuth token instead;
+# kvt-up writes the file 0600 at workspace creation. On the mac the file never
+# exists, so the variable stays unset and the Keychain login keeps the features
+# the token cannot provide — Remote Control and claude.ai connectors.
+if [[ -r "$HOME/.config/claude/token" ]]; then
+    export CLAUDE_CODE_OAUTH_TOKEN="$(<"$HOME/.config/claude/token")"
+fi
+
 if [[ -r "$HOME/.atuin/bin/env" ]]; then
     source "$HOME/.atuin/bin/env"
 fi
