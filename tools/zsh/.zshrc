@@ -68,7 +68,15 @@ fi
 # SSH AGENT FORWARDING FIX (for tmux reattach)
 # =============================================================================
 
+# mkdir перед ln: в контейнере ~/.ssh может не существовать вовсе. Раньше его
+# невольно создавал git — он писал туда known_hosts при первом клоне по ssh, —
+# а с тех пор как ключи github запечены в /etc/ssh/ssh_known_hosts, создавать
+# каталог стало некому, и каждый старт шелла печатал
+# «ln: failed to create symbolic link ... No such file or directory».
+# Молчаливой поломка не была, но ломала она не только вывод: без этого симлинка
+# tmux при переподключении остаётся со протухшим SSH_AUTH_SOCK.
 if [[ -n "$SSH_AUTH_SOCK" && "$SSH_AUTH_SOCK" != "$HOME/.ssh/ssh_auth_sock" ]]; then
+    mkdir -p -m 700 "$HOME/.ssh"
     ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/ssh_auth_sock"
 fi
 # Экспорт только при живом сокете. Безусловный оставлял переменную указывающей на
