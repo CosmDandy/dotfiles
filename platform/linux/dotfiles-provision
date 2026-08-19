@@ -14,6 +14,13 @@
 # breaks at an unpredictable point. exec happens strictly after the update.
 set -euo pipefail
 
+# devpod запускает lifecycle-хуки через `su`, а тот сбрасывает окружение на
+# системный дефолт. PATH образа при этом теряется, и восстановить его некому:
+# блок в /etc/zsh/zshenv читает только zsh, а этот скрипт — bash. Без явного
+# PATH install.sh не нашёл бы ни nix, ни home-manager и ушёл бы в отказ на
+# первом же switch. ~/.local/bin — там claude, его зовёт установщик MCP.
+export PATH="$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH"
+
 CLONE="$HOME/dotfiles"
 
 if [[ ! -d "$CLONE/.git" ]]; then
