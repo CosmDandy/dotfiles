@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Workspace provisioning, run as the devcontainer's onCreateCommand (declared in
+# the image's devcontainer.metadata label, so repositories without a
+# devcontainer.json of their own get it too).
+#
+# This replaces devpod's --dotfiles mechanism, which cost ~8s of every `devpod
+# up`: it tore the connection down and built a second one purely to clone the
+# repo (~3s) and start the script (~5s of handshake). The clone is baked into
+# the image now, so all that remains is catching it up to origin.
+#
+# The file lives in the image on purpose. install.sh lives in the clone that
+# this script updates, so calling it directly would mean rewriting a running
+# script underneath itself — the shell reads a script as it executes, and that
+# breaks at an unpredictable point. exec happens strictly after the update.
+set -euo pipefail
+
+CLONE="$HOME/dotfiles"
+
+if [[ ! -d "$CLONE/.git" ]]; then
+  echo "dotfiles-provision: $CLONE не является клоном — образ собран неверно" >&2
+  exit 1
+fi
+
+# Offline is not a failure: an image a week old still provisions a working
+# container, it just provisions the week-old configuration.
+if git -C "$CLONE" fetch --quiet origin main 2>/dev/null; then
+  git -C "$CLONE" reset --quiet --hard FETCH_HEAD
+else
+  echo "dotfiles-provision: origin недоступен — разворачиваем запечённое состояние"
+fi
+
+exec "$CLONE/platform/linux/install.sh"

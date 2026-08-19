@@ -91,7 +91,12 @@ WORKDIR /home/cosmdandy
 # Значение перезаписывается целиком (LABEL не умеет дополнять): из него выпадают
 # id'шники фич common-utils и git. Это безразлично — ни один наш devcontainer.json
 # фичи не запрашивает, они и так запечены в базовый образ.
-LABEL devcontainer.metadata='[{"remoteUser":"cosmdandy"}]'
+#
+# onCreateCommand здесь, а не только в .devcontainer/devcontainer.json, по той
+# же причине: рабочие репозитории своего devcontainer.json не имеют, и лейбл —
+# единственное место, откуда провижининг до них доедет. Записи lifecycle из
+# разных источников метаданных не перетирают друг друга, а выполняются все.
+LABEL devcontainer.metadata='[{"remoteUser":"cosmdandy","onCreateCommand":"/usr/local/bin/dotfiles-provision"}]'
 
 # Nix single-user: версия запинена, скрипт сверяется с checksum (security.md);
 # --no-channel-add — канал не нужен (всё флейковое) и иначе запёк бы ~400MB
@@ -130,6 +135,29 @@ COPY --chown=cosmdandy:cosmdandy tools/nvim /opt/dotfiles/tools/nvim
 # интерактивный zsh при сборке: плагины объявлены с `wait lucid`, то есть
 # асинхронно, но планировщик успевает отработать до выхода (проверено).
 COPY --chown=cosmdandy:cosmdandy tools/zsh /opt/dotfiles/tools/zsh
+
+# Хост-ключи github в системный known_hosts. Провижининг переехал в
+# lifecycle-хук (onCreateCommand в лейбле ниже), а у хука нет tty: системный
+# дефолт `StrictHostKeyChecking ask` там не может ничего спросить и git по ssh
+# падает с «Host key verification failed» (проверено пробой в контейнере —
+# агент при этом на месте, все ключи видны, дело только в хост-ключе).
+# Ключи берутся на сборке у самого github, а не хардкодятся: ротация ключа
+# тогда чинится обычной еженедельной пересборкой.
+USER root
+RUN ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /etc/ssh/ssh_known_hosts \
+  && chmod 644 /etc/ssh/ssh_known_hosts
+USER cosmdandy
+
+# Провижининг воркспейса. Тонкая обёртка, а не прямой вызов install.sh: она
+# ЖИВЁТ В ОБРАЗЕ и потому неизменна, тогда как install.sh лежит в клоне,
+# который она же и обновляет. Прямой вызов означал бы, что работающий скрипт
+# переписывают под ним самим — шелл дочитывает файл по мере исполнения, и это
+# тихо ломается на непредсказуемом месте. exec идёт уже ПОСЛЕ обновления.
+#
+# reset --hard, а не pull: клон запечён в образ и на неделю отстаёт от main,
+# а сливать тут нечего — рабочего дерева пользователь в нём не держит.
+# Оффлайн не валит установку: не дотянулись до origin — работаем на запечённом.
+COPY --chown=root:root platform/linux/dotfiles-provision /usr/local/bin/dotfiles-provision
 
 # Generation marker: hash of the source tree the baked home-manager generation
 # is built from. platform/linux/install.sh computes the same hash over the fresh
@@ -202,6 +230,14 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
      done \
   && echo "$CUSTOM_SHA" > "$HOME/.claude/.mcp-baked-from" \
   && rm -f "$HOME/dotfiles" \
+  # Клон dotfiles запекается в образ: devpod'ов шаг --dotfiles снят, а
+  # dotfiles-provision только догоняет этот клон до origin. Обязательно ПОСЛЕ
+  # `rm -f $HOME/dotfiles` — до него там симлинк на /opt/dotfiles, и clone в
+  # существующий путь не пройдёт.
+  # Клонируем по https (в сборке нет ни агента, ни ключей), а origin сразу
+  # переводим на ssh: из контейнера пользователь пушит память обратно.
+  && git clone --quiet --depth 1 https://github.com/CosmDandy/dotfiles.git "$HOME/dotfiles" \
+  && git -C "$HOME/dotfiles" remote set-url origin git@github.com:CosmDandy/dotfiles.git \
   # кэши сборки mason (npm ~71 МБ, go ~66 МБ, pip ~121 МБ) — мусор, сами пакеты
   # уже в ~/.local/share/nvim/mason; в том же RUN, иначе останутся под whiteout.
   # pip кэширует колёса venv'ов (mypy, yamllint, ansible-lint, debugpy) и по
@@ -214,7 +250,12 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
 # --- devops: core + IaC/K8s/container ---
 # Наследует core целиком, поэтому в слой ложится только дельта пакетов
 FROM core AS devops
-RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
+# rm -rf, а не просто ln: из стадии core приезжает НАСТОЯЩИЙ клон в ~/dotfiles,
+# а `ln -sfn` на существующий каталог не заменяет его и не падает — он уходит
+# внутрь и создаёт ссылку там (тот же капкан, что и с ~/.claude/*). Свой клон
+# эта стадия положит заново в конце.
+RUN rm -rf "$HOME/dotfiles" \
+  && ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "/opt/dotfiles/platform/nix#cosmdandy-devops-$(uname -m)-linux" -b hm-backup \
   # Прогрев повторяется и здесь, хотя плагины zinit уже приехали из core.
@@ -229,4 +270,8 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
             "$HOME/.cache/pip" \
   && nix-collect-garbage -d \
-  && echo devops > "$HOME/.dotfiles-profile"
+  && echo devops > "$HOME/.dotfiles-profile" \
+  # Клон возвращается на место — тот же, что в стадии core, и по той же
+  # причине: dotfiles-provision догоняет его до origin вместо клонирования
+  && git clone --quiet --depth 1 https://github.com/CosmDandy/dotfiles.git "$HOME/dotfiles" \
+  && git -C "$HOME/dotfiles" remote set-url origin git@github.com:CosmDandy/dotfiles.git

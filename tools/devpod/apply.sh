@@ -11,8 +11,16 @@ set -e
 
 # Опции контекста. Пробрасывание ssh/git-доступов внутрь воркспейса и адрес
 # dotfiles, которые DevPod разворачивает в каждом новом контейнере.
+# DOTFILES_URL сознательно НЕ задан. Механизм --dotfiles у devpod стоил ~8с на
+# каждый up: закончив создание контейнера, он рвал соединение и строил второе
+# только чтобы склонировать репозиторий (~3с) и запустить скрипт (~5с на
+# рукопожатие). Клон теперь запечён в образ, а провижининг объявлен
+# onCreateCommand'ом в лейбле образа (platform/linux/Dockerfile) — так он
+# доезжает и до рабочих репозиториев, у которых своего devcontainer.json нет.
+#
+# Следствие: воркспейс на ЧУЖОМ образе dotfiles больше не получит. Для такого
+# случая есть разовый `devpod up --dotfiles git@github.com:CosmDandy/dotfiles.git`.
 typeset -A DEVPOD_CONTEXT=(
-  DOTFILES_URL                  git@github.com:CosmDandy/dotfiles.git
   # Подпись коммитов внутри контейнера выключена: ключ подписи остаётся на маке
   GIT_SSH_SIGNATURE_FORWARDING  false
   # Never ssh-add local keys into the agent on connect: it pollutes the curated
