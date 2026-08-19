@@ -56,11 +56,11 @@ fi
 # коммитам в истории, когда чинить дорого. Поэтому лучше не подняться совсем.
 # Проверяется не только код возврата, но и реальный файл: `submodule update`
 # отдаёт 0 и на пустом каталоге, если сабмодуль зарегистрирован, но не выкачан.
-# Сначала мелко, при неудаче — полностью. Историю сабмодуля здесь не читает
-# никто, но `--depth 1` тянет только вершину ветки: как только в сабмодуль
-# уедет коммит, а указатель в надпроекте останется на прежнем, checkout
-# записанного коммита не найдёт его в мелком клоне и упадёт. Это нормальное
-# состояние между bump'ами указателя, а не сбой, поэтому откат обязателен.
+# Shallow first, full clone on failure. Nothing here reads a submodule's
+# history, but `--depth 1` fetches only the branch tip: the moment the submodule
+# gains a commit while the superproject still pins the previous one, the pinned
+# commit is missing from the shallow fetch and the checkout fails. That is the
+# normal state between pointer bumps, not a fault, so the fallback is required.
 submodule_init() {
   git -C "$DOTFILES_ROOT" submodule update --init --depth 1 "$1" 2>/dev/null \
     || git -C "$DOTFILES_ROOT" submodule update --init "$1"
