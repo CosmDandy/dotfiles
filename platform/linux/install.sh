@@ -56,9 +56,18 @@ fi
 # коммитам в истории, когда чинить дорого. Поэтому лучше не подняться совсем.
 # Проверяется не только код возврата, но и реальный файл: `submodule update`
 # отдаёт 0 и на пустом каталоге, если сабмодуль зарегистрирован, но не выкачан.
-# --depth 1: только рабочее дерево, история сабмодуля здесь никому не нужна
+# Сначала мелко, при неудаче — полностью. Историю сабмодуля здесь не читает
+# никто, но `--depth 1` тянет только вершину ветки: как только в сабмодуль
+# уедет коммит, а указатель в надпроекте останется на прежнем, checkout
+# записанного коммита не найдёт его в мелком клоне и упадёт. Это нормальное
+# состояние между bump'ами указателя, а не сбой, поэтому откат обязателен.
+submodule_init() {
+  git -C "$DOTFILES_ROOT" submodule update --init --depth 1 "$1" 2>/dev/null \
+    || git -C "$DOTFILES_ROOT" submodule update --init "$1"
+}
+
 print_section "Initializing private submodule"
-if ! git -C "$DOTFILES_ROOT" submodule update --init --depth 1 private \
+if ! submodule_init private \
    || [[ ! -f "$DOTFILES_ROOT/private/git/includes.conf" ]]; then
   echo "✖ FATAL: сабмодуль private не подтянулся." >&2
   echo "  Без него git подставит личную идентичность в рабочих репозиториях" >&2
@@ -111,7 +120,7 @@ if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == 
   # so it is cloned here — shallow, we only ever read its working tree.
   # Soft-fail like the hook: a missing ssh key must not break the whole setup.
   if [[ ! -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]]; then
-    git -C "$DOTFILES_ROOT" submodule update --init --depth 1 tools/claude/custom \
+    submodule_init tools/claude/custom \
       || echo "warn: claude custom submodule skipped (нет ssh-агента или ключа)"
   fi
   # Its installer is only needed when the image did not already bake its result:
