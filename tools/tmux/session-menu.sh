@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Динамическое меню сессий для prefix+s: строит tmux display-menu из реального
-# списка сессий, прыжок по горячей клавише. Имена автогенерируются (по директории),
-# поэтому хардкод не годится — читаем их на лету.
-#
-# Горячая клавиша (3-й аргумент пункта) выводится самим tmux справа в скобках —
-# это родной индикатор хоткея в 3.6, в подпись её дублировать не нужно.
+# Dynamic session menu for prefix+s: builds a tmux display-menu from the live session list.
+# Names are generated from the directory, so nothing can be hardcoded.
+# NOTE: tmux prints the hotkey (the item's third argument) itself, in brackets on the right
+# — it must not be duplicated in the label.
 set -eu
 
 cur="$(tmux display-message -p '#S')"
@@ -14,22 +12,22 @@ i=0
 while IFS= read -r name; do
   i=$((i + 1))
 
-  # Текущую сессию помечаем точкой, чтобы видеть, где находишься.
+  # a dot marks the current session
   mark=""
   [ "$name" = "$cur" ] && mark=" ●"
 
-  # Горячая клавиша — порядковый номер. Цифры не конфликтуют при любых именах
-  # сессий (в отличие от первых букв); tmux сам припишет (1), (2)… справа.
+  # NOTE: the hotkey is an ordinal — digits never collide whatever the session names are,
+  # unlike first letters.
   args+=("$name$mark" "$i" "switch-client -t \"$name\"")
 done < <(tmux list-sessions -F '#{session_name}' | sort)
 
-# Действия над сессиями (буква-мнемоника тоже в начале подписи).
+# session actions
 args+=("")
 args+=("new session"     "n" "command-prompt -p \"New session:\" \"new-session -A -s '%%'\"")
 args+=("rename current"  "r" "command-prompt -I \"$cur\" -p \"Rename to:\" \"rename-session '%%'\"")
 args+=("kill current"    "x" "confirm-before -p \"kill $cur? (y/n)\" kill-session")
 
-# Быстрый возврат на предыдущую сессию (дублирует prefix+L).
+# quick jump back (same as prefix+L)
 args+=("")
 args+=("last session"    "." "switch-client -l")
 

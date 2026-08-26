@@ -18,7 +18,7 @@ in_container() {
 }
 
 if in_container; then
-    prefix="⬢ $session"
+    prefix="󰆧  $session"
 else
     prefix="$session"
 fi
@@ -32,9 +32,9 @@ esac
 
 label="$cmd"
 
-# Claude Code: node-обёртка (devcontainers) либо нативный бинарь
-# (comm = версия, напр. 2.1.190). Ищем "claude" в args любого процесса
-# на tty панели — не зависит от глубины дерева процессов.
+# NOTE: Claude Code is either a node wrapper (devcontainers) or the native binary, whose
+# comm is its version number — so "claude" is looked for in the args of any process on the
+# pane's tty, which does not depend on the depth of the process tree.
 case "$cmd" in
 node | [0-9]*)
     tty=$(ps -o tty= -p "$pane_pid" 2>/dev/null | tr -d ' ')
@@ -46,4 +46,4 @@ node | [0-9]*)
     ;;
 esac
 
-echo "$prefix | $label"
+echo "$prefix · $label"

@@ -1,282 +1,223 @@
-## where to store your database, default is your system data directory
-## linux/mac: ~/.local/share/atuin/history.db
-## windows: %USERPROFILE%/.local/share/atuin/history.db
-# db_path = "~/.history.db"
+# Atuin — command history synced to a private server.
+# Full option reference: https://docs.atuin.sh/configuration/config/
 
-## where to store your encryption key, default is your system data directory
-## linux/mac: ~/.local/share/atuin/key
-## windows: %USERPROFILE%/.local/share/atuin/key
-# key_path = "~/.key"
-
-## where to store your auth session token, default is your system data directory
-## linux/mac: ~/.local/share/atuin/session
-## windows: %USERPROFILE%/.local/share/atuin/session
-# session_path = "~/.session"
-
-## date format used, either "us" or "uk"
-# dialect = "us"
-
-## default timezone to use when displaying time
-## either "l", "local" to use the system's current local timezone, or an offset
-## from UTC in the format of "<+|->H[H][:M[M][:S[S]]]"
-## for example: "+9", "-05", "+03:30", "-01:23:45", etc.
-# timezone = "local"
-
-## enable or disable automatic sync
 auto_sync = true
-
-## enable or disable automatic update checks
 update_check = true
-
-## address of the sync server
-sync_address = "https://atuin.cosmdandy.ru"
-
-## how often to sync history. note that this is only triggered when a command
-## is ran, so sync intervals may well be longer
-## set it to 0 to sync after every command
+sync_address = "https://atuin.cosmdandy.dev"
 sync_frequency = "30m"
 
-## which search mode to use
-## possible values: prefix, fulltext, fuzzy, skim
 search_mode = "fuzzy"
-
-## which filter mode to use by default
-## possible values: "global", "host", "session", "directory", "workspace"
-## consider using search.filters to customize the enablement and order of filter modes
 filter_mode = "host"
+# history across the whole git tree instead of a single cwd — enables the "workspace"
+# filter mode. Without it, history in a monorepo is torn apart by subdirectory.
+workspaces = true
+# after && || | append to the line instead of replacing it
+command_chaining = true
 
-## With workspace filtering enabled, Atuin will filter for commands executed
-## in any directory within a git repository tree (default: false).
-##
-## To use workspace mode by default when available, set this to true and
-## set filter_mode to "workspace" or leave it unspecified and 
-## set search.filters to include "workspace" before other filter modes.
-# workspaces = false
-
-## which filter mode to use when atuin is invoked from a shell up-key binding
-## the accepted values are identical to those of "filter_mode"
-## leave unspecified to use same mode set in "filter_mode"
-# filter_mode_shell_up_key_binding = "global"
-
-## which search mode to use when atuin is invoked from a shell up-key binding
-## the accepted values are identical to those of "search_mode"
-## leave unspecified to use same mode set in "search_mode"
-# search_mode_shell_up_key_binding = "fuzzy"
-
-## which style to use
-## possible values: auto, full, compact
 style = "full"
-# style = "compact"
-
-## the maximum number of lines the interface should take up
-## set it to 0 to always go full screen
-inline_height = 0
-
-## Invert the UI - put the search bar at the top , Default to `false`
-# invert = false
-
-## enable or disable showing a preview of the selected command
-## useful when the command is longer than the terminal width and is cut off
-# show_preview = true
-
-## what to do when the escape key is pressed when searching
-## possible values: return-original, return-query
-# exit_mode = "return-original"
-
-## possible values: emacs, subl
-# word_jump_mode = "emacs"
-
-## characters that count as a part of a word
-# word_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-## number of context lines to show when scrolling by pages
-# scroll_context_lines = 1
-
-## use ctrl instead of alt as the shortcut modifier key for numerical UI shortcuts
-## alt-0 .. alt-9
-ctrl_n_shortcuts = true
-
-## default history list format - can also be specified with the --format arg
-# history_format = "{time}\t{command}\t{duration}"
-
-## prevent commands matching any of these regexes from being written to history.
-## Note that these regular expressions are unanchored, i.e. if they don't start
-## with ^ or end with $, they'll match anywhere in the command.
-## For details on the supported regular expression syntax, see
-## https://docs.rs/regex/latest/regex/#syntax
-# history_filter = [
-#   "^secret-cmd",
-#   "^innocuous-cmd .*--secret=.+",
-# ]
-
-## prevent commands run with cwd matching any of these regexes from being written
-## to history. Note that these regular expressions are unanchored, i.e. if they don't
-## start with ^ or end with $, they'll match anywhere in CWD.
-## For details on the supported regular expression syntax, see
-## https://docs.rs/regex/latest/regex/#syntax
-# cwd_filter = [
-#   "^/very/secret/area",
-# ]
-
-## Configure the maximum height of the preview to show.
-## Useful when you have long scripts in your history that you want to distinguish
-## by more than the first few lines.
-# max_preview_height = 4
-
-## Configure whether or not to show the help row, which includes the current Atuin
-## version (and whether an update is available), a keymap hint, and the total
-## amount of commands in your history.
+inline_height = 0 # 0 = always fullscreen
+# NOTE: the Up arrow is "peek at the last command", not a full search, so it gets its own
+# compact height while fullscreen stays with Ctrl+R.
+inline_height_shell_up_key_binding = 15
+ctrl_n_shortcuts = true # ctrl+1..9 instead of alt for numeric shortcuts
 show_help = false
-
-## Configure whether or not to show tabs for search and inspect
 show_tabs = false
 
-## Configure whether or not the tabs row may be auto-hidden, which includes the current Atuin
-## tab, such as Search or Inspector, and other tabs you may wish to see. This will
-## only be hidden if there are fewer than this count of lines available, and does not affect the use
-## of keyboard shortcuts to switch tab. 0 to never auto-hide, default is 8 (lines).
-## This is ignored except in `compact` mode.
-# auto_hide_height = 8
-
-## Defaults to true. This matches history against a set of default regex, and will not save it if we get a match. Defaults include
-## 1. AWS key id
-## 2. Github pat (old and new)
-## 3. Slack oauth tokens (bot, user)
-## 4. Slack webhooks
-## 5. Stripe live/test keys
-# secrets_filter = true
-
-## Defaults to true. If enabled, upon hitting enter Atuin will immediately execute the command. Press tab to return to the shell and edit.
-# This applies for new installs. Old installs will keep the old behaviour unless configured otherwise.
+# skip commands matching the default secret patterns (AWS, GH PAT, Slack, Stripe)
+secrets_filter = true
+# NOTE: do not record layout misses. A command starting with Cyrillic can never run — no
+# binary in PATH has a Cyrillic name — while Cyrillic in arguments, paths and comments is
+# still recorded, because it can only appear after the first token.
+history_filter = ["^\\s*\\p{Cyrillic}"]
+# Enter runs the command; Tab returns it to the shell for editing
 enter_accept = true
 
-## Defaults to "emacs".  This specifies the keymap on the startup of `atuin
-## search`.  If this is set to "auto", the startup keymap mode in the Atuin
-## search is automatically selected based on the shell's keymap where the
-## keybinding is defined.  If this is set to "emacs", "vim-insert", or
-## "vim-normal", the startup keymap mode in the Atuin search is forced to be
-## the specified one.
-# keymap_mode = "auto"
-
-## Cursor style in each keymap mode.  If specified, the cursor style is changed
-## in entering the cursor shape.  Available values are "default" and
-## "{blink,steady}-{block,underline,bar}".
-# keymap_cursor = { emacs = "blink-block", vim_insert = "blink-block", vim_normal = "steady-block" }
-
-# network_connect_timeout = 5
-# network_timeout = 5
-
-## Timeout (in seconds) for acquiring a local database connection (sqlite)
-# local_timeout = 5
-
-## Set this to true and Atuin will minimize motion in the UI - timers will not update live, etc.
-## Alternatively, set env NO_MOTION=true
-# prefers_reduced_motion = false
-
 [stats]
-## Set commands where we should consider the subcommand for statistics. Eg, kubectl get vs just kubectl
-# common_subcommands = [
-#   "apt",
-#   "cargo",
-#   "composer",
-#   "dnf",
-#   "docker",
-#   "git",
-#   "go",
-#   "ip",
-#   "jj",
-#   "kubectl",
-#   "nix",
-#   "nmcli",
-#   "npm",
-#   "pecl",
-#   "pnpm",
-#   "podman",
-#   "port",
-#   "systemctl",
-#   "tmux",
-#   "yarn",
-# ]
-
-## Set commands that should be totally stripped and ignored from stats
-# common_prefix = ["sudo"]
-
-## Set commands that will be completely ignored from stats
+# Keep the top list about work, not about moving around and shell syntax. This only
+# affects `atuin stats` — history and search still record everything.
 ignored_commands = [
+  # navigation and looking at things
   "cd",
+  "..",
+  "...",
+  "....",
+  ".....",
   "ls",
+  "pwd",
+  "cat",
   "vi",
+  "clear",
+  "exit",
+  "source",
+  "which",
+  # shell syntax, not commands. A multi-line `while true; do ...` is split by newline,
+  # so its continuation lines surface as separate "commands".
+  "echo",
+  "export",
+  "eval",
+  "true",
+  "false",
+  "while",
+  "for",
+  "if",
+  "then",
+  "else",
+  "fi",
+  "do",
+  "done",
+  "#",
+  # same split, but for flags continuing an `ansible-playbook -e` / `curl -w` line
+  "-e",
+  "-w",
+  # own aliases whose whole point is being too short to be worth a row
   "c",
   "e",
   "ds",
   "dpd",
   "v"
 ]
+# Count the subcommand as part of the command, so `devpod up` and `devpod ssh` are separate
+# rows rather than one lumped `devpod`.
+# NOTE: this list REPLACES the upstream default entirely, so the whole upstream set is
+# repeated here plus everything below.
+# Only tools whose second token is a verb belong here. `ssh`, `ping`, `curl`, `scp` and the
+# git-clone aliases take an argument there instead — listing them would shatter one row
+# into one per host or repo.
+common_subcommands = [
+  # vcs and forges
+  "git",
+  "jj",
+  "hg",
+  "gh",
+  "glab",
+  # containers and vms
+  "docker",
+  "podman",
+  "nerdctl",
+  "buildah",
+  "skopeo",
+  "crictl",
+  "devpod",
+  "limactl",
+  "colima",
+  "vagrant",
+  "virsh",
+  "multipass",
+  "utmctl",
+  "qm",
+  "pct",
+  # kubernetes
+  "kubectl",
+  "kubeadm",
+  "helm",
+  "kustomize",
+  "flux",
+  "argocd",
+  "kind",
+  "k3d",
+  "minikube",
+  "talosctl",
+  # iac
+  "terraform",
+  "tofu",
+  "terragrunt",
+  "pulumi",
+  "packer",
+  "vault",
+  "consul",
+  "nomad",
+  "ansible-galaxy",
+  # clouds
+  "aws",
+  "gcloud",
+  "az",
+  "doctl",
+  "hcloud",
+  "flyctl",
+  # system package managers
+  "apt",
+  "apt-get",
+  "dnf",
+  "yum",
+  "pacman",
+  "zypper",
+  "apk",
+  "brew",
+  "port",
+  "snap",
+  "flatpak",
+  "mas",
+  # language package managers and toolchains
+  "cargo",
+  "rustup",
+  "go",
+  "dotnet",
+  "composer",
+  "pecl",
+  "npm",
+  "pnpm",
+  "yarn",
+  "bun",
+  "deno",
+  "pip",
+  "pipx",
+  "poetry",
+  "uv",
+  "rye",
+  "gem",
+  "bundle",
+  "conda",
+  "mamba",
+  # nix
+  "nix",
+  "home-manager",
+  "darwin-rebuild",
+  "nixos-rebuild",
+  # network
+  "ip",
+  "nmcli",
+  "tailscale",
+  "wg",
+  "wg-quick",
+  "nft",
+  "ufw",
+  "firewall-cmd",
+  "route",
+  "tc",
+  # macos
+  "defaults",
+  "diskutil",
+  "security",
+  "xcrun",
+  "launchctl",
+  # bare metal
+  "ipmitool",
+  # backup and sync
+  "restic",
+  "rclone",
+  "borg",
+  # secrets
+  "rbw",
+  "bw",
+  "op",
+  "pass",
+  "doppler",
+  # services and terminal
+  "systemctl",
+  "rc-service",
+  "tmux",
+  "zellij",
+  "atuin",
+  "starship"
+]
 
 [keys]
-# Defaults to true. If disabled, using the up/down key won't exit the TUI when scrolled past the first/last entry.
-# scroll_exits = true
 prefix = 'h'
-# Defaults to true. The left arrow key will exit the TUI when scrolling before the first character
-# exit_past_line_start = true
-# Defaults to true. The right arrow key performs the same functionality as Tab and copies the selected line to the command line to be modified.
-# accept_past_line_end = true
+
+# NOTE: disabled on purpose — the search runs in the current pane. With enabled = true
+# atuin inside tmux opens it as a centred popup instead.
+[tmux]
+enabled = false
 
 [sync]
-# Enable sync v2 by default
-# This ensures that sync v2 is enabled for new installs only
-# In a later release it will become the default across the board
 records = true
-
-[preview]
-## which preview strategy to use to calculate the preview height (respects max_preview_height).
-## possible values: auto, static
-## auto: length of the selected command.
-## static: length of the longest command stored in the history.
-## fixed: use max_preview_height as fixed height.
-# strategy = "auto"
-
-[daemon]
-## Enables using the daemon to sync. Requires the daemon to be running in the background. Start it with `atuin daemon`
-# enabled = false
-
-## How often the daemon should sync in seconds
-# sync_frequency = 300
-
-## The path to the unix socket used by the daemon (on unix systems)
-## linux/mac: ~/.local/share/atuin/atuin.sock
-## windows: Not Supported
-# socket_path = "~/.local/share/atuin/atuin.sock"
-
-## Use systemd socket activation rather than opening the given path (the path must still be correct for the client)
-## linux: false
-## mac/windows: Not Supported
-# systemd_socket = false
-
-## The port that should be used for TCP on non unix systems
-# tcp_port = 8889
-
-# [theme]
-## Color theme to use for rendering in the terminal.
-## There are some built-in themes, including the base theme ("default"),
-## "autumn" and "marine". You can add your own themes to the "./themes" subdirectory of your
-## Atuin config (or ATUIN_THEME_DIR, if provided) as TOML files whose keys should be one or
-## more of AlertInfo, AlertWarn, AlertError, Annotation, Base, Guidance, Important, and
-## the string values as lowercase entries from this list:
-##    https://ogeon.github.io/docs/palette/master/palette/named/index.html
-## If you provide a custom theme file, it should be  called "NAME.toml" and the theme below
-## should be the stem, i.e. `theme = "NAME"` for your chosen NAME.
-# name = "autumn"
-
-## Whether the theme manager should output normal or extra information to help fix themes.
-## Boolean, true or false. If unset, left up to the theme manager.
-# debug = true
-
-[search]
-## The list of enabled filter modes, in order of priority.
-## The "workspace" mode is skipped when not in a workspace or workspaces = false.
-## Default filter mode can be overridden with the filter_mode setting.
-# filters = [ "global", "host", "session", "workspace", "directory" ]
-
-[ai]
-enabled = true
