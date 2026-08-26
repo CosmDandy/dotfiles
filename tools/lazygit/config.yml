@@ -9,10 +9,37 @@ gui:
   border: rounded
   showBottomLine: false
   showCommandLog: false
+  nerdFontsVersion: "3"
+  showFileIcons: false
+  theme:
+    # cyan, not blue: "where the input goes" is marked teal across the whole stack — the
+    # same colour as the ghostty cursor.
+    activeBorderColor:
+      - '#2aa198'
+      - bold
+    inactiveBorderColor:
+      - '#586e75'
+    optionsTextColor:
+      - '#268bd2'
+    unstagedChangesColor:
+      - '#dc322f'
 git:
   overrideGpg: True
   autoFetch: true
+  # One renderer, delta. difftastic was tried as a second one on `|` and dropped: syntactic
+  # diffing wins where a formatter shifted neighbouring lines, but paying for it with two
+  # different views of the same diff (panel vs terminal) cost more than it gained.
+  # NOTE: the delta flags are tuned for a narrow panel — line numbers off (they ate the
+  # width on 13" and in a float inside nvim), --paging=never (its own pager would break
+  # panel scrolling), --wrap-max-lines 0 (truncate long lines instead of wrapping them).
+  # Brightness for the terminal background lives in theme-{light,dark}.yml.
+  diffRenderers:
+    - colorArg: always
+      command: "delta --paging=never --wrap-max-lines 0 --file-style='#248d83 bold' --file-decoration-style='#586e75 ul' --hunk-header-style=omit --hyperlinks"
   mainBranches:
+    # NOTE: master stays — this config is shared by every repository, and the work ones on
+    # GitLab still live on master/develop.
+    - main
     - master
     - stage
     - develop

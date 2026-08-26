@@ -1,4 +1,4 @@
-# k9s custom columns. Определение columns заменяет дефолтный набор целиком.
+# Custom columns. NOTE: a columns definition REPLACES the default set entirely.
 views:
   v1/pods:
     columns:

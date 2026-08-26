@@ -1,5 +1,5 @@
-# k9s hotkeys — быстрые прыжки в частые вьюхи.
-# Shift-<цифра> выбран намеренно: буквы заняты сортировкой колонок (Shift-N/C/M…).
+# Quick jumps to the frequent views.
+# NOTE: Shift-<digit> on purpose — the letters are taken by column sorting.
 hotKeys:
   shift-1:
     shortCut: Shift-1

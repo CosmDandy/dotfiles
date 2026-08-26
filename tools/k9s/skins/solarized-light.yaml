@@ -1,10 +1,10 @@
-# Solarized Light для k9s — маппинг вдохновлён nvim-темой solarized-osaka (tools/nvim).
-# Каноничная палитра https://ethanschoonover.com/solarized/
+# Solarized Light for k9s, mapped after the solarized-osaka nvim theme.
+# Canonical palette: https://ethanschoonover.com/solarized/
 # base03 #002b36  base02 #073642  base01 #586e75  base00 #657b83
 # base0  #839496  base1  #93a1a1  base2  #eee8d5  base3  #fdf6e3
-# Парный тёмный скин: solarized-dark.yaml — та же структура, зеркальные нейтрали.
+# The paired dark skin is solarized-dark.yaml: same structure, mirrored neutrals.
 
-# --- нейтрали (light) ---
+# --- neutrals (light) ---
 bg:       &bg       default   # прозрачный — фон берётся из терминала
 base:     &base     "#fdf6e3" # base3  — база фона: текст НА насыщенных акцентах
 contrast: &contrast "#002b36" # base03 — инверс: текст на highlight-подложке (hl)
@@ -12,7 +12,7 @@ hl:       &hl       "#eee8d5" # base2  — подложка выделения/�
 fg:       &fg       "#657b83" # base00 — основной текст
 fgEmph:   &fgEmph   "#586e75" # base01 — акцентный текст
 fgMuted:  &fgMuted  "#93a1a1" # base1  — приглушённый (рамки/подписи/suggest)
-# --- акценты (общие для обоих скинов) ---
+# --- accents (shared by both skins) ---
 red:      &red      "#dc322f"
 orange:   &orange   "#cb4b16"
 yellow:   &yellow   "#b58900"

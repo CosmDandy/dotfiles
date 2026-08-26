@@ -1,5 +1,5 @@
 #!/bin/bash
-# Универсальный скрипт для установки расширений в VS Code и Cursor
+# Installs the extension sets into VS Code and Cursor.
 
 install_extensions() {
   local cmd="$1"
@@ -8,7 +8,7 @@ install_extensions() {
 
   for ext in "${exts[@]}"; do
     echo "Installing extension '$ext'..."
-    # Используем --force для обновления уже установленных расширений
+    # --force so already installed extensions are updated
     if $cmd --install-extension "$ext" --force; then
       echo "✓ Successfully installed/updated $ext"
     else
@@ -17,7 +17,7 @@ install_extensions() {
   done
 }
 
-# Проверяем доступность команд
+# check which editors are available
 check_command() {
   local cmd="$1"
   if ! command -v "$cmd" &>/dev/null; then
@@ -27,7 +27,7 @@ check_command() {
   return 0
 }
 
-# Общие расширения для обоих редакторов
+# shared by both editors
 COMMON_EXTENSIONS=(
   vscodevim.vim
   ms-python.python
@@ -36,13 +36,12 @@ COMMON_EXTENSIONS=(
   ms-python.black-formatter
   ms-python.mypy-type-checker
   ms-python.isort
-  trinhanhngoc.vscode-odoo
   eamodio.gitlens
   wakatime.vscode-wakatime
   pkief.material-icon-theme
 )
 
-# Специфичные для VS Code
+# VS Code only
 VSCODE_SPECIFIC_EXTENSIONS=(
   ms-vsliveshare.vsliveshare
   ms-vscode-remote.remote-ssh
@@ -50,7 +49,7 @@ VSCODE_SPECIFIC_EXTENSIONS=(
   ms-vscode.remote-explorer
 )
 
-# Специфичные для Cursor
+# Cursor only
 CURSOR_SPECIFIC_EXTENSIONS=(
   anysphere.remote-containers
   anysphere.remote-ssh
@@ -59,7 +58,7 @@ CURSOR_SPECIFIC_EXTENSIONS=(
 
 echo "=== Installing VS Code Extensions ==="
 if check_command code; then
-  # Складываем списки и устанавливаем для VS Code
+  # combine the lists for VS Code
   ALL_VSCODE_EXTENSIONS=("${COMMON_EXTENSIONS[@]}" "${VSCODE_SPECIFIC_EXTENSIONS[@]}")
   install_extensions code "${ALL_VSCODE_EXTENSIONS[@]}"
 else
@@ -69,7 +68,7 @@ fi
 echo ""
 echo "=== Installing Cursor Extensions ==="
 if check_command cursor; then
-  # Складываем списки и устанавливаем для Cursor
+  # combine the lists for Cursor
   ALL_CURSOR_EXTENSIONS=("${COMMON_EXTENSIONS[@]}" "${CURSOR_SPECIFIC_EXTENSIONS[@]}")
   install_extensions cursor "${ALL_CURSOR_EXTENSIONS[@]}"
 else

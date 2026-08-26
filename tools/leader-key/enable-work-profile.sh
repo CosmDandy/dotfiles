@@ -11,9 +11,10 @@
 # Documentation:
 # @raycast.author CosmDandy
 
-open /System/Volumes/Data/Applications/WakaTime.app
+# NOTE: /System/Volumes/Data/Applications is the same directory as /Applications through a
+# firmlink, so the paths are written in the short form.
 open /Applications/Telegram.app
-open /System/Volumes/Data/Applications/Microsoft\ Teams.app
+open /Applications/Microsoft\ Teams.app
 open /System/Applications/Mail.app
 open /System/Applications/Calendar.app
 open /Applications/Things3.app
