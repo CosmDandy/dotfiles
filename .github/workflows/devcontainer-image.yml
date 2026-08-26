@@ -1,0 +1,192 @@
+# Prebuilt devcontainer image (platform/linux/Dockerfile), rebuilt when pins or
+# packages change and published to ghcr. Native runners for both architectures —
+# building terraform from source under QEMU would take an hour.
+name: devcontainer-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'platform/nix/**'
+      # mac-only files: homeConfigurations never read them
+      - '!platform/nix/darwin-configuration.nix'
+      - '!platform/nix/home/darwin.nix'
+      - 'platform/linux/Dockerfile'
+      # the provisioning wrapper is COPYed into the image, so editing it needs a
+      # rebuild exactly like editing the Dockerfile
+      - 'platform/linux/dotfiles-provision'
+      # NOTE: the submodule pointer must be here — the MCP set is baked against
+      # it and install.sh compares the baked value with the pointer in the
+      # clone. A mismatch runs the submodule installer in every workspace (+8s
+      # measured); a rebuild restores it.
+      - 'tools/claude/custom'
+      # the nvim config is baked into the image (plugins + mason)
+      - 'tools/nvim/**'
+      - '.github/workflows/devcontainer-image.yml'
+  # A rebuild with no repo changes still picks up fresh apt packages and
+  # base-image patches; the nix half stays identical because flake.lock holds it.
+  # NOTE: GitHub disables schedule in repositories with no activity for 60 days.
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+# NOTE: empty at workflow level — `packages: write` here would mean every step
+# of every job, third-party actions included, can write to ghcr.
+permissions: {}
+
+# push-by-digest removed the race for intermediate tags, but the final
+# imagetools create still writes the mutable :<profile>, and without a queue a
+# slow old run could overwrite a fresh one.
+concurrency:
+  group: devcontainer-image
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/cosmdandy/devcontainer
+
+# NOTE: after the FIRST push the ghcr package must be made public once by hand,
+# or an anonymous docker pull during devpod up gets denied.
+jobs:
+  build:
+    # guard: a workflow_dispatch from a non-main branch must not overwrite prod
+    # tags
+    if: github.ref == 'refs/heads/main'
+    # NOTE: the matrix is ONLY over architecture; profiles build sequentially
+    # inside one job. With profile as a matrix axis, the devops job rebuilt the
+    # core stage on its own runner with its own timestamps, so the layers got
+    # different digests than the core job's. The registry deduplicates by
+    # digest, so a client holding :core pulled :devops in full — 1.22 GiB extra
+    # per devpod up. Here the second build hits the same builder's local cache
+    # and the manifests share the very same blobs.
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90  # terraform builds from source (~10 min), plus a cold-cache margin
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # NOTE: the job only reads the tree; ghcr login is a separate step.
+          # Without this the token would stay in .git/config while the whole
+          # tree goes into the docker build context.
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: taken from the tree with ls-tree, not from the working copy — the
+      # submodule is not initialised here, but its pointer is always in the
+      # tree.
+      - id: custom-sha
+        run: |
+          set -euo pipefail
+          sha=$(git ls-tree HEAD tools/claude/custom | awk '{print $3}')
+          [ -n "$sha" ] || { echo "gitlink tools/claude/custom не найден" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # push-by-digest: layers and manifest go to the registry WITHOUT a tag and
+      # only the digest comes back. The old intermediate :<profile>-<arch> tags
+      # were mutable shared state through which jobs exchanged results, and they
+      # were the reason runs had to be serialised.
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        id: build-core
+        with:
+          context: .
+          file: platform/linux/Dockerfile
+          target: core
+          build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      # The second build runs on the same builder immediately after, taking the
+      # core stage from its local cache — that is what makes the lower layers
+      # one and the same blob.
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        id: build-devops
+        with:
+          context: .
+          file: platform/linux/Dockerfile
+          target: devops
+          build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      # NOTE: matrix jobs cannot return outputs reliably — the last one
+      # overwrites the rest — so digests travel to the merge job as artifacts.
+      - name: Export digests
+        env:
+          DIGEST_CORE: ${{ steps.build-core.outputs.digest }}
+          DIGEST_DEVOPS: ${{ steps.build-devops.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests/core /tmp/digests/devops
+          touch "/tmp/digests/core/${DIGEST_CORE#sha256:}"
+          touch "/tmp/digests/devops/${DIGEST_DEVOPS#sha256:}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/**
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # No checkout here: digests arrive as artifacts of this run and
+    # download-artifact uses the runtime token.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Two tags on one manifest: the floating :<profile> that devcontainer.json
+      # pulls, and an immutable :<profile>-<date>-<sha7> for pinning or rollback
+      # by hand. Layers are not re-pushed — imagetools only writes metadata.
+      # NOTE: the date is required — the weekly schedule rebuilds the same
+      # commit, and without it the new image would overwrite the existing
+      # <profile>-<sha>.
+      - name: Merge per-arch digests into multi-arch manifests
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          version="$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          # download-artifact puts each artifact in its own subdirectory, with
+          # the profiles in folders inside:
+          # /tmp/digests/digest-<arch>/<profile>/<sha>
+          for profile in core devops; do
+            refs=()
+            for f in /tmp/digests/digest-*/"$profile"/*; do
+              refs+=("$IMAGE@sha256:$(basename "$f")")
+            done
+            if [[ ${#refs[@]} -ne 2 ]]; then
+              echo "::error::Для профиля $profile найдено ${#refs[@]} digest'ов вместо 2"
+              exit 1
+            fi
+            docker buildx imagetools create \
+              -t "$IMAGE:$profile" \
+              -t "$IMAGE:$profile-$version" \
+              "${refs[@]}"
+          done
+          {
+            echo "## Иммутабельные теги"
+            echo
+            echo "Для пина в \`devcontainer.json\`:"
+            echo
+            for profile in core devops; do
+              echo "- \`$IMAGE:$profile-$version\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

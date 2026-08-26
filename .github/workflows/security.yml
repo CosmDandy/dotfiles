@@ -1,0 +1,105 @@
+# Baseline security gates.
+# NOTE: every action is pinned to a full commit SHA, not a tag — a tag can be moved by the
+# action's owner. Not paranoia: in March 2026 trivy-action had 75 of its 76 version tags
+# force-pushed, and pipelines on `@v0.x` started exfiltrating secrets. The version in the
+# comment is for readability; Dependabot automates the pin updates.
+name: security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    # weekly: new CVEs and rules appear without commits to the repository
+    - cron: "0 6 * * 1"
+
+# Empty at workflow level — every job requests its permissions explicitly and minimally.
+permissions: {}
+
+jobs:
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # NOTE: full history — a secret removed by the next commit stays in it forever.
+          fetch-depth: 0
+          # checkout writes the token into .git/config by default, where any later step
+          # can read it. Not needed here.
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  iac:
+    name: iac (trivy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write # SARIF upload to the Security tab (free for public repos)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # trivy config replaces tfsec (folded into trivy) and terrascan (archived). Covers
+      # Terraform, Kubernetes, Helm, Dockerfile and Ansible.
+      # NOTE: exit-code 0 is deliberate — an observation period first, because a red CI
+      # nobody fixes is worse than no CI at all: people stop looking at it. The gate is
+      # tightened once the volume of findings is known.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          hide-progress: true
+
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy.sarif
+          hide-progress: true
+      - uses: github/codeql-action/upload-sarif@e58424170fb0262c8d7ed60a2e84b9bffe205c67 # codeql-bundle-v2.26.1
+        if: always()
+        # SARIF upload is unavailable in private repos without GHAS — do not fail the job.
+        continue-on-error: true
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+
+  workflows:
+    name: workflow-конфиги (zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Neither trivy nor checkov covers the security of the CI configs themselves. zizmor
+      # catches unpinned uses:, template injection, pwn-requests through
+      # pull_request_target, excessive permissions and credentials leaking into artifacts.
+      # NOTE: the action uploads findings but has no "fail on findings" input at all, so
+      # the actual gate is the CLI step below.
+      # NOTE: continue-on-error because in a private repo without GHAS the SARIF upload
+      # fails — that is a delivery problem, not a finding, and without it the gate step
+      # would be skipped entirely (a step after a failed one does not run).
+      - uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        continue-on-error: true
+
+      # The real gate: the CLI returns 14 on findings and 0 on a clean config. Severity
+      # medium means informational findings do not fail CI while everything else does. The
+      # version is pinned for the same reason actions are pinned by SHA.
+      - name: zizmor (гейт)
+        run: pipx run zizmor==1.28.0 --offline --min-severity=medium .

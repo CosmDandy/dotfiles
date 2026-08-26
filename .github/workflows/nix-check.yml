@@ -1,0 +1,80 @@
+# Checks the nix configurations before they reach a live machine. A broken commit used to
+# surface at updm/updl — mid-work, on the device you needed at that moment.
+#
+# No private cache (cachix/attic): there are no local derivations, everything comes ready
+# from cache.nixos.org, so "building" here is downloading.
+name: nix-check
+
+on:
+  push:
+    paths:
+      - 'platform/nix/**'
+      - '.github/workflows/nix-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-darwin:
+    # The mac config is EVALUATED on a linux runner: system = "aarch64-darwin" is set
+    # explicitly in flake.nix, and evaluation does not need the target platform — only a
+    # build does. Typos in options, vanished packages and broken modules are caught in
+    # seconds without a macos runner.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # No step needs the token: flake inputs are public github: urls that nix fetches
+          # anonymously, and the nix installer is a third-party action.
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      # NOTE: working-directory + '.#', NOT 'path:./platform/nix#'. `path:` pins the flake
+      # root to that directory, while darwin-configuration.nix reads ../../automation/*.sh
+      # (launchd scripts baked into the store), and pure eval forbids reading outside the
+      # root — run 31099582262 failed exactly there. From inside the flake directory `.`
+      # resolves to git+file://<root>?dir=platform/nix, so the whole repository is copied
+      # into the store and ../.. is reachable, which is how it works locally too.
+      - name: Eval darwin configuration
+        working-directory: platform/nix
+        run: |
+          nix eval --raw \
+            '.#darwinConfigurations.macbook-cosmdandy.config.system.build.toplevel.drvPath'
+          echo
+      # NOTE: --all-systems is mandatory — without it a linux runner checks only what
+      # belongs to the current system, and the Linux homeConfigurations plus the darwin
+      # configuration are skipped silently, so the check would look green having examined
+      # none of them.
+      # --no-build: the matrix job below does the building; this needs every flake output
+      # evaluated at once, including formatter and configurations absent from the matrix.
+      - name: Flake check (all systems)
+        working-directory: platform/nix
+        run: nix flake check --no-build --all-systems
+
+  build-linux:
+    # A build catches what evaluation cannot: a package gone from the new nixpkgs, renamed,
+    # or failing to compile. The matrix is over profiles — their package sets differ and
+    # devops is the one that usually breaks.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60  # devops pulls terraform from source
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - vscode-core
+          - vscode-devops
+          - cosmdandy-devops
+          - cluster-devops
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
+      # NOTE: `path:` is kept here, unlike eval-darwin above — homeConfigurations read
+      # nothing outside platform/nix, and git+file would copy the whole repository into the
+      # store for each of the four matrix jobs.
+      - name: Build ${{ matrix.config }}
+        run: |
+          nix build --no-link --print-out-paths \
+            "path:./platform/nix#homeConfigurations.\"${{ matrix.config }}-x86_64-linux\".activationPackage"

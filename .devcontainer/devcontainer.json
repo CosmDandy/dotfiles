@@ -1,13 +1,56 @@
 {
+  // Тег намеренно плавающий: воркспейсы одноразовые, и пересоздание должно
+  // сразу давать свежий образ (еженедельная пересборка в CI). Воспроизводимость
+  // при этом не теряется — окружение задаёт flake.lock, а образ лишь ускоряет
+  // старт: home-manager switch досыпет разницу, если store-пути разойдутся.
+  // Откат на конкретную сборку — иммутабельным тегом <профиль>-<дата>-<sha7>,
+  // список: docker buildx imagetools inspect ghcr.io/cosmdandy/devcontainer:devops
   "name": "Dotfiles DevContainer",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "image": "ghcr.io/cosmdandy/devcontainer:devops",
+  // docker сам НЕ перетягивает уже имеющийся локальный тег — без этого хоста
+  // (сервер/OrbStack) навсегда залипали на первом скачанном образе (ловили
+  // образ 5-дневной давности). initializeCommand бежит на хосте до создания
+  // контейнера: дайджест не изменился — no-op за секунды; офлайн — едем на
+  // локальном (|| true).
+  "initializeCommand": "docker pull ghcr.io/cosmdandy/devcontainer:devops || true",
   "onCreateCommand": "bash .devcontainer/setup.sh",
-  "remoteEnv": {
+  // Обязательно, хотя в Dockerfile уже есть `USER cosmdandy`: образ несёт label
+  // devcontainer.metadata с унаследованным от базового образа Microsoft
+  // {"remoteUser":"vscode"}, и directive USER его НЕ перебивает — devcontainers
+  // читает label. Без этой строки контейнер поднимется под vscode (проверено).
+  "remoteUser": "cosmdandy",
+  // Without this devpod "repairs" the gap between the container user's uid
+  // (1000) and the docker host user's, the most expensive way there is:
+  // chown -R over all of /home/cosmdandy. That is 1.5 GB and 54847 files (95%
+  // of them ~/.local/share/nvim — mason, lazy, treesitter parsers), and the
+  // host's overlay2 runs metacopy=false, so changing the owner copies every
+  // file up from the lower layer. Measured on kvt-d-01 (cluster is uid 1001):
+  // 8m32s out of an 8m52s devpod up, plus ~1.3 GB of writable layer per
+  // container.
+  //
+  // Worse, what it produces does not work: the chown covers only the home
+  // directory, /nix stays owned by 1000, and home-manager switch dies with
+  // "opening lock file /nix/var/nix/db/big-lock: Permission denied".
+  //
+  // The flag puts this repo back on the footing the work repos already have:
+  // they arrive via --devcontainer-image with no devcontainer.json of their
+  // own, never trigger the remap, and have run on uid 1000 all along (devpod
+  // creates the host-side content dir under the container user's uid —
+  // verified: every kvt-* content dir is owned by 1000).
+  "updateRemoteUserUID": false,
+  // containerEnv против remoteEnv: первый задаёт переменные всему контейнеру,
+  // второй — только процессам, которые запускает инструмент. Локаль и таймзона
+  // нужны и фоновым демонам, и `docker exec`, поэтому им место в containerEnv
+  // (дублируют ENV пребилт-образа, но делают конфиг самодостаточным на голом).
+  // TERM/COLORTERM — свойство конкретной терминальной сессии, их место здесь.
+  "containerEnv": {
     "LANG": "en_US.UTF-8",
     "LC_ALL": "en_US.UTF-8",
-    "TERM": "xterm-256color",
-    "COLORTERM": "truecolor",
     "TZ": "Europe/Moscow"
+  },
+  "remoteEnv": {
+    "TERM": "xterm-256color",
+    "COLORTERM": "truecolor"
   },
   "customizations": {
     "vscode": {

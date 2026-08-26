@@ -1,0 +1,15 @@
+# SHA pins do not update themselves — Dependabot raises a PR with the new SHA and fixes
+# the version comment next to it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # NOTE: a cooldown before updating — most supply-chain attacks on packages and actions
+    # are caught within the first days, so fresh releases are not pulled immediately.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

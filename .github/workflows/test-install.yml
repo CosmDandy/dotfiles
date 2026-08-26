@@ -1,18 +1,28 @@
-# Note: a full end-to-end install.sh run is intentionally NOT executed here —
-# it requires Nix + access to private submodules (deploy keys), which is out of
-# scope for CI. This workflow validates script syntax/lint and the symlink
-# idempotency contract (the part most likely to break on rerun).
+# NOTE: a full end-to-end install.sh run is intentionally NOT executed here — it needs Nix
+# plus access to private submodules (deploy keys), which is out of scope for CI. This
+# workflow validates script syntax and lint.
 name: test-install
 
 on:
   push:
   pull_request:
 
+# Without an explicit block the jobs would inherit the token's default permissions, which a
+# read-and-lint workflow has no use for.
+permissions: {}
+
 jobs:
   syntax-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Only linters and git ls-files over the local tree follow — nothing pushes, so
+          # the token has no business sitting in .git/config.
+          persist-credentials: false
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y zsh shellcheck yamllint
       - name: Syntax-check all shell scripts
@@ -26,25 +36,108 @@ jobs:
             fi
           done < <(git ls-files '*.sh' '*.bash')
           exit $fail
-      - name: Shellcheck Claude hooks
+      # NOTE: shellcheck covers everything it understands, not just the hooks — those are
+      # exactly the scripts that mutate nothing, while the installers and automation/ with
+      # their sudo, rm -rf and sed -i had no semantic analysis at all.
+      # NOTE: zsh files are skipped — shellcheck parses them as bash and produces pure
+      # noise. `zsh -n` above covers their syntax; the installers are zsh on purpose,
+      # because on a fresh mac `env bash` resolves to /bin/bash 3.2.
+      - name: Shellcheck (all bash/sh scripts)
         run: |
-          shopt -s nullglob
-          for f in tools/claude/hooks/*.sh; do
+          fail=0
+          while IFS= read -r f; do
             head -1 "$f" | grep -q zsh && continue
-            shellcheck -S warning "$f"
-          done
+            shellcheck -S warning "$f" || fail=1
+          done < <(git ls-files '*.sh' '*.bash')
+          exit $fail
       - name: Yamllint (relaxed)
         run: git ls-files '*.yml' '*.yaml' | xargs -r yamllint -d relaxed
 
-  symlinks-idempotency:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+      # Formatters are duplicated in CI for the same reason as gitleaks below: pre-commit
+      # can be skipped with --no-verify, CI cannot.
+      - name: Stylua (nvim config)
+        run: |
+          curl -sSfL -o stylua.zip \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/v${VERSION}/stylua-linux-x86_64.zip"
+          echo "${SHA256}  stylua.zip" | sha256sum -c -
+          unzip -q stylua.zip stylua
+          ./stylua --config-path tools/nvim/.stylua.toml --check tools/nvim/
+        env:
+          VERSION: 2.5.2
+          SHA256: bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
+      - name: Ruff (automation scripts)
+        run: pipx run ruff==0.16.1 check automation/
+
+      # devcontainer.json and settings.json are JSONC: comments are legal there, a trailing
+      # comma is not — and that is what a config in a work repo tripped on, because editors
+      # accept it and strict parsers do not.
+      # NOTE: only whole-line comments are stripped. The naive 's|//.*$||' cuts at a `//`
+      # inside string values and declares files with URLs invalid (two false positives).
+      - name: Validate JSON (JSONC-aware)
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            sed -e 's|^[[:space:]]*//.*$||' "$f" | jq empty 2>/dev/null \
+              || { echo "невалидный: $f"; fail=1; }
+          done < <(git ls-files '*.json' | grep -v -e lazy-lock.json -e flake.lock)
+          exit $fail
+
+  # Behaviour tests for the PreToolUse guard. Syntax and shellcheck catch "the script is
+  # broken", not "the script silently stopped denying something" — and this is the only
+  # gate that still applies under bypassPermissions.
+  # NOTE: running them on Linux matters on its own — development happens on macOS with BSD
+  # userland, and a BSD/GNU divergence in grep -E or tr shows up here as a changed verdict.
+  claude-hook-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - name: Install zsh (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zsh
-      - name: Run create_symlinks test (backup + double-run idempotency)
-        run: zsh tests/test-create-symlinks.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # NOTE: without gitleaks the test skips the ask/deny ordering block — exactly the
+      # class of regression it exists for.
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          echo "$PWD" >> "$GITHUB_PATH"
+      - name: Guard behaviour tests
+        run: bash tools/claude/hooks/pretooluse-guard.test.sh
+      # Each case builds its own throwaway git repository, so running this in CI touches
+      # nothing in the checkout.
+      - name: Session lifecycle hook tests
+        run: bash tools/claude/hooks/session-lifecycle.test.sh
+
+  # The pre-commit hook runs gitleaks too, but --no-verify skips it and the repository is
+  # public.
+  # NOTE: the binary comes from a release with a checksum rather than a third-party action
+  # — fewer trusted parties and an explicitly pinned version.
+  gitleaks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Especially here: the scanner walks the whole working tree, and a persisted
+          # token would sit inside the very area being scanned.
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: Scan working tree
+        run: ./gitleaks dir . --no-banner --redact

@@ -1,0 +1,134 @@
+# Prunes old versions of ghcr.io/cosmdandy/devcontainer. GitHub offers no retention policy
+# for user-owned packages, so it is done through the API.
+#
+# Only versions carrying an immutable <profile>-<date>-<sha7> tag and no protected tag are
+# deleted. Protected: the floating core/devops and the per-arch core-amd64 and friends.
+# NOTE: imagetools puts the floating and the fresh immutable tag on ONE manifest, so
+# protecting the floating tag automatically preserves the latest build.
+# NOTE: untagged versions are deliberately left alone — they are the per-arch child
+# manifests the indexes point at. Bulk-deleting untagged is a popular recipe that breaks
+# multi-arch images. Public package storage is free, so the goal here is a readable tag
+# list, not saved space.
+#
+# NOTE: requires the GHCR_CLEANUP_TOKEN secret — GITHUB_TOKEN does not work, because the
+# package belongs to the user rather than the repository and the API needs a classic PAT
+# with read:packages + delete:packages:
+#   gh auth refresh -s read:packages,delete:packages
+#   gh secret set GHCR_CLEANUP_TOKEN --repo CosmDandy/dotfiles
+name: devcontainer-cleanup
+
+on:
+  # two hours after the Sunday image build
+  schedule:
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Только показать, что было бы удалено'
+        type: boolean
+        default: true
+      keep:
+        description: 'Сколько последних версий оставить на профиль'
+        type: string
+        default: '8'
+
+# NOTE: packages: write here was a dead permission — the deletion runs under the classic
+# PAT, and GITHUB_TOKEN is not admitted to user packages at all. The job only reads the
+# repo.
+permissions: {}
+
+env:
+  PACKAGE: devcontainer
+  IMAGE: ghcr.io/cosmdandy/devcontainer
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read  # only .devcontainer/devcontainer.json is needed
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Everything below runs through gh api with its own PAT; the checkout token has
+          # no use in .git/config.
+          persist-credentials: false
+
+      # Normally devcontainer.json carries a floating tag and this digest is empty, so
+      # there is nothing to protect. But when the image is pinned for a rollback, that
+      # version must never be deleted, even as the oldest one.
+      # NOTE: JSONC with comments, so the digest is pulled out with a regex rather than jq.
+      - name: Read pinned digest
+        id: pinned
+        run: |
+          digest=$(grep -o 'sha256:[a-f0-9]\{64\}' .devcontainer/devcontainer.json | head -1)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Запинен: ${digest:-(пин не найден)}"
+
+      - name: Select and delete stale versions
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN }}
+          PINNED: ${{ steps.pinned.outputs.digest }}
+          KEEP: ${{ inputs.keep || '8' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Нет секрета GHCR_CLEANUP_TOKEN (classic PAT со скоупами" \
+                 "read:packages + delete:packages). GITHUB_TOKEN для пользовательских" \
+                 "пакетов не подходит — см. шапку workflow."
+            exit 1
+          fi
+
+          gh api --paginate "/user/packages/container/$PACKAGE/versions" > versions.json
+          echo "Всего версий: $(jq length versions.json)"
+
+          # Candidates: an immutable tag present, no protected tag, digest not the pinned
+          # one. Within each profile, sorted by creation date, keeping KEEP.
+          jq -r --arg pinned "$PINNED" --argjson keep "${KEEP}" '
+            def tags: (.metadata.container.tags // []);
+            def immutable: tags[] | select(test("^(core|devops)-[0-9]{8}-[0-9a-f]{7}$"));
+            def protected: tags[] | select(
+              test("^(core|devops)$") or test("^(core|devops)-(amd64|arm64)$")
+            );
+            [ .[]
+              | select([immutable] | length > 0)
+              | select([protected] | length == 0)
+              | select(.name != $pinned)
+              | { id, name, created_at, tag: ([immutable] | first),
+                  profile: ([immutable] | first | split("-")[0]) }
+            ]
+            | group_by(.profile)
+            | map(sort_by(.created_at) | reverse | .[$keep:])
+            | flatten
+            | .[] | "\(.id)\t\(.tag)\t\(.created_at[0:10])"
+          ' versions.json > stale.tsv
+
+          count=$(wc -l < stale.tsv | tr -d ' ')
+          if [[ "$count" -eq 0 ]]; then
+            echo "Удалять нечего." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Чистка версий образа"
+            echo
+            echo "Оставляем последние \`$KEEP\` на профиль. Запинено: \`${PINNED:-нет}\`"
+            echo
+            echo "| тег | создан | действие |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS=$'\t' read -r id tag created; do
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "| \`$tag\` | $created | dry-run |" >> "$GITHUB_STEP_SUMMARY"
+              echo "DRY-RUN: удалил бы $tag ($created)"
+            else
+              gh api -X DELETE "/user/packages/container/$PACKAGE/versions/$id"
+              echo "| \`$tag\` | $created | удалено |" >> "$GITHUB_STEP_SUMMARY"
+              echo "Удалено: $tag ($created)"
+            fi
+          done < stale.tsv
+
+          echo "Обработано версий: $count"

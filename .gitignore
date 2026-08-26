@@ -1,9 +1,21 @@
 .DS_Store
 lazy-lock.json
-nix/flake.lock
 .env
 .claude
-/platform/nix/flake.lock
+
+# docs/ — только локально, по решению владельца. Репозиторий публичный, а часть
+# заметок описывает домашнюю и рабочую инфраструктуру: адреса, топологию, что
+# где не закрыто. Файлы остаются на диске, из git убраны (история сохранена).
+# Следствие: в dev-контейнерах их не будет — dfu делает reset --hard, а отсылки
+# вида «см. docs/secrets.md» в комментариях кода станут указывать в пустоту.
+docs/
 
 # k9s: активный скин — управляемый симлинк (обёртка k9s.zsh), не версионируем
 tools/k9s/skins/solarized.yaml
+
+# Python: байткод появляется рядом со скриптами при любом импорте
+__pycache__/
+*.pyc
+
+# bt-layout-switch: бинарь собирается install-bt-layout.sh из .swift на месте
+automation/launchd/scripts/bt-layout-switch.app/Contents/MacOS/
