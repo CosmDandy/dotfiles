@@ -1,8 +1,8 @@
 return {
   'lewis6991/gitsigns.nvim',
-  event = "BufRead",
+  event = 'BufRead',
   opts = {
-    -- Знаки незастейдженных изменений — тонкая черта │ (vs толстая ┃ у staged)
+    -- unstaged changes use a thin bar, staged a thick one
     signs = {
       add = { text = '│' },
       change = { text = '│' },
@@ -10,18 +10,18 @@ return {
       topdelete = { text = '‾' },
       changedelete = { text = '~' },
     },
-    -- Отдельные знаки застейдженных изменений (видно, что уже в индексе)
+    -- separate signs for staged hunks, so the index is visible at a glance
     signs_staged = {
       add = { text = '┃' },
       change = { text = '┃' },
       delete = { text = '_' },
       topdelete = { text = '‾' },
     },
-    -- Подсветка изменений на уровне слов прямо в буфере
+    -- word-level highlighting inside the buffer
     word_diff = true,
-    -- цеплять знаки и к новым (untracked) файлам — стейджить их по кускам без git add
+    -- signs on untracked files too, so they can be staged hunk by hunk without git add
     attach_to_untracked = true,
-    -- blame текущей строки в конце строки; вкл по умолчанию, <leader>gt — выключатель
+    -- current-line blame at the end of the line; <leader>gt toggles it
     current_line_blame = true,
     current_line_blame_opts = {
       delay = 2500,
@@ -77,7 +77,6 @@ return {
       map('n', '<leader>gP', gitsigns.preview_hunk, { desc = '[P]review hunk' })
       map('n', '<leader>gp', gitsigns.preview_hunk_inline, { desc = '[p]review hunk inline' })
       map('n', '<leader>gB', gitsigns.blame, { desc = '[B]lame' })
-      map('n', '<leader>gb', gitsigns.blame_line, { desc = '[b]lame line' })
       map('n', '<leader>gt', gitsigns.toggle_current_line_blame, { desc = '[t]oggle current-line blame' })
       map('n', '<leader>gdi', gitsigns.diffthis, { desc = '[d]iff against [i]ndex' })
       map('n', '<leader>gdc', function()

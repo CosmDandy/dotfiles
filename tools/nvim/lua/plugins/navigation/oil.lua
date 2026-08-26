@@ -5,24 +5,24 @@ return {
   ---@module 'oil'
   ---@type oil.SetupOpts
   opts = {
-    -- следить за изменениями директории (создание/удаление файлов в терминале, git checkout)
+    -- watch the directory for changes made outside nvim (terminal, git checkout)
     watch_for_changes = true,
-    -- удаление безвозвратно (не в системную корзину)
+    -- delete permanently, not to the system trash
     delete_to_trash = false,
     skip_confirm_for_simple_edits = true,
-    -- при перемещении файлов oil дёргает LSP willRename → обновляются ссылки/импорты
+    -- moving a file triggers LSP willRename, so references and imports follow
     lsp_file_methods = { autosave_changes = true },
     view_options = {
       show_hidden = true,
-      -- человекочитаемая сортировка чисел: file2 раньше file10
+      -- natural number order: file2 before file10
       natural_order = true,
     },
     keymaps = {
-      -- не перехватывать <C-h>: отдаём его навигации по окнам (tmux-navigator вниз),
-      -- иначе oil открывает файл в горизонтальном сплите вместо перехода вниз
+      -- NOTE: <C-h> is left to window navigation — otherwise oil opens the file in a
+      -- horizontal split instead of moving down.
       ['<C-h>'] = false,
-      ['<C-p>'] = 'actions.preview', -- превью файла без открытия
-      -- gd: переключить детальный вид (права/размер/mtime)
+      ['<C-p>'] = 'actions.preview', -- preview without opening
+      -- gd toggles the detail view (permissions/size/mtime)
       ['gd'] = {
         desc = 'Toggle detail view',
         callback = function()
@@ -39,8 +39,8 @@ return {
   config = function(_, opts)
     require('oil').setup(opts)
 
-    -- при создании новой директории сразу кладём в неё .gitkeep,
-    -- чтобы пустую папку можно было закоммитить в git
+    -- drop a .gitkeep into a freshly created directory, so an empty folder can be
+    -- committed at all
     vim.api.nvim_create_autocmd('User', {
       pattern = 'OilActionsPost',
       callback = function(event)
@@ -50,7 +50,7 @@ return {
         for _, action in ipairs(event.data.actions or {}) do
           if action.type == 'create' and action.entry_type == 'directory' then
             local scheme, dir = require('oil.util').parse_url(action.url)
-            -- только локальная ФС: на ssh/remote-адаптерах путь не файловый
+            -- local filesystem only: on remote adapters the path is not a file path
             if scheme == 'oil://' and dir then
               local path = vim.fn.fnamemodify(vim.uri_decode(dir), ':p') .. '.gitkeep'
               if vim.fn.filereadable(path) == 0 then

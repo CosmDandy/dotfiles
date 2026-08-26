@@ -1,10 +1,9 @@
--- Кастомные схемы: точнее/специфичнее, чем дефолт schemastore (k8s-триггер,
--- .tpl-гловы для GitHub Actions, ansible-плейбуки). Мержатся ПОВЕРХ каталога.
+-- Custom schemas, merged ON TOP of the schemastore catalogue where they are more precise
+-- (the k8s trigger, .tpl globs for GitHub Actions, ansible playbooks).
 
--- CRD-схемы кэшируются локально при сборке dev-контейнера (install.sh →
--- ~/.cache/yaml-schemas), чтобы не дёргать сеть на первом открытии после рестарта
--- и работать оффлайн. crd() отдаёт file://-путь если кэш есть, иначе фолбэк на URL
--- (на свежей машине до install.sh или при сбое загрузки — деградируем мягко).
+-- CRD schemas are cached locally during the dev-container build so the first open after a
+-- restart does not hit the network and works offline. crd() returns a file:// path when
+-- the cache exists and degrades to the URL otherwise.
 local cache_dir = (vim.env.XDG_CACHE_HOME or (vim.env.HOME .. '/.cache')) .. '/yaml-schemas'
 local function crd(rel)
   local p = cache_dir .. '/' .. rel
@@ -30,13 +29,14 @@ local custom_schemas = {
     '**/*playbook*.yml',
     '**/*playbook*.yaml',
   },
-  -- CRD-схемы (datreeio/CRDs-catalog): встроенная kubernetes-схема знает только core-типы.
-  -- Globs — по конвенции имён (файл назван по kind). Новый CRD = добавь URL+glob сюда
-  -- И исключение в kubernetes ниже (иначе двойной матч core+CRD → конфликт диагностик).
-  -- ВНИМАНИЕ про globs: матчер yamlls (filePatternAssociation.js) не glob-движок —
-  -- он делает *→.* и якорит на $. Значит `*` идёт СКВОЗЬ `/`, а `**/` = `.*/`
-  -- требует слэш. Поэтому `**/argocd/*.yaml` (НЕ `/**/*.yaml`) — иначе файлы прямо
-  -- в argocd/ (без подпапки) не матчатся, а вложенные `*.yaml` ловит и так.
+  -- CRD schemas: the built-in kubernetes schema only knows core types. The globs follow
+  -- the naming convention (file named after the kind).
+  -- NOTE: a new CRD needs BOTH a URL+glob here AND an exclusion in the kubernetes list
+  -- below, or a file matches core and CRD at once and the diagnostics conflict.
+  -- NOTE: yamlls's matcher is not a glob engine — it turns `*` into `.*` and anchors on
+  -- `$`, so `*` crosses `/` while `**/` means `.*/` and REQUIRES a slash. Hence
+  -- `**/argocd/*.yaml` and not `/**/*.yaml`: otherwise files directly in argocd/ do not
+  -- match, while nested ones are caught by `*` anyway.
   [crd 'argoproj.io/application_v1alpha1.json'] = {
     '**/argocd/*.yaml',
     '**/bootstrap/root-app.yaml',
@@ -46,31 +46,29 @@ local custom_schemas = {
   [crd 'gateway.networking.k8s.io/httproute_v1.json'] = { '**/*httproute*.yaml' },
   [crd 'gateway.networking.k8s.io/referencegrant_v1beta1.json'] = { '**/*referencegrant*.yaml' },
 
-  -- 'kubernetes' — встроенный триггер yamlls: спец-режим авто-подбора по GVK (kind).
-  -- Даёт лучший completion/валидацию (плоский oneOf от all.json — наоборот, ломает:
-  -- 0 подсказок + «matches multiple schemas»). Минус: схема тянется с сети ~4-5с при
-  -- ПЕРВОМ k8s-файле за сессию (URL зашит в сервер, локально не переопределить),
-  -- дальше кэш в памяти. Пре-варм см. в lsp.lua (опционально).
+  -- NOTE: 'kubernetes' is yamlls's built-in trigger — a special mode that picks the schema
+  -- by GVK. It gives the best completion and validation, whereas the flat oneOf from
+  -- all.json does the opposite (zero suggestions plus "matches multiple schemas"). The
+  -- cost: the schema is fetched over the network, ~4-5s on the first k8s file per session,
+  -- and the URL is baked into the server so it cannot be overridden locally.
   kubernetes = {
-    -- `**/dir/*.yaml` (НЕ `/**/*.yaml`): см. заметку про матчер выше — `*` сам
-    -- идёт сквозь `/`, поэтому ловит и прямых детей dir/, и вложенные файлы.
     '**/*.k8s.yaml',
     '**/k8s/*.yaml',
     '**/kubernetes/*.yaml',
     '**/manifests/*.yaml',
-    -- GitOps-деревья (ArgoCD/Flux): обычные манифесты под gitops/
+    -- GitOps trees (ArgoCD/Flux): ordinary manifests under gitops/
     '**/gitops/*.yaml',
-    -- …но НЕ helm-метаданные/чарты — иначе ложные ошибки на values/Chart
-    -- (templates/ и так уходят в ft 'helm' → helm-ls, см. autocmds.lua):
+    -- but NOT helm metadata or charts, or values/Chart get false errors
+    -- (templates/ already becomes filetype 'helm' and goes to helm-ls)
     '!**/Chart.yaml',
-    -- *values* (не values*): ловит и prod_values.yaml, и argocd-values.yaml —
-    -- Helm не навязывает имя values-файла, якорный glob их пропускал.
+    -- NOTE: *values* rather than values* — Helm does not mandate the file name, so an
+    -- anchored glob missed prod_values.yaml and argocd-values.yaml.
     '!**/*values*.yaml',
     '!**/charts/**',
     '!**/templates/**',
-    -- .Files-ассеты чартов (homepage/files/*): дашборд-конфиги, а не манифесты:
+    -- .Files assets of charts are dashboard configs, not manifests
     '!**/files/**',
-    -- …и НЕ CRD-файлы (их держат спец-схемы выше) — иначе двойной матч core+CRD:
+    -- and not the CRD files above, or they match core and CRD at once
     '!**/argocd/**',
     '!**/bootstrap/root-app.yaml',
     '!**/gateway.yaml',
@@ -83,20 +81,20 @@ local custom_schemas = {
 return {
   filetypes = { 'yaml', 'yaml.ansible' },
 
-  -- before_init вызывается в client:initialize() — уже после того, как lazy.nvim
-  -- догрузил плагины по BufReadPre, поэтому require('schemastore') здесь безопасен
-  -- даже при lazy = true (в отличие от вызова в теле таблицы).
+  -- NOTE: before_init runs inside client:initialize(), after lazy.nvim has loaded plugins
+  -- on BufReadPre — so require('schemastore') is safe here even with lazy = true, unlike
+  -- a call in the table body.
   before_init = function(_, new_config)
     new_config.settings = new_config.settings or {}
     new_config.settings.yaml = new_config.settings.yaml or {}
-    -- custom_schemas выигрывают ('force'), schemastore закрывает всё остальное
+    -- custom_schemas win ('force'), schemastore covers everything else
     new_config.settings.yaml.schemas = vim.tbl_deep_extend('force', require('schemastore').yaml.schemas(), custom_schemas)
   end,
 
   settings = {
     yaml = {
-      -- Каталогом управляет schemastore.nvim → встроенный schemaStore выключаем,
-      -- иначе дубли схем и ломаются select/ignore опции плагина.
+      -- NOTE: the catalogue is managed by schemastore.nvim, so the built-in schemaStore is
+      -- off — otherwise schemas are duplicated and the plugin's select/ignore options break.
       schemaStore = {
         enable = false,
         url = '',

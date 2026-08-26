@@ -12,17 +12,26 @@ return {
     'rcarriga/nvim-dap-ui',
     'nvim-neotest/nvim-nio',
     'mason-org/mason.nvim',
-    'jay-babu/mason-nvim-dap.nvim',
     'theHamsta/nvim-dap-virtual-text',
     {
       'mfussenegger/nvim-dap-python',
       ft = 'python',
       config = function()
-        -- debugpy-адаптер из mason-venv; python для отлаживаемой программы
-        -- dap-python определяет сам (.venv проекта / VIRTUAL_ENV)
+        -- the debugpy adapter comes from the mason venv; dap-python finds the python
+        -- for the debugged program itself (project .venv / VIRTUAL_ENV)
         local path = vim.fn.stdpath 'data' .. '/mason/packages/debugpy/venv/bin/python'
         require('dap-python').setup(path)
         require('dap-python').test_runner = 'pytest'
+      end,
+    },
+    {
+      'leoluz/nvim-dap-go',
+      ft = 'go',
+      config = function()
+        -- No path argument, unlike dap-python above: delve comes from nixpkgs
+        -- (platform/nix/home/default.nix), so dlv is on the ordinary PATH
+        -- rather than buried in a mason package directory.
+        require('dap-go').setup()
       end,
     },
   },
@@ -100,21 +109,27 @@ return {
     {
       '<leader>dv',
       function()
-        require('dapui').float_element('scopes')
+        require('dapui').float_element 'scopes'
       end,
       desc = '[d]ebug [v]ariables',
     },
     {
       '<leader>df',
       function()
-        require('dapui').float_element('stacks')
+        require('dapui').float_element 'stacks'
       end,
       desc = '[d]ebug [f]rames',
     },
     {
       '<leader>dt',
       function()
-        require('dap-python').test_method()
+        -- One key, two runners: dap-python throws on a Go buffer, so the
+        -- dispatch has to happen here rather than in two ft-scoped mappings.
+        if vim.bo.filetype == 'go' then
+          require('dap-go').debug_test()
+        else
+          require('dap-python').test_method()
+        end
       end,
       desc = '[d]ebug [t]est method',
     },
@@ -166,64 +181,51 @@ return {
     local dap = require 'dap'
     local dapui = require 'dapui'
 
-    require('mason-nvim-dap').setup {
-      automatic_installation = true,
-      -- You can provide additional configuration to the handlers,
-      -- see mason-nvim-dap README for more information
-      handlers = {},
-
-      -- You'll need to check that you have the required things installed
-      -- online, please don't ask me how to install them :)
-      ensure_installed = {
-        'debugpy',
-      },
-    }
+    -- debugpy is installed by mason-tool-installer, so mason-nvim-dap is not needed
 
     require('nvim-dap-virtual-text').setup {
-      -- только отличия от дефолта upstream:
+      -- only the differences from the upstream defaults:
       highlight_new_as_changed = true, -- новые переменные подсвечивать как изменённые
-      commented = true,                -- виртуальный текст в виде комментария
-      only_first_definition = false,   -- показывать у всех вхождений, не только первого
-      all_references = true,           -- показывать все ссылки
-      virt_text_pos = 'eol',           -- на 0.10+ дефолт 'inline', нам нужен eol
+      commented = true, -- виртуальный текст в виде комментария
+      only_first_definition = false, -- показывать у всех вхождений, не только первого
+      all_references = true, -- показывать все ссылки
+      virt_text_pos = 'eol', -- на 0.10+ дефолт 'inline', нам нужен eol
     }
 
     dapui.setup {
-      -- icons: пустые строки = без глифов сворачивания (НЕ дефолт; дефолт — глифы-треугольники)
+      -- empty icons mean no fold glyphs (the default is triangles)
       icons = {
-        collapsed = "",
-        current_frame = "",
-        expanded = "",
+        collapsed = '',
+        current_frame = '',
+        expanded = '',
       },
-      -- кастомные доли панелей (дефолт — равные 0.25)
+      -- custom pane proportions (the default is an even 0.25)
       layouts = {
         {
           elements = {
-            { id = "scopes", size = 0.4 },
-            { id = "breakpoints", size = 0.15 },
-            { id = "stacks", size = 0.25 },
-            { id = "watches", size = 0.2 },
+            { id = 'scopes', size = 0.4 },
+            { id = 'breakpoints', size = 0.15 },
+            { id = 'stacks', size = 0.25 },
+            { id = 'watches', size = 0.2 },
           },
-          position = "left",
+          position = 'left',
           size = 40,
         },
         {
           elements = {
-            { id = "repl", size = 0.5 },
-            { id = "console", size = 0.5 },
+            { id = 'repl', size = 0.5 },
+            { id = 'console', size = 0.5 },
           },
-          position = "bottom",
+          position = 'bottom',
           size = 15,
         },
       },
       render = { max_value_lines = 100 }, -- остальное (controls/floating/mappings/expand_lines) = дефолт
     }
 
-
-    -- .vscode/launch.json читается автоматически on-demand (:help dap-providers) —
-    -- ручной load_launchjs больше не нужен (deprecated).
-    -- Ручной dap.configurations.python убран: его 'Local Python' конфликтовал с конфигами,
-    -- которые регистрирует require('dap-python').setup(path).
+    -- NOTE: .vscode/launch.json is read on demand, so the manual (deprecated)
+    -- load_launchjs is gone. A hand-written dap.configurations.python is gone too — its
+    -- 'Local Python' entry conflicted with what dap-python registers.
 
     -- Change breakpoint icons
     vim.api.nvim_set_hl(0, 'DapBreak', { fg = '#e51400' })
@@ -232,7 +234,7 @@ return {
     vim.api.nvim_set_hl(0, 'DapLogPoint', { fg = '#00bfff' })
     local breakpoint_icons = vim.g.have_nerd_font
         and { Breakpoint = '', BreakpointCondition = '', BreakpointRejected = '', LogPoint = '', Stopped = '' }
-        or { Breakpoint = '●', BreakpointCondition = '⊜', BreakpointRejected = '⊘', LogPoint = '◆', Stopped = '⭔' }
+      or { Breakpoint = '●', BreakpointCondition = '⊜', BreakpointRejected = '⊘', LogPoint = '◆', Stopped = '⭔' }
     for type, icon in pairs(breakpoint_icons) do
       local tp = 'Dap' .. type
       local hl = (type == 'Stopped') and 'DapStop' or 'DapBreak'

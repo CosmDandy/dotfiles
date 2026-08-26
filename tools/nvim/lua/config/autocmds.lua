@@ -12,7 +12,7 @@ vim.filetype.add {
     ['.terraformrc'] = 'hcl',
     ['.terraform.tfrc'] = 'hcl',
   },
-  -- compose/gitlab-ci остаются обычным yaml — yamlls подбирает схему по glob (см. lsp.lua)
+  -- NOTE: compose and gitlab-ci stay plain yaml — yamlls picks their schema by glob.
   pattern = {
     ['.*playbook.*%.ya?ml'] = 'yaml.ansible',
     ['.*requirements.*%.ya?ml'] = 'yaml.ansible',
@@ -41,7 +41,7 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   end,
 })
 
--- Вернуть курсор на последнюю позицию при открытии файла
+-- restore the cursor to its last position when reopening a file
 vim.api.nvim_create_autocmd('BufReadPost', {
   desc = 'Restore last cursor position',
   group = vim.api.nvim_create_augroup('restore-cursor', { clear = true }),
@@ -54,7 +54,7 @@ vim.api.nvim_create_autocmd('BufReadPost', {
   end,
 })
 
--- Перечитать файлы, изменённые извне (git pull/checkout в терминале)
+-- reread files changed outside nvim (git pull/checkout in the terminal)
 vim.api.nvim_create_autocmd({ 'FocusGained', 'TermClose', 'TermLeave' }, {
   desc = 'Check for external file changes',
   group = vim.api.nvim_create_augroup('checktime', { clear = true }),
@@ -65,18 +65,18 @@ vim.api.nvim_create_autocmd({ 'FocusGained', 'TermClose', 'TermLeave' }, {
   end,
 })
 
--- Закрывать служебные буферы на q
+-- close scratch buffers with q
 vim.api.nvim_create_autocmd('FileType', {
   desc = 'Close utility buffers with q',
   group = vim.api.nvim_create_augroup('q-close', { clear = true }),
-  pattern = { 'help', 'qf', 'man', 'lspinfo', 'checkhealth', 'startuptime', 'query', 'dap-float' },
+  pattern = { 'help', 'qf', 'man', 'lspinfo', 'checkhealth', 'query', 'dap-float' },
   callback = function(args)
     vim.bo[args.buf].buflisted = false
     vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = args.buf, silent = true, desc = 'Close' })
   end,
 })
 
--- Перезагрузка colorscheme при изменении background
+-- reload the colorscheme when background flips
 vim.api.nvim_create_autocmd('OptionSet', {
   pattern = 'background',
   group = vim.api.nvim_create_augroup('background-change', { clear = true }),

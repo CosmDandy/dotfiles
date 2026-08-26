@@ -1,5 +1,5 @@
--- Бесшовная навигация nvim-сплиты <-> tmux-пейны одними клавишами [https://github.com/christoomey/vim-tmux-navigator]
--- Раскладка: y/h/a/e = left/down/up/right (как и в tmux .tmux.conf)
+-- Seamless navigation between nvim splits and tmux panes with the same keys.
+-- Layout: y/h/a/e = left/down/up/right, matching .tmux.conf.
 return {
   'christoomey/vim-tmux-navigator',
   cmd = {

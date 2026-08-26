@@ -4,32 +4,152 @@ return {
     branch = 'main',
     lazy = false,
     build = ':TSUpdate',
-    -- Queries текстовых объектов (функции/классы/блоки) — используются через mini.ai
+    -- textobject queries (functions/classes/blocks), consumed through mini.ai
     dependencies = {
       { 'nvim-treesitter/nvim-treesitter-textobjects', branch = 'main' },
     },
     config = function()
       local ts = require 'nvim-treesitter'
 
-      -- Парсеры под DevOps-стек
       local ensure = {
-        'python', 'sql', 'json', 'csv', 'bash', 'html', 'css', 'javascript',
-        'diff', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'gitignore',
-        'rust', 'dockerfile', 'yaml', 'hcl', 'terraform', 'jinja', 'toml',
-        'xml', 'regex', 'vim', 'vimdoc', 'gotmpl', 'helm', 'jsonnet',
+        'python',
+        'sql',
+        'json',
+        'csv',
+        'bash',
+        'html',
+        'css',
+        'javascript',
+        'diff',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'gitignore',
+        'rust',
+        'dockerfile',
+        'yaml',
+        'hcl',
+        'terraform',
+        'jinja',
+        'toml',
+        'xml',
+        'regex',
+        'vim',
+        'vimdoc',
+        -- go family: gomod/gosum cover go.mod and go.sum, gowork the
+        -- multi-module workspace file. gotmpl below is unrelated — it is
+        -- the template dialect helm charts are written in.
+        'go',
+        'gomod',
+        'gosum',
+        'gowork',
+        'gotmpl',
+        'helm',
+        'jsonnet',
+        -- the machine's own configuration language; without it flake.nix opened as text
+        'nix',
+        -- commit messages and interactive rebase are written here too
+        'gitcommit',
+        'git_rebase',
       }
-      -- Установить недостающие парсеры (асинхронно, idempotent)
+      -- NOTE: asynchronous in an interactive session so startup is not delayed, but
+      -- headless (image build, home-manager activation) it WAITS — otherwise nvim exits
+      -- before compilation finishes and a random subset of parsers lands in the image.
       pcall(function()
-        ts.install(ensure)
+        local handle = ts.install(ensure)
+        if handle and #vim.api.nvim_list_uis() == 0 then
+          handle:wait(600000)
+        end
       end)
 
-      -- ft → парсер там, где имена расходятся (иначе language.get_lang=nil → нет подсветки)
+      -- NOTE: ft → parser where the names differ, or language.get_lang returns nil and
+      -- there is no highlighting at all.
       pcall(vim.treesitter.language.register, 'jinja', { 'jinja2', 'htmldjango' })
 
-      -- Нативная связка: подсветка и folds через vim.treesitter (ядро), индент — от плагина.
-      -- Плагин остаётся ТОЛЬКО установщиком парсеров + источником queries: в ядре nvim 0.12
-      -- всего 7 встроенных парсеров и нет установщика, поэтому полностью убрать его нельзя
-      -- (оригинальный репо заархивирован 04.2026, но ветка main работает на 0.12).
+      -- Highlighting and folds come from core vim.treesitter, indentation from the plugin.
+      -- NOTE: the plugin stays ONLY as a parser installer and a source of queries — nvim
+      -- core ships 7 parsers and no installer, so it cannot be dropped entirely.
+
+      -- Incremental selection by the parse tree: <C-space> expands to the next node up,
+      -- <BS> steps back.
+      -- NOTE: hand-written because the incremental_selection module was cut from
+      -- nvim-treesitter along with the old module system on the main branch, and upstream
+      -- offered no replacement.
+      -- NOTE: the stack is per buffer and reset when visual mode ends, or the next
+      -- expansion would continue from the previous selection's node.
+      local sel_stack = {}
+      -- NOTE: "we are changing the mode ourselves" flag. Without it the autocommand below
+      -- read the mode switch inside select_range as the user leaving visual and cleared
+      -- the stack — every second expansion restarted from the cursor and the selection
+      -- collapsed to a point instead of moving to the parent.
+      local ts_internal = false
+
+      local function select_range(sr, sc, er, ec)
+        -- NOTE: treesitter ranges are zero-indexed and end-exclusive while visual mode is
+        -- one-indexed and inclusive. ec == 0 means the node ends at the very start of line
+        -- er, so the last included character is at the end of the previous line.
+        if ec == 0 and er > 0 then
+          er = er - 1
+          ec = #vim.fn.getline(er + 1)
+        end
+        ts_internal = true
+        if vim.fn.mode():match '[vV\22]' then
+          vim.cmd 'normal! \27'
+        end
+        vim.api.nvim_win_set_cursor(0, { sr + 1, sc })
+        vim.cmd 'normal! v'
+        vim.api.nvim_win_set_cursor(0, { er + 1, math.max(ec - 1, 0) })
+        ts_internal = false
+      end
+
+      local function ts_expand()
+        local buf = vim.api.nvim_get_current_buf()
+        local st = sel_stack[buf]
+        local node
+        if not st or #st == 0 then
+          st = {}
+          sel_stack[buf] = st
+          node = vim.treesitter.get_node()
+        else
+          -- NOTE: climb until the range actually changes — nested nodes often share one,
+          -- and such a step would look like the key doing nothing.
+          local prev = st[#st]
+          node = prev
+          repeat
+            node = node:parent()
+          until not node or not vim.deep_equal({ node:range() }, { prev:range() })
+        end
+        if not node then
+          return
+        end
+        table.insert(st, node)
+        select_range(node:range())
+      end
+
+      local function ts_shrink()
+        local buf = vim.api.nvim_get_current_buf()
+        local st = sel_stack[buf]
+        if not st or #st < 2 then
+          return
+        end
+        table.remove(st)
+        select_range(st[#st]:range())
+      end
+
+      vim.keymap.set({ 'n', 'x' }, '<C-space>', ts_expand, { desc = 'Расширить выделение по дереву' })
+      vim.keymap.set('x', '<BS>', ts_shrink, { desc = 'Сузить выделение по дереву' })
+
+      vim.api.nvim_create_autocmd('ModeChanged', {
+        group = vim.api.nvim_create_augroup('treesitter-incremental', { clear = true }),
+        pattern = '[vV\22]*:[^vV\22]*',
+        callback = function(args)
+          if not ts_internal then
+            sel_stack[args.buf] = nil
+          end
+        end,
+      })
+
       vim.api.nvim_create_autocmd('FileType', {
         group = vim.api.nvim_create_augroup('treesitter-features', { clear = true }),
         callback = function(args)
@@ -39,38 +159,18 @@ return {
             return
           end
           local lang = vim.treesitter.language.get_lang(ft) or ft
-          -- подсветка — только если парсер доступен (pcall защищает на первом запуске)
+          -- highlighting only when the parser is available (pcall guards the first run)
           if pcall(vim.treesitter.start, buf, lang) then
-            -- folds — нативные (vim.treesitter.foldexpr), открыты по умолчанию (foldlevel 99).
-            -- vim.wo[0][0] — оконно-локально-для-буфера, чтобы не утекало в другие окна.
+            -- NOTE: vim.wo[0][0] is window-local-for-buffer, so these do not leak into
+            -- other windows showing another file.
             vim.wo[0][0].foldmethod = 'expr'
             vim.wo[0][0].foldexpr = 'v:lua.vim.treesitter.foldexpr()'
             vim.wo[0][0].foldlevel = 99
-            -- индентация от nvim-treesitter (помечена upstream как experimental)
+            -- indentation from nvim-treesitter (marked experimental upstream)
             vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
           end
         end,
       })
     end,
-  },
-  {
-    'nvim-treesitter/nvim-treesitter-context',
-    cmd = { 'TSContextEnable', 'TSContextDisable', 'TSContextToggle' },
-    keys = {
-      {
-        '<leader>tc',
-        function()
-          require('treesitter-context').toggle()
-        end,
-        desc = 'Toggle Treesitter Context',
-      },
-    },
-    opts = {
-      enable = false, -- по умолчанию выкл (дёргал вьюпорт при скролле); включается вручную <leader>tc
-      max_lines = 3,
-      multiline_threshold = 1,
-      trim_scope = 'outer',
-      mode = 'cursor',
-    },
   },
 }

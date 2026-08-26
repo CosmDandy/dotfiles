@@ -1,7 +1,7 @@
--- basedpyright — строгий форк pyright (Pylance-фичи). Заменил pyright.
--- Интерпретатор определяется динамически: .venv → venv → $VIRTUAL_ENV → system
+-- basedpyright is the strict pyright fork with Pylance features; it replaced pyright.
+-- The interpreter is resolved dynamically: .venv -> venv -> $VIRTUAL_ENV -> system.
 local function detect_python(root)
-  -- root может прийти как vim.NIL (userdata) / nil — подстраховываемся
+  -- NOTE: root may arrive as vim.NIL (userdata) or nil, hence the guard
   if type(root) ~= 'string' then
     root = vim.fn.getcwd()
   end
@@ -40,7 +40,7 @@ return {
     },
   },
 
-  -- pythonPath решается на старте сервера от корня проекта
+  -- pythonPath is resolved from the project root when the server starts
   before_init = function(params, config)
     local root
     local wf = params.workspaceFolders

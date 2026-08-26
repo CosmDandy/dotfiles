@@ -1,11 +1,11 @@
--- blink.cmp — автодополнение (заменил стек nvim-cmp + cmp-*)
+-- blink.cmp — completion, replacing the nvim-cmp + cmp-* stack.
 -- https://github.com/saghen/blink.cmp
--- Prebuilt бинарник для macOS arm64 скачивается автоматически (Rust на машине не нужен)
+-- The prebuilt binary is downloaded automatically; no Rust toolchain needed.
 return {
   'saghen/blink.cmp',
   event = 'InsertEnter',
   version = '*',
-  -- friendly-snippets (VSCode-формат) blink находит на rtp сам; LuaSnip больше не нужен
+  -- blink finds friendly-snippets on the rtp itself; LuaSnip is no longer needed
   dependencies = {
     'rafamadriz/friendly-snippets',
   },
@@ -34,13 +34,13 @@ return {
           module = 'lazydev.integrations.blink',
           score_offset = 100,
         },
-        -- helm наследует yaml-сниппеты (аналог luasnip filetype_extend); friendly-snippets blink грузит сам
+        -- helm inherits the yaml snippets (the luasnip filetype_extend equivalent)
         snippets = {
           opts = {
             extended_filetypes = { helm = { 'yaml' } },
           },
         },
-        -- пути считать от корня проекта (cwd), а не от папки файла — для монорепо
+        -- paths relative to the project root rather than the file's folder, for monorepos
         path = {
           opts = {
             get_cwd = function(_)
@@ -48,12 +48,12 @@ return {
             end,
           },
         },
-        -- слова из ОТКРЫТЫХ буферов (включая соседний сплит) — фолбэк, ранжируется ниже LSP
+        -- words from OPEN buffers as a fallback, ranked below LSP
         buffer = {
           min_keyword_length = 2,
           score_offset = -3,
           opts = {
-            -- брать из всех загруженных обычных буферов, а не только текущего
+            -- from every loaded normal buffer, not just the current one
             get_bufnrs = function()
               return vim.tbl_filter(function(b)
                 return vim.bo[b].buftype == '' and vim.api.nvim_buf_is_loaded(b)
@@ -81,7 +81,7 @@ return {
         auto_show = false,
         window = {
           border = 'rounded',
-          -- открывать доку вправо от меню (не уезжать на колонку номеров слева)
+          -- documentation opens to the right of the menu, not over the number column
           direction_priority = {
             menu_north = { 'e', 'w' },
             menu_south = { 'e', 'w' },
@@ -97,7 +97,7 @@ return {
 
     fuzzy = {
       implementation = 'rust',
-      -- точные совпадения ключевых слов (resource, apiVersion) ранжируются первыми
+      -- exact keyword matches (resource, apiVersion) rank first
       sorts = { 'exact', 'score', 'sort_text' },
     },
   },

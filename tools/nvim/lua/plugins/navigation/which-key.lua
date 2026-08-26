@@ -3,12 +3,12 @@ return {
   event = 'VeryLazy',
   opts = {
     preset = 'modern',
-    delay = 1000,
-    -- прятать из попапа маппинги без описания (безымянный плагинный шум)
+    delay = 300,
+    -- hide mappings without a description — unnamed plugin noise
     filter = function(mapping)
       return mapping.desc and mapping.desc ~= ''
     end,
-    -- не всплывать в не-редакторских буферах (терминал/quickfix/help/…)
+    -- do not pop up in non-editor buffers (terminal/quickfix/help/…)
     disable = { bt = { 'terminal', 'quickfix', 'help', 'nofile', 'prompt' } },
     icons = {
       mappings = false,
@@ -44,14 +44,15 @@ return {
       },
     },
     spec = {
-      { '<leader>c',  group = 'code',     mode = { 'n', 'x' } },
-      { '<leader>d',  group = 'document' },
-      { '<leader>r',  group = 'rename' },
-      { '<leader>s',  group = 'search' },
-      { '<leader>w',  proxy = '<c-w>', group = 'windows' },
-      { '<leader>t',  group = 'tools' },
-      { '<leader>g',  group = 'git',      mode = { 'n', 'v' } },
-      { '<leader>gd', group = 'diff',     mode = { 'n', 'v' } },
+      { '<leader>c', group = 'code', mode = { 'n', 'x' } },
+      { '<leader>d', group = 'debug' },
+      { '<leader>r', group = 'rename' },
+      { '<leader>s', group = 'search' },
+      { '<leader>w', proxy = '<c-w>', group = 'windows' },
+      { '<leader>t', group = 'tools' },
+      { '<leader>g', group = 'git', mode = { 'n', 'v' } },
+      { '<leader>gd', group = 'diff', mode = { 'n', 'v' } },
+      { 'gz', group = 'surround', mode = { 'n', 'x' } },
     },
   },
 }

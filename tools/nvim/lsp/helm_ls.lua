@@ -1,8 +1,8 @@
--- helm-ls запускает свой yaml-language-server как подпроцесс и проксирует к нему
--- запросы с учётом Go-шаблонов. Итог: в templates/*.yaml есть и автодополнение
--- .Values/.Release/функций (от helm-ls), и валидация/комплишн по k8s JSON-схеме
--- (от встроенного yamlls). Обычный yamlls к ft 'helm' НЕ цепляется (см. yamlls.lua —
--- filetypes только yaml/yaml.ansible), иначе был бы двойной аттач и мусорные ошибки.
+-- helm-ls runs its own yaml-language-server as a subprocess and proxies requests to it
+-- with Go templating in mind, so templates/*.yaml get both .Values/.Release completion
+-- (from helm-ls) and k8s JSON-schema validation (from the inner yamlls).
+-- NOTE: the ordinary yamlls does NOT attach to filetype 'helm' — its filetypes list is
+-- yaml/yaml.ansible only — or there would be a double attach and junk errors.
 return {
   filetypes = { 'helm' },
   settings = {
@@ -18,7 +18,7 @@ return {
       },
       yamlls = {
         enabled = true,
-        -- mason кладёт бинарь в PATH на старте nvim → имя без пути резолвится
+        -- mason puts the binary on PATH at nvim startup, so a bare name resolves
         path = 'yaml-language-server',
         diagnosticsLimit = 50,
         showDiagnosticsDirectly = false,
@@ -26,7 +26,7 @@ return {
         initTimeoutSeconds = 3,
         config = {
           schemas = {
-            -- встроенный k8s-триггер yamlls для всего под templates/ (от корня чарта)
+            -- the built-in k8s trigger for everything under templates/, from the chart root
             kubernetes = 'templates/**',
           },
           completion = true,

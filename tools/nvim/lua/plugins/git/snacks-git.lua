@@ -1,28 +1,38 @@
--- snacks.lazygit + snacks.gitbrowse — заменили kdheepak/lazygit.nvim и gitlinker.
--- Это ещё один фрагмент snacks: lazy мержит opts/keys с ui/snacks.lua и snacks-picker.lua.
+-- snacks.lazygit + snacks.gitbrowse, replacing kdheepak/lazygit.nvim and gitlinker.
+-- NOTE: another snacks fragment — lazy merges opts/keys with ui/snacks.lua.
 return {
   'folke/snacks.nvim',
   opts = {
-    -- lazygit как терминал-float (тот же бинарь lazygit, открыт внутри nvim).
-    -- configure=false: НЕ перезаписывать тему lazygit прозрачными цветами nvim —
-    -- берём его собственный ~/.config/lazygit (как было с kdheepak). border вернул контур.
+    -- lazygit in a terminal float — the same binary, opened inside nvim.
+    -- NOTE: configure=false so snacks does NOT overwrite lazygit's theme with nvim's
+    -- transparent colours; its own config is used instead.
     lazygit = {
       configure = false,
       win = { style = 'lazygit', border = 'rounded' },
     },
-    -- gitbrowse: permalink (по SHA) на строку/выделение. notify показывает URL.
+    -- gitbrowse: a permalink by SHA to the line or selection; notify shows the URL
     gitbrowse = {
       notify = true,
       what = 'permalink',
     },
   },
   keys = {
-    { '<leader>gg', function() Snacks.lazygit() end, desc = 'Lazy[G]it' },
+    {
+      '<leader>gg',
+      function()
+        -- NOTE: the shell lg() wrapper does not apply here — snacks calls the binary
+        -- directly, so the light/dark overlay is chosen by vim.o.background instead.
+        local d = vim.fn.expand '~/.config/lazygit'
+        local overlay = (vim.o.background == 'light') and 'theme-light.yml' or 'theme-dark.yml'
+        Snacks.lazygit { args = { '--use-config-file=' .. d .. '/config.yml,' .. d .. '/' .. overlay } }
+      end,
+      desc = 'Lazy[G]it',
+    },
     {
       '<leader>gy',
       mode = { 'n', 'v' },
       function()
-        -- скопировать permalink в системный буфер (open переопределён на setreg)
+        -- copy the permalink to the system clipboard (open is redirected to setreg)
         Snacks.gitbrowse {
           what = 'permalink',
           open = function(url)
@@ -36,7 +46,9 @@ return {
     {
       '<leader>gY',
       mode = { 'n', 'v' },
-      function() Snacks.gitbrowse { what = 'permalink' } end,
+      function()
+        Snacks.gitbrowse { what = 'permalink' }
+      end,
       desc = '[G]it open in browser',
     },
   },

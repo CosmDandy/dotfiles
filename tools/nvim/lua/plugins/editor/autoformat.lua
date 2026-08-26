@@ -1,7 +1,6 @@
--- Система автоформатирования для Python/SQL/DevOps разработчика
 return {
   'stevearc/conform.nvim',
-  event = { 'BufWritePre' }, -- Загружаем перед сохранением для максимальной производительности
+  event = { 'BufWritePre' },
   cmd = { 'ConformInfo' },
   keys = {
     {
@@ -9,8 +8,8 @@ return {
       function()
         require('conform').format {
           async = true,
-          lsp_format = 'fallback', -- LSP только когда нет настроенного форматтера (наши форматтеры главнее)
-          timeout_ms = 3000, -- Увеличенный таймаут для больших файлов
+          lsp_format = 'fallback', -- LSP only where no formatter is configured
+          timeout_ms = 3000,
         }
       end,
       mode = '',
@@ -28,7 +27,7 @@ return {
     },
   },
   opts = {
-    notify_no_formatters = false, -- Не спамим если форматер не найден
+    notify_no_formatters = false,
 
     format_on_save = function(bufnr)
       if vim.g.conform_format_on_save == false then
@@ -55,15 +54,20 @@ return {
       }
     end,
 
-    -- Конфигурация форматеров для каждого языка вашего стека
     formatters_by_ft = {
-      -- Python: ruff fix (imports, lint fixes) → ruff format
+      -- ruff fix (imports, lint fixes) then ruff format
       python = { 'ruff_fix', 'ruff_format' },
 
-      -- Lua - для конфигурации Neovim и скриптов
       lua = { 'stylua' },
 
-      -- yaml: не yamlfmt-ить helm-шаблоны (Go-template ломается форматтером)
+      -- Go: goimports first — it rewrites the import block (adding what the
+      -- file uses, dropping what it does not) and formats to gofmt on the way
+      -- out. gofumpt second because it is a strict superset of gofmt, so the
+      -- reverse order would leave gofumpt's rules undone. Both from nixpkgs;
+      -- gopls carries gofumpt = true so the LSP path agrees with this one.
+      go = { 'goimports', 'gofumpt' },
+
+      -- NOTE: helm templates are left alone — yamlfmt breaks Go templating.
       yaml = function(bufnr)
         local name = vim.api.nvim_buf_get_name(bufnr)
         if vim.bo[bufnr].filetype == 'helm' or name:match '/templates/' then
@@ -72,28 +76,23 @@ return {
         return { 'yamlfmt' }
       end,
 
-      -- Shell скрипты для автоматизации
       bash = { 'shfmt' },
       zsh = { 'shfmt' },
       sh = { 'shfmt' },
 
-      -- HCL (Terraform/Nomad) - форматирование через LSP (terraform fmt)
+      -- HCL goes through the LSP (terraform fmt)
       hcl = {},
       terraform = { 'terraform_fmt' },
 
-      -- Dockerfile
-      dockerfile = {}, -- Используем только LSP форматирование для Dockerfile
+      dockerfile = {}, -- LSP formatting only
 
-      -- Jsonnet
       jsonnet = { 'jsonnetfmt' },
     },
 
-    -- Детальная конфигурация каждого форматера
     formatters = {
-      -- Python форматеры с оптимизированными настройками
-      -- Конфигурация ruff для комплексного форматирования Python кода
-      -- полный args (не prepend): встроенный ruff_fix уже содержит 'check --fix',
-      -- prepend дублировал бы субкоманду → 'ruff check … check …' (ломалось)
+      -- NOTE: full args, not prepend_args — the built-in ruff_fix already carries
+      -- 'check --fix', and prepending duplicated the subcommand into
+      -- 'ruff check … check …', which broke.
       ruff_fix = {
         args = {
           'check',
@@ -109,7 +108,7 @@ return {
         },
       },
 
-      -- '--respect-gitignore' убран: это флаг 'check', для 'format' невалиден
+      -- NOTE: no '--respect-gitignore' — that is a flag of 'check' and invalid for 'format'.
       ruff_format = {
         args = {
           'format',
@@ -122,26 +121,25 @@ return {
         },
       },
 
-      -- YAML форматер для DevOps конфигураций
+      -- include_document_start adds the leading '---'; retain_line_breaks_single keeps
+      -- blank lines between tasks (collapsing doubles); pad_line_comments=2 matches what
+      -- yamllint expects before an inline comment.
       yamlfmt = {
         prepend_args = {
           '-formatter',
-          'indent=2,include_document_start=false,drop_merge_tag=true',
+          'indent=2,include_document_start=true,retain_line_breaks_single=true,pad_line_comments=2,drop_merge_tag=true',
         },
       },
 
-      -- Shell форматер
       shfmt = {
         prepend_args = {
           '-i',
-          '2', -- Отступ в 2 пробела
-          '-bn', -- Бинарные операторы в начале строки
-          '-ci', -- Отступ для case в switch
-          '-sr', -- Перенаправления после команд
+          '2', -- two-space indent
+          '-bn', -- binary operators at the start of a line
+          '-ci', -- indent case branches
+          '-sr', -- redirections after the command
         },
       },
-
     },
   },
-
 }
