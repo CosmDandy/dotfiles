@@ -1,0 +1,9 @@
+# statix for the repository's nix configs.
+#
+# NOTE: repeated_keys is disabled deliberately. The rule wants `a.b = …; a.c = …;` merged
+# into one attribute set, which is right for application code and wrong for a nix-darwin
+# module: here `system.activationScripts`, `system.defaults` and `system.stateVersion` sit
+# hundreds of lines apart, each next to what it belongs with by meaning. Merging would pile
+# dock settings, keyboard settings and activation scripts together and tear each away from
+# its comment.
+disabled = ["repeated_keys"]
