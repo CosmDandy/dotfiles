@@ -8,13 +8,16 @@
 # The entry name is kept neutral because this file is public — the real one is
 # overridden in private/zsh/, which is sourced later.
 alias dpd='devpod delete'
-alias dps='devpod stop'
 
 # Where new workspaces come from. The registry is public; the provider is left
 # empty here so devpod's own default applies, and the private layer overrides it
 # with the work host.
 : ${DP_IMAGE:=ghcr.io/cosmdandy/devcontainer}
 : ${DP_PROVIDER:=}
+# Who to be inside a container. The image bakes this user in, but a repository
+# carrying its own devcontainer.json without remoteUser drops it, and devpod
+# then falls back to root.
+: ${DP_USER:=$USER}
 # NOTE: `dp` used to be an alias for `devpod up --workspace-env-file …`. It is a
 # function now (bottom of this file) and the alias had to go: an alias is
 # substituted while the FUNCTION DEFINITION is parsed, so `dp() {` would have
@@ -43,8 +46,35 @@ ds() {
   if ssh -G "${id}.devpod" 2>/dev/null | grep -qi '^proxycommand.*devpod'; then
     ssh "${id}.devpod" "$@"
   else
-    devpod ssh "$id" "$@"
+    # NOTE: --user for OUR image only. devpod takes the user from the image
+    # label, and a repository whose own devcontainer.json omits remoteUser
+    # overrides it with nothing — which is how `git status` in a work repo
+    # answers "detected dubious ownership" instead of listing files. But a
+    # workspace built from somebody else's devcontainer.json has no such user
+    # at all, and there the flag turns a working login into a hang on `su`.
+    local -a u=()
+    [[ $(_dp_ws_field "$id" .devContainerImage) == ${DP_IMAGE}:* ]] \
+      && u=(--user "$DP_USER")
+    devpod ssh "$id" $u "$@"
   fi
+}
+
+# Stopping one, the short way. A function and not an alias so that a bare `dps`
+# can open the picker, the way `ds` does.
+dps() {
+  emulate -L zsh
+  local -a ids
+  if (( $# )); then
+    ids=("$@")
+  else
+    # -m: stopping several at once is the normal case at the end of a day.
+    local out
+    out=$(_dp_pick -m) || return 1
+    ids=(${(f)out})
+  fi
+  ids=(${ids:#})
+  (( $#ids )) || { print -u2 "dps: no workspace selected"; return 1 }
+  _dp_stop $ids
 }
 
 # Row colours, carried by the data itself: fzf paints the whole line and cannot
@@ -349,17 +379,42 @@ _dp_rows() {
   # NOTE: the provider is set in faint (SGR 2) on top of the muted colour. It
   # matters only when workspaces live on different hosts, which is rare — this
   # keeps it readable when looked for and out of the way when not.
-  local mark colour
+  # A running job outranks the snapshot: the snapshot says what the container
+  # was when it was last polled, the job says what is being done to it now.
+  local jobs=$DP_CACHE_DIR/jobs
+  local mark colour job jverb jstate
   for line in $lines; do
     c=(${(ps:\t:)line})
-    case $c[2] in
-      running) mark='● running';      colour=$_DP_GREEN ;;
-      exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
-      new)     mark='· not created';  colour=$_DP_MUTED ;;
-      unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
-      *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
-    esac
-    printf "%-${w}s  %s%-16s%s  %s%s%s%s\n" \
+    job=
+    [[ -r $jobs/$c[1].status ]] && job=$(< $jobs/$c[1].status)
+    if [[ -n $job ]]; then
+      jverb=${job%%$'\t'*}; jstate=${job##*$'\t'}
+      case $jstate in
+        # NOTE: only the running form is inflected. "recreating: partial" ran
+        # two columns past the field width and pushed the provider out of line
+        # — the outcome states keep the bare verb so every row stays aligned.
+        # NOTE: no spinner animation. fzf redraws only when the list reloads,
+        # and reloading on a timer to turn a character would fight the picker
+        # for the terminal every 100ms.
+        running) case $jverb in
+                   stop)     mark='● stopping…' ;;
+                   recreate) mark='● recreating…' ;;
+                   *)        mark="● ${jverb}…" ;;
+                 esac
+                 colour=$_DP_YELLOW ;;
+        partial) mark="⚠ ${jverb} partial"; colour=$_DP_YELLOW ;;
+        *)       mark="✗ ${jverb} failed";  colour=$_DP_RED ;;
+      esac
+    else
+      case $c[2] in
+        running) mark='● running';      colour=$_DP_GREEN ;;
+        exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
+        new)     mark='· not created';  colour=$_DP_MUTED ;;
+        unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
+        *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
+      esac
+    fi
+    printf "%-${w}s  %s%-18s%s  %s%s%s%s\n" \
       "$c[1]" "$colour" "$mark" "$_DP_OFF" \
       "$_DP_FAINT$_DP_MUTED" "${c[3]/#-/—}" "$_DP_OFF"
   done
@@ -586,6 +641,24 @@ _dp_put_claude() {
   return 0
 }
 
+# The state the last collection saw for one workspace: running, exited, new,
+# or empty when it is not in the snapshot at all.
+_dp_snap_state() {
+  emulate -L zsh
+  [[ -s $DP_SNAPSHOT ]] || return 1
+  awk -F'\t' -v i="$1" '$1==i{print $2; exit}' $DP_SNAPSHOT
+}
+
+# One field out of a workspace's own record. The image pinned at creation and
+# the provider it belongs to both live here, and nowhere else: `devpod list`
+# reports neither.
+_dp_ws_field() {
+  emulate -L zsh
+  local f=${HOME}/.devpod/contexts/default/workspaces/$1/workspace.json
+  [[ -r $f ]] || return 1
+  jq -r "$2 // empty" "$f" 2>/dev/null
+}
+
 # The SSH host behind a provider, empty when it builds locally. `docker pull`
 # needs it: the image is set by a flag, so devcontainer.json's initializeCommand
 # never runs and nothing else refreshes a floating tag on the build host.
@@ -670,7 +743,7 @@ _dp_pick_action() {
   # through), so the key and what it does can be told apart at a glance. Read as
   # one grey run they blurred into "Ctrl-R recreate Ctrl-D delete".
   local k=$_DP_BLUE a="${_DP_FAINT}${_DP_MUTED}" o=$_DP_OFF
-  local _dp_footer="${k}Enter${o} ${a}open${o}   ${k}Ctrl-N${o} ${a}new${o}   ${k}Ctrl-S${o} ${a}secrets${o}   ${k}Ctrl-R${o} ${a}recreate${o}   ${k}Ctrl-D${o} ${a}delete${o}"
+  local _dp_footer="${k}Enter${o} ${a}open${o}   ${k}Ctrl-N${o} ${a}new${o}   ${k}Ctrl-S${o} ${a}secrets${o}   ${k}Ctrl-X${o} ${a}stop${o}   ${k}Ctrl-R${o} ${a}recreate${o}   ${k}Ctrl-L${o} ${a}log${o}   ${k}Ctrl-D${o} ${a}delete${o}"
   (( _DP_RUN++ ))
   local tag=${sysparams[pid]:-$$}.$_DP_RUN
   local base=$DP_CACHE_DIR/rows.$tag fresh=$DP_CACHE_DIR/rows.$tag.fresh
@@ -708,12 +781,27 @@ _dp_pick_action() {
   # Tab survive the swap instead of being cleared by it. Deliberately without
   # --track: tracking blocks the query line until it has found the item again,
   # and the whole point here is that the picker stays live.
+  # NOTE: --info carries a PREFIX of one space, and that space is the point: a
+  # prefix replaces fzf's spinner. This picker always has a reload command in
+  # flight — the wait for the next row update — so the spinner turned forever
+  # and told nobody anything. What a job is doing is written on its own row.
+  # NOTE: stop and recreate are NOT in --expect any more. Leaving the picker to
+  # run them meant reopening it afterwards to do the next one, and watching a
+  # bare terminal in between; they run detached now and report back through the
+  # row they belong to.
+  local jobs=$DP_CACHE_DIR/jobs
+  mkdir -p -- $jobs
+  local runner=$dot/tools/devpod/run-job.zsh
   local out
   out=$(fzf --ansi --nth=1 --accept-nth=1 --multi --id-nth=1 \
-      --print-query --expect=ctrl-n,ctrl-s,ctrl-r,ctrl-d \
+      --print-query --expect=ctrl-n,ctrl-s,ctrl-d \
       --prompt='workspace> ' \
-      --bind="load:unbind(load)+reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
-      --preview="$dot/tools/devpod/preview.zsh {1} $DP_SNAPSHOT" \
+      --info='inline-right: ' \
+      --bind="load:reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
+      --bind="ctrl-x:execute-silent($runner stop $jobs $fresh {+1})" \
+      --bind="ctrl-r:execute-silent($runner recreate $jobs $fresh {+1})" \
+      --bind="ctrl-l:execute($dot/tools/devpod/show-log.zsh $jobs {1})" \
+      --preview="$dot/tools/devpod/preview.zsh {1} $DP_SNAPSHOT $jobs" \
       --preview-window='right,46%,border-left' \
       --footer="$_dp_footer" \
       --footer-border=top < $base)
@@ -782,15 +870,45 @@ _dp_new() {
 # devpod already stores the source and the image, so id plus --recreate is
 # enough; the image is passed again because losing that override is what dropped
 # a container to root once already.
+# Stopping is the cheap half of recreate: the container goes down, its home and
+# everything in it stays. `ds` brings it back up on the next entry.
+_dp_stop() {
+  emulate -L zsh
+  local id state
+  for id in "$@"; do
+    [[ -z $id ]] && continue
+    # NOTE: only `running` is skipped-past. An unknown state means the host
+    # never answered, and refusing to act on that would leave the one case
+    # where stopping is most likely the right thing with no way to do it.
+    state=$(_dp_snap_state "$id")
+    if [[ $state == exited || $state == new ]]; then
+      print "■ $id is already stopped"
+      continue
+    fi
+    print "■ $id"
+    devpod stop "$id" || print -u2 "⚠ stop $id failed"
+  done
+}
+
 _dp_recreate() {
   emulate -L zsh
   local id=$1
   [[ -z $id ]] && return 1
-  local f=${HOME}/.devpod/contexts/default/workspaces/${id}/workspace.json
-  local image=
-  [[ -r $f ]] && image=$(jq -r '.devContainerImage // empty' "$f" 2>/dev/null)
+  local image=$(_dp_ws_field "$id" .devContainerImage)
   local -a args=("$id" --recreate)
   [[ -n $image ]] && args+=(--devcontainer-image "$image")
+  # NOTE: the same stale-tag trap `dp new` guards against, and it bites harder
+  # here: docker keeps a floating tag it already holds, so a recreate comes up
+  # on whatever the build host pulled first, and provisioning then rebuilds
+  # from source everything the old image is missing — terraform is unfree, so
+  # cache.nixos.org has no binary for it and the host compiles it itself.
+  # Only our own tags: a workspace on a locally built vsc-* image has no
+  # registry to pull from.
+  if [[ $image == ${DP_IMAGE}:* ]]; then
+    local provider=$(_dp_ws_field "$id" .provider.name)
+    print "⇣ $image"
+    _dp_pull "$provider" "${image##*:}"
+  fi
   # NOTE: no --workspace-env-file. It put the nine work variables into
   # /etc/envfile.json inside the container with mode 644; they are delivered
   # as a 0600 file by `dp secrets` instead. See _dp_put_workenv.
@@ -860,6 +978,13 @@ _dp_put_age() {
   emulate -L zsh
   if [[ -n $DPKEY_AUTO_ITEM ]]; then
     dpkey "$1" "$DPKEY_AUTO_ITEM"
+  elif [[ -n $DP_JOB ]]; then
+    # NOTE: which vault entry holds the key is a CHOICE, and a detached job has
+    # nobody to ask — dpkey would open a picker onto a terminal that is not
+    # there. Exit 2 is the "everything else went in, this one needs you" signal
+    # the runner turns into a partial rather than a failure.
+    print -u2 "age key needs a choice — dp secrets $1 age (or set DPKEY_AUTO_ITEM)"
+    return 2
   else
     dpkey "$1"
   fi
@@ -912,6 +1037,7 @@ _dp_secrets() {
   # ssh` tunnel and takes seconds, and the old version printed only its verdict
   # at the end — from the outside that is indistinguishable from a hang.
   local rc=0 name entry fn descr
+  local -i frc
   print -r -- "${_DP_MUTED}secrets → $id${_DP_OFF}"
   for name in $want; do
     entry=$(_dp_secret_entry "$name") || {
@@ -920,7 +1046,14 @@ _dp_secrets() {
     }
     descr=${${(s:|:)entry}[2]}; fn=${${(s:|:)entry}[3]}
     print -r -- "${_DP_MUTED}  · ${descr}…${_DP_OFF}"
-    $fn "$id" || rc=1
+    $fn "$id"
+    frc=$?
+    # NOTE: 2 means "this one needs a person", not "this one broke" — it must
+    # not be flattened into 1, and a real failure must not be downgraded by a 2
+    # that came after it.
+    (( frc == 0 )) && continue
+    (( frc == 2 && rc == 0 )) && { rc=2; continue }
+    (( frc != 2 )) && rc=1
   done
   return $rc
 }
@@ -1075,7 +1208,7 @@ dp() {
                 _dp_up_one "$id" "${${(s:|:)e}[2]}" "${${(s:|:)e}[1]}"
               done ;;
     recreate) local i; for i in "$@"; do _dp_recreate "$i"; done ;;
-    stop)     devpod stop "$@" ;;
+    stop)     _dp_stop "$@" ;;
     rm)       devpod delete "$@" ;;
     secrets)  _dp_secrets "$@" ;;
     doctor)   _dp_doctor "$@" ;;
@@ -1096,7 +1229,6 @@ dp() {
       case $key in
         ctrl-n) _dp_new "${query// /}" ;;
         ctrl-s) for i in $ids; do _dp_secrets "$i"; done ;;
-        ctrl-r) for i in $ids; do _dp_recreate "$i"; done ;;
         ctrl-d) (( $#ids )) && devpod delete $ids ;;
         *)      (( $#ids )) && ds "$ids[1]" ;;
       esac ;;
