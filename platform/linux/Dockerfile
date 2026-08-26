@@ -161,7 +161,13 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   # zinit plugins: core only, devops inherits them with the layer. `|| true`
   # because the shell may exit non-zero over trivia like a missing TERM, long
   # after the clone.
-  && (zsh -i -c exit >/dev/null 2>&1 || true) \
+  # NOTE: ZSH_NO_DEFER is what makes this work at all now. .zshrc defers zinit
+  # (and atuin, and direnv) onto a `zle -F` handler that fires when the line
+  # editor first goes idle — which never happens in `zsh -i -c exit`, so the
+  # queue was carried out of the build unrun and every container cloned the
+  # plugins again on its first prompt. Measured: 5 commands left in the queue
+  # without it, 0 with it.
+  && (ZSH_NO_DEFER=1 zsh -i -c exit >/dev/null 2>&1 || true) \
   # MCP servers baked whole: the binaries AND their registration in
   # ~/.claude.json, which lives in $HOME and therefore ships with the image.
   # install.sh checks exactly this end state and skips the submodule's installer
