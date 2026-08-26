@@ -1,9 +1,10 @@
 [user]
 	name = Timofey Kondrashin
-	email = tkondrashin@icloud.com
-	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDsx73RvU7CaBdKkAcRXcLdIG/APXzi5l4sxY+5J57EV cosmdandy@macbook-cosmdandy
+	email = i@cosmdandy.dev
+	signingKey = key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILWul3sEo7u/26LMKrLENzGhnCAxOe4AojX3wZDSSRkM
 [core]
 	editor = nvim
+	pager = delta
 	autocrlf = input
 	hooksPath = ~/.git-hooks
 	excludesfile = ~/.gitignore_global
@@ -11,6 +12,9 @@
 	fsckObjects = true
 [fetch]
 	fsckObjects = true
+	# without prune, branches deleted on the remote pile up in refs/remotes forever
+	prune = true
+	prunetags = true
 [receive]
 	fsckObjects = true
 [commit]
@@ -25,13 +29,52 @@
 	defaultBranch = main
 [pull]
 	rebase = true
+[rebase]
+	# NOTE: the pair to pull.rebase — without autostash `git pull` on a dirty tree simply
+	# refuses to work, because rebase cannot start with uncommitted changes.
+	autostash = true
 [push]
 	autoSetupRemote = true
+	# NOTE: the parent stores a submodule as a gitlink and by default push does not check
+	# whether that object is reachable on the submodule's remote. A pushed pointer to an
+	# unpushed commit breaks clones with "upload-pack: not our ref" — it has happened three
+	# times. on-demand pushes the submodule first, and on a detached HEAD it fails loudly
+	# instead of staying silent.
+	recurseSubmodules = on-demand
 [rerere]
 	enabled = true
+[merge]
+	# NOTE: the default diff3 style does not show the common ancestor; zdiff3 adds it AND
+	# moves matching lines outside the conflict markers — much less noise, especially with
+	# rerere and pull.rebase.
+	conflictstyle = zdiff3
+[submodule]
+	# NOTE: the incoming mirror of push.recurseSubmodules. Without it a pull brings the new
+	# pointer while the content stays old, and status shows " m private" as if it had been
+	# edited by hand. Side effect: switching branches now moves the submodule too.
+	recurse = true
+[status]
+	# NOTE: with true, git forked the legacy git-submodule script twice per submodule —
+	# 310 ms against 62 ms on every status, in every repository, not only ones with
+	# submodules. The `modified: … (modified content)` lines stay; only the commit listing
+	# goes, and that is what `git submodule summary` is for.
+	submoduleSummary = false
 [diff]
 	algorithm = histogram
-[includeIf "gitdir:/workspaces/"]
-	path = ~/.gitconfig-work
-[includeIf "gitdir:~/Work/"]
-	path = ~/.gitconfig-work
+	# submodule commit messages instead of a pair of raw hashes
+	submodule = log
+[interactive]
+	# colours the hunks of `git add -p` with the same renderer as `git diff`
+	diffFilter = delta --color-only
+[delta]
+	# n / N jump between files inside the pager — the reason for routing git through
+	# delta in the first place; on a review-sized diff it replaces scrolling.
+	navigate = true
+# Work identities are included from here, but the conditions and addresses live in the
+# private submodule — this repository is public and the employer's domain does not belong
+# in it. includes.conf itself consists of includeIf rules on the remote URL (include →
+# includeIf nesting works), so an unconditional line is enough here.
+# NOTE: with the private submodule not checked out the path dangles, git silently ignores a
+# missing include, and the personal identity stays in force.
+[include]
+	path = ~/.config/git-identities/includes.conf
