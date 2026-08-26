@@ -1,7 +1,6 @@
-# Kubernetes: KUBECONFIG автоматически собирается из ~/.kube/configs/*.yaml (мердж
-# контекстов через ':'). Кладёшь конфиг кластера в ~/.kube/configs/<name>.yaml —
-# kubectl/k9s/kubectx сразу видят все контексты, ручной export не нужен.
-# Переключение: kubectx (контекст) / kubens (namespace); с fzf — интерактивный выбор.
+# KUBECONFIG is assembled automatically from ~/.kube/configs/*.yaml, merged with ':'.
+# Drop a cluster config in there and kubectl/k9s/kubectx see every context at once, with no
+# manual export. Switching: kubectx for the context, kubens for the namespace.
 () {
   local -a cfgs
   cfgs=(~/.kube/configs/*.yaml(N) ~/.kube/configs/*.yml(N))
