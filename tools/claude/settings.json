@@ -1,12 +1,14 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 365,
   "env": {
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85",
-    "CLAUDE_CODE_AUTO_CONNECT_IDE": "1",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
+    "CLAUDE_CODE_AUTO_CONNECT_IDE": "false",
     "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
     "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": "1",
     "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "10",
     "CLAUDE_CODE_FORK_SUBAGENT": "1",
+    "BASH_DEFAULT_TIMEOUT_MS": "30000",
     "EDITOR": "nvim",
     "VISUAL": "nvim"
   },
@@ -16,26 +18,21 @@
   },
   "permissions": {
     "allow": [
-      "Read(**)",
-      "Edit(**)",
-      "Write(**)",
-      "Glob(**)",
-      "Grep(**)",
-      "Task(**)",
-      "TaskOutput(**)",
-      "TaskStop(**)",
-      "TaskCreate(**)",
-      "TaskGet(**)",
-      "TaskList(**)",
-      "TaskUpdate(**)",
-      "NotebookEdit(**)",
-      "WebFetch(domain:*)",
+      "Read",
+      "Edit",
+      "Grep",
+      "Agent",
+      "TaskOutput",
+      "TaskStop",
+      "TaskCreate",
+      "TaskGet",
+      "TaskList",
+      "TaskUpdate",
       "WebSearch",
-      "AskUserQuestion(**)",
-      "Skill(**)",
-      "EnterPlanMode(**)",
-      "ExitPlanMode(**)",
-      "Update(**)",
+      "AskUserQuestion",
+      "Skill",
+      "EnterPlanMode",
+      "ExitPlanMode",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -56,7 +53,6 @@
       "Bash(git cherry-pick:*)",
       "Bash(git pull:*)",
       "Bash(git clone:*)",
-      "Bash(git config:*)",
       "Bash(git restore:*)",
       "Bash(git reset:*)",
       "Bash(git rebase:*)",
@@ -84,7 +80,6 @@
       "Bash(touch:*)",
       "Bash(cp:*)",
       "Bash(mv:*)",
-      "Bash(rm:*)",
       "Bash(ln:*)",
       "Bash(which:*)",
       "Bash(type:*)",
@@ -97,7 +92,6 @@
       "Bash(less:*)",
       "Bash(jq:*)",
       "Bash(yq:*)",
-      "Bash(curl:*)",
       "Bash(man:*)",
       "Bash(cd:*)",
       "Bash(test:*)",
@@ -106,7 +100,6 @@
       "Bash(exit:*)",
       "Bash(popd:*)",
       "Bash(pushd:*)",
-      "Bash(source:*)",
       "Bash(terraform init:*)",
       "Bash(terraform plan:*)",
       "Bash(terraform validate:*)",
@@ -169,8 +162,6 @@
       "Bash(helm version:*)",
       "Bash(helm repo:*)",
       "Bash(helm search:*)",
-      "Bash(python:*)",
-      "Bash(python3:*)",
       "Bash(pytest:*)",
       "Bash(uv:*)",
       "Bash(pip:*)",
@@ -180,8 +171,9 @@
       "Bash(black:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
       "Bash(node:*)",
-      "Bash(make:*)",
       "Bash(gh pr:*)",
       "Bash(gh issue:*)",
       "Bash(gh repo:*)",
@@ -196,7 +188,6 @@
       "Bash(tmux:*)",
       "Bash(nvim:*)",
       "Bash(lazygit:*)",
-      "Bash(zsh:*)",
       "Bash(chmod:*)",
       "Bash(defaults read:*)",
       "Bash(go:*)",
@@ -213,13 +204,96 @@
       "WebFetch(domain:github.com)",
       "Bash(gh repo view:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:gitlab.com)",
+      "WebFetch(domain:docs.gitlab.com)",
+      "WebFetch(domain:nixos.org)",
+      "WebFetch(domain:search.nixos.org)",
+      "WebFetch(domain:neovim.io)",
+      "WebFetch(domain:developer.apple.com)",
       "Bash(tmux list-sessions:*)",
       "Bash(tmux show-options:*)",
       "Bash(go version:*)",
-      "Bash(git push:*)",
-      "Bash(gh:*)",
-      "Bash(glab:*)",
-      "Bash(devpod context options:*)"
+      "Bash(devpod context options:*)",
+      "Bash(tr:*)",
+      "Bash(sleep:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(date:*)",
+      "Bash(stat:*)",
+      "Bash(ps:*)",
+      "Bash(seq:*)",
+      "Bash(nl:*)",
+      "Bash(column:*)",
+      "Bash(rev:*)",
+      "Bash(file:*)",
+      "Bash(uname:*)",
+      "Bash(sw_vers:*)",
+      "Bash(ping:*)",
+      "Bash(ifconfig:*)",
+      "Bash(arp:*)",
+      "Bash(dig:*)",
+      "Bash(host:*)",
+      "Bash(nslookup:*)",
+      "Bash(traceroute:*)",
+      "Bash(netstat:*)",
+      "Bash(lsof:*)",
+      "Bash(journalctl:*)",
+      "Bash(launchctl list:*)",
+      "Bash(launchctl print:*)",
+      "Bash(shellcheck:*)",
+      "Bash(yamllint:*)",
+      "Bash(statix:*)",
+      "Bash(actionlint:*)",
+      "Bash(zizmor:*)",
+      "Bash(gitleaks:*)",
+      "Bash(stylua:*)",
+      "Bash(shfmt:*)",
+      "Bash(deadnix:*)",
+      "Bash(delta:*)",
+      "Bash(bat:*)",
+      "Bash(starship:*)",
+      "Bash(bindkey:*)",
+      "Bash(atuin search:*)",
+      "Bash(atuin stats:*)",
+      "Bash(atuin status:*)",
+      "Bash(atuin history:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git cat-file:*)",
+      "Bash(git count-objects:*)",
+      "Bash(git verify-commit:*)",
+      "Bash(git describe:*)",
+      "Bash(git shortlog:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git grep:*)",
+      "Bash(git diff-tree:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git submodule status:*)",
+      "Bash(git init:*)",
+      "Bash(gh run:*)",
+      "Bash(gh workflow:*)",
+      "Bash(docker image ls:*)",
+      "Bash(docker image inspect:*)",
+      "Bash(docker pull:*)",
+      "Bash(docker context:*)",
+      "Bash(restic snapshots:*)",
+      "Bash(restic stats:*)",
+      "Bash(restic check:*)",
+      "Bash(restic ls:*)",
+      "Bash(restic find:*)",
+      "Bash(limactl list:*)",
+      "Bash(limactl info:*)",
+      "Bash(limactl show-ssh:*)",
+      "Bash(limactl shell:*)",
+      "Bash(rm:*)",
+      "Bash(curl:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(zsh:*)",
+      "Bash(bash:*)",
+      "Bash(sh:*)",
+      "Bash(git -C:*)"
     ],
     "deny": [
       "Read(.env)",
@@ -273,77 +347,43 @@
       "Bash(ansible-vault decrypt:*)",
       "Bash(ansible-vault edit:*)",
       "Bash(ansible-vault rekey:*)",
-      "Bash(rm -rf:*)",
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)",
       "Bash(sudo:*)",
       "Bash(shutdown:*)",
       "Bash(reboot:*)",
       "Bash(poweroff:*)",
       "Bash(halt:*)",
       "Bash(init:*)",
-      "Bash(mkfs:*)",
+      "Bash(mkfs*)",
       "Bash(fdisk:*)",
-      "Bash(dd if=/dev/:*)",
-      "Bash(chmod -R 777 /:*)",
-      "Bash(chown -R :* /:*)",
-      "Bash(curl :* | bash:*)",
-      "Bash(curl :* | sh:*)",
-      "Bash(curl :* | sudo:*)",
-      "Bash(wget :* | bash:*)",
-      "Bash(wget :* | sh:*)",
-      "Bash(:* | base64 -d | bash:*)",
-      "Bash(:* | base64 -d | sh:*)",
-      "Bash(bash -i >& /dev/tcp/:*)",
-      "Bash(sh -i >& /dev/tcp/:*)",
-      "Bash(nc -l:*)",
-      "Bash(netcat -l:*)",
-      "Bash(exec > /dev/tcp/:*)",
-      "Bash(pip install :* --break-system-packages:*)",
-      "Bash(env | base64:*)",
-      "Bash(printenv | base64:*)",
-      "Bash(set | base64:*)",
-      "Bash(export :*_KEY=:*)",
-      "Bash(export :*_SECRET=:*)",
-      "Bash(export :*_TOKEN=:*)",
-      "Bash(history | grep -i password:*)",
-      "Bash(history | grep -i secret:*)",
-      "Bash(history | grep -i token:*)",
-      "Bash(:*bitcoin:*)",
-      "Bash(:*xmrig:*)",
-      "Bash(:*miner:*)",
-      "Bash(:*monero:*)"
+      "Bash(dd if=/dev/*)",
+      "Bash(chmod * 777 /*)",
+      "Bash(chown -R * /*)",
+      "Bash(nc -l*)",
+      "Bash(netcat -l*)",
+      "Bash(exec > /dev/tcp/*)",
+      "Bash(pip install * --break-system-packages*)"
     ],
     "ask": [
-      "Bash(terraform apply:*)",
-      "Bash(ansible-playbook:*)",
-      "Bash(kubectl apply:*)",
-      "Bash(helm install:*)",
-      "Bash(helm upgrade:*)",
-      "Bash(nomad job run:*)",
-      "Bash(docker run:*)",
-      "Bash(docker exec:*)",
-      "Bash(docker rm:*)",
-      "Bash(docker rmi:*)",
-      "Bash(docker stop:*)",
-      "Bash(docker kill:*)",
-      "Bash(docker compose up:*)",
-      "Bash(docker compose down:*)",
-      "Bash(docker compose restart:*)",
-      "Bash(docker-compose up:*)",
-      "Bash(docker-compose down:*)",
-      "Bash(docker-compose restart:*)"
-    ]
+      "Bash(gh pr create:*)",
+      "Bash(glab mr create:*)"
+    ],
+    "defaultMode": "bypassPermissions"
   },
+  "model": "opus[1m]",
   "fallbackModel": [
+    "opus",
     "sonnet"
   ],
   "hooks": {
-    "Stop": [
+    "PreCompact": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "printf '\\a'"
+            "command": "~/.dotfiles/tools/claude/hooks/precompact-snapshot.sh"
           }
         ]
       }
@@ -355,6 +395,10 @@
           {
             "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/pretooluse-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/pretooluse-opsctx.sh"
           }
         ]
       }
@@ -369,6 +413,79 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sessionstart-state.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sessionend-fold.sh"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Blow",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
+            "async": true
+          }
+        ]
       }
     ]
   },
@@ -378,17 +495,22 @@
     "refreshInterval": 15
   },
   "outputStyle": "default",
-  "tui": "fullscreen",
   "language": "Russian",
   "feedbackSurveyRate": 0,
-  "effortLevel": "medium",
-  "autoUpdates": true,
+  "effortLevel": "high",
   "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "voice": {
+    "enabled": true
+  },
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "theme": "auto",
   "preferredNotifChannel": "terminal_bell",
-  "voiceEnabled": true,
+  "switchModelsOnFlag": true,
+  "remoteControlAtStartup": false,
+  "crossSessionInbound": "accept",
+  "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
-  "inputNeededNotifEnabled": true
+  "useAutoModeDuringPlan": false
 }

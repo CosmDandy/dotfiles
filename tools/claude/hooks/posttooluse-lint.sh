@@ -20,7 +20,16 @@ case "$file" in
     run terraform terraform fmt -check -diff "$(dirname "$file")"
     ;;
   *.py)
-    run ruff ruff check "$file"
+    # NOTE: ruff is usually not on PATH (installed through uv), and without the fallback
+    # this branch silently did nothing, leaving Python unlinted.
+    if command -v ruff >/dev/null 2>&1; then
+      run ruff ruff check "$file"
+    else
+      run uvx uvx ruff check "$file"
+    fi
+    ;;
+  *.zsh|*.zshrc|*.zshenv|*.zprofile)
+    run zsh zsh -n "$file"
     ;;
   *.sh|*.bash)
     if head -1 "$file" | grep -q zsh; then
