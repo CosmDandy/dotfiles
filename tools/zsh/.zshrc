@@ -651,6 +651,10 @@ _atuin_setup() {
     # (up-line-or-history, not vi-up-line-or-history)
     bindkey -M vicmd 'k' up-line-or-history 2> /dev/null
     bindkey -M vicmd '/' vi-history-search-backward 2> /dev/null
+    # Defined in conf.d/atuin.zsh, which is sourced long before this runs. It
+    # lives there because containers run an older copy of THIS file, baked into
+    # the image, while conf.d is read from the clone and arrives with a pull.
+    _atuin_inline_height
 }
 defer _atuin_setup
 
