@@ -42,6 +42,24 @@ _upd_uv_tool() {
   fi
 }
 
+# timing-mcp is a local project inside the custom submodule, not a published tool, so
+# `uv tool` never reaches it and its venv used to be built once at install time and never
+# touched again — that is how one machine sat on mcp 1.x while a fresh install resolved
+# 2.x and crash-looped on the renamed API.
+# NOTE: `uv lock --upgrade` then `uv sync`, not a bare sync: the lock is tracked now, so
+# the bump has to land as a reviewable diff in the submodule, the same way updm treats
+# flake.lock. A sync alone would only reinstall what the lock already pins.
+# NOTE: the agent is kicked afterwards because it holds the old code until it restarts,
+# and KeepAlive alone will not notice that the venv underneath it changed.
+_upd_timing_mcp() {
+  local dir="$HOME/.dotfiles/tools/claude/custom/mcp/timing"
+  [[ -f "$dir/pyproject.toml" ]] || return 0
+  uv lock --upgrade --directory "$dir" --quiet || return 1
+  uv sync --directory "$dir" --quiet || return 1
+  launchctl kickstart -k "gui/$(id -u)/com.cosmdandy.timing-mcp" &> /dev/null
+  return 0
+}
+
 # NOTE: this step never fails the run — MCP is an auxiliary layer, and the network to
 # npm/PyPI drops more often than everything else in updm combined.
 _upd_mcp_tools() {
@@ -54,6 +72,7 @@ _upd_mcp_tools() {
     # things-mcp needs Things.app — mac only, as in install.sh
     if [[ "$OSTYPE" == darwin* ]]; then
       _upd_uv_tool things-mcp || rc=1
+      _upd_timing_mcp || rc=1
     fi
   fi
   (( rc )) && print -P "%F{yellow}  часть MCP-инструментов не обновилась%f" >&2
