@@ -2,6 +2,12 @@
 
 set -e
 
+# NOTE: PATH is re-established here rather than inherited. The activation hook exports
+# hookPath, but nix-darwin's /etc/zshenv re-runs set-environment for every new zsh process
+# and wipes it — so /opt/homebrew/bin was gone by the time this ran, the guard below found
+# no devpod and skipped the whole apply, silently, on every switch.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # Desired state of the DevPod settings as code. Driven through the CLI because devpod has
 # no config file to symlink — its state lives in ~/.devpod. Idempotent and portable, in
 # the same shape as tools/orbstack/apply.sh.
