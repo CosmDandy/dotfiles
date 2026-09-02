@@ -17,7 +17,7 @@ mode=off
 
 case "$mode" in
   off)  next=on ;;
-  on)   next=exit ;;
+  on)   next='exit' ;;
   *)    next=off ;;
 esac
 
