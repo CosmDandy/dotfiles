@@ -157,7 +157,7 @@ in
     # cannot split AC from battery. On AC the system never idle-sleeps so
     # background agents keep running; a blanked display plus
     # screensaver.askForPassword = a locked Mac.
-    pmset -c sleep 0 displaysleep 5
+    pmset -c sleep 0 displaysleep 8
     pmset -b sleep 1 displaysleep 2 lowpowermode 1
   '';
 
