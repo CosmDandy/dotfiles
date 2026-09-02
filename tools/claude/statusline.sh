@@ -161,7 +161,35 @@ EOF
 cols=${COLUMNS:-100}
 # NOTE: Claude Code adds its own padding on top of COLUMNS, so the last column
 # cannot be used — the tail gets cut with an ellipsis.
-RIGHT_MARGIN=${CLAUDE_STATUSLINE_MARGIN:-5}
+#
+# The wider margin exists for one thing only: the Remote Control chip Claude Code
+# parks in the right corner. Without the bridge there is no chip and the reserved
+# space is just a hole, so the line hugs the edge instead.
+#
+# Whether THIS session holds a bridge is answered by ~/.claude.json: every live one
+# is an entry in replBridgePlaceholders carrying the pid that owns it. state.json
+# does not answer it — a session running interactively has no job directory at all,
+# and bridgeSessionId there only records that a bridge existed when the job was
+# written. So walk up from this script to the owning `claude` process and see
+# whether its pid is among them.
+rc_margin=2
+bridge_pids=$(jq -r '(.replBridgePlaceholders // {}) | .[].pid // empty' "$HOME/.claude.json" 2>/dev/null)
+if [ -n "$bridge_pids" ]; then
+  probe=$$
+  hops=0
+  while [ "$hops" -lt 6 ] && [ "${probe:-0}" -gt 1 ]; do
+    case "
+$bridge_pids
+" in
+      *"
+$probe
+"*) rc_margin=5; break ;;
+    esac
+    probe=$(ps -o ppid= -p "$probe" 2>/dev/null | tr -d ' ')
+    hops=$((hops + 1))
+  done
+fi
+RIGHT_MARGIN=${CLAUDE_STATUSLINE_MARGIN:-$rc_margin}
 
 # --- context bar -------------------------------------------------------------
 
