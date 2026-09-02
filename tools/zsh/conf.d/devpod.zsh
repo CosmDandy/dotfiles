@@ -8,13 +8,107 @@
 # The entry name is kept neutral because this file is public — the real one is
 # overridden in private/zsh/, which is sourced later.
 alias dpd='devpod delete'
-alias dps='devpod stop'
+
+# Every call this tool makes, with what it cost. The point is not debugging a
+# single run — it is having enough runs to answer "what timeout is right here",
+# which no single observation can.
+#
+# TSV, five columns: when, what, how long in ms, how it went, then free
+# key=value pairs. Appended one short line at a time, so several shells and the
+# detached job runner can all write to it without a lock: writes under the pipe
+# buffer are atomic with O_APPEND.
+: ${DP_LOG:=${XDG_STATE_HOME:-$HOME/.local/state}/dp/events.tsv}
+# Exported: the detached job runner is a separate process and has to land in the
+# same file, or a recreate started from the picker would be missing from exactly
+# the statistics it matters most to.
+typeset -gx DP_LOG
+# Rolled at a size, not a date: this is measurement data, and what matters is
+# keeping the recent stretch complete rather than aligning it to days.
+: ${DP_LOG_MAX_KB:=2048}
+
+# How `ds` lands in a container, remembered between shells so the answer does
+# not have to be retyped every session. Three states, cycled with Ctrl-T in the
+# picker: off — a plain login shell, as before; on — attach to the workspace's
+# own tmux session (built from a template the first time); exit — the same, and
+# the local shell exits when you detach, which closes the terminal tab with it.
+: ${DP_TMUX_FLAG:=${XDG_STATE_HOME:-$HOME/.local/state}/dp/tmux-mode}
+
+_dp_tmux_mode() {
+  emulate -L zsh
+  local m=off
+  [[ -r $DP_TMUX_FLAG ]] && m=$(< $DP_TMUX_FLAG)
+  case $m in on|exit) print -r -- $m ;; *) print -r -- off ;; esac
+}
+
+_dp_tmux_set() {
+  emulate -L zsh
+  local dir=${DP_TMUX_FLAG:h}
+  [[ -d $dir ]] || mkdir -p -- $dir 2>/dev/null || return 1
+  print -r -- "$1" > $DP_TMUX_FLAG
+}
+
+# off → on → exit → off. One key, and the footer says which of the three it is.
+_dp_tmux_cycle() {
+  emulate -L zsh
+  case $(_dp_tmux_mode) in
+    off) _dp_tmux_set on ;;
+    on)  _dp_tmux_set exit ;;
+    *)   _dp_tmux_set off ;;
+  esac
+}
+
+zmodload zsh/datetime 2>/dev/null
+
+# NOTE: no external commands anywhere in here — no date(1), no stat(1). This
+# runs on the path being measured, and a fork would be a large share of what it
+# is trying to measure.
+_dp_log() {
+  emulate -L zsh
+  [[ -n $DP_LOG ]] || return 0
+  # NOTE: not `status` — zsh keeps that name for $? and the assignment fails
+  # with "read-only variable", which in a logging function means every single
+  # call dies silently on the path it was meant to measure.
+  local event=$1 ms=$2 st=$3
+  shift 3
+  local dir=${DP_LOG:h}
+  [[ -d $dir ]] || mkdir -p -- $dir 2>/dev/null || return 0
+  # NOTE: strftime, not prompt expansion. `${(%):-%D{...}}` reads the first `}`
+  # of the format as the end of the substitution and leaves a stray brace in the
+  # timestamp. NOTE: printf, not `print -r` — the latter does not turn \t into a
+  # tab, and the columns arrive as one literal string.
+  local ts
+  strftime -s ts '%Y-%m-%dT%H:%M:%S' $EPOCHSECONDS
+  printf '%s\t%s\t%s\t%s\t%s\n' "$ts" "$event" "$ms" "$st" "${(j: :)@}" >> $DP_LOG
+}
+
+# Called where a run begins, not on every line: one stat per picker opening is
+# free, one per logged event would not be.
+_dp_log_roll() {
+  emulate -L zsh
+  [[ -n $DP_LOG ]] || return 0
+  local -a big=( $DP_LOG(N.Lk+$DP_LOG_MAX_KB) )
+  (( $#big )) && mv -f -- $DP_LOG $DP_LOG.1 2>/dev/null
+  return 0
+}
+
+# Was the multiplexed connection to this workspace already up? The whole
+# fast-path story turns on it, and the answer is one stat of the control socket
+# — asking ssh itself would cost a fork of the thing being measured.
+_dp_master_state() {
+  emulate -L zsh
+  local -a sock=( $HOME/.ssh/sockets/*@${1}.devpod:22(N=) )
+  (( $#sock )) && print -r -- up || print -r -- down
+}
 
 # Where new workspaces come from. The registry is public; the provider is left
 # empty here so devpod's own default applies, and the private layer overrides it
 # with the work host.
 : ${DP_IMAGE:=ghcr.io/cosmdandy/devcontainer}
 : ${DP_PROVIDER:=}
+# Who to be inside a container. The image bakes this user in, but a repository
+# carrying its own devcontainer.json without remoteUser drops it, and devpod
+# then falls back to root.
+: ${DP_USER:=$USER}
 # NOTE: `dp` used to be an alias for `devpod up --workspace-env-file …`. It is a
 # function now (bottom of this file) and the alias had to go: an alias is
 # substituted while the FUNCTION DEFINITION is parsed, so `dp() {` would have
@@ -40,11 +134,105 @@ ds() {
   if (( $# )); then id=$1; shift; else id=$(_dp_pick) || return 1; fi
   [[ -z $id ]] && { print -u2 "ds: no workspace selected"; return 1 }
 
-  if ssh -G "${id}.devpod" 2>/dev/null | grep -qi '^proxycommand.*devpod'; then
-    ssh "${id}.devpod" "$@"
-  else
-    devpod ssh "$id" "$@"
+  local _t0=$EPOCHREALTIME
+  local _master=$(_dp_master_state "$id")
+  local -i ms rc
+  # NOTE: only when no command was given. `ds id "some command"` is somebody
+  # asking for that command, not for a session to live in.
+  local _mode=$(_dp_tmux_mode) _enter=
+  if [[ $_mode != off ]] && (( ! $# )); then
+    # NOTE: `[ -x … ]` and not `script || fallback`. A clone that predates the
+    # script made the shell print "no such file or directory" before falling
+    # back — an error message for a situation that is handled.
+    # NOTE: TERM is normalised here too, for the same reason the script does it:
+    # this runs as a non-interactive shell, .zshrc never corrects an unknown
+    # xterm-ghostty, and tmux refuses to start on one.
+    local _script='$HOME/dotfiles/tools/devpod/tmux-enter.sh'
+    _enter="if [ -x $_script ]; then exec $_script $id; fi; "
+    # NOTE: a container without tmux is not an error — the flag means "tmux
+    # when there is tmux". Without this the entry died with "command not found:
+    # tmux" and dropped the user back on the mac, which is a worse outcome than
+    # the plain shell they would have got with the flag off.
+    _enter+='command -v tmux >/dev/null 2>&1 || exec "${SHELL:-/bin/sh}" -l; '
+    _enter+='infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color; '
+    _enter+="exec tmux new-session -A -s $id"
   fi
+  if ssh -G "${id}.devpod" 2>/dev/null | grep -qi '^proxycommand.*devpod'; then
+    # How long it takes to GET there, measured separately from how long the
+    # session then lasts — the wall clock of an interactive shell says how long
+    # somebody worked, which is not a number any timeout is set from.
+    # One extra round trip: milliseconds when the multiplexed connection is up,
+    # and when it is not, this is the handshake the login would have paid
+    # anyway — it just pays it here and leaves the master warm.
+    # NOTE: only for a container that is already up. On a stopped one the
+    # ProxyCommand has to start it first, which takes far longer than any
+    # connect timeout worth setting — measured: 5s spent, rc=255, and those
+    # five seconds were added to the wait before the real login even began.
+    # A start is not what this row is supposed to measure anyway.
+    if [[ $(_dp_snap_state "$id") == running ]]; then
+      local _tc=$EPOCHREALTIME
+      ssh -o BatchMode=yes -o ConnectTimeout=5 -T "${id}.devpod" true 2>/dev/null
+      rc=$?
+      (( ms = (EPOCHREALTIME - _tc) * 1000 ))
+      _dp_log connect $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc"
+    fi
+    if [[ -n $_enter ]]; then
+      ssh -t "${id}.devpod" "$_enter"
+    else
+      ssh "${id}.devpod" "$@"
+    fi
+    rc=$?
+    (( ms = (EPOCHREALTIME - _t0) * 1000 ))
+    _dp_log session $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc" "tmux=$_mode"
+    # Detaching from tmux leaves the work running on the other side, so there is
+    # nothing left for this shell to do — and closing it closes the tab.
+    # NOTE: only after a SUCCESSFUL session. A failed entry that closes the tab
+    # takes the error message with it, and the next thing anybody sees is a
+    # terminal that shut itself — which is exactly how this looked from outside.
+    [[ $_mode == exit && -n $_enter ]] && (( rc == 0 )) && exit $rc
+    return $rc
+  else
+    # NOTE: --user for OUR image only. devpod takes the user from the image
+    # label, and a repository whose own devcontainer.json omits remoteUser
+    # overrides it with nothing — which is how `git status` in a work repo
+    # answers "detected dubious ownership" instead of listing files. But a
+    # workspace built from somebody else's devcontainer.json has no such user
+    # at all, and there the flag turns a working login into a hang on `su`.
+    local -a u=()
+    [[ $(_dp_ws_field "$id" .devContainerImage) == ${DP_IMAGE}:* ]] \
+      && u=(--user "$DP_USER")
+    if [[ -n $_enter ]]; then
+      devpod ssh "$id" $u --command "$_enter"
+    else
+      devpod ssh "$id" $u "$@"
+    fi
+    rc=$?
+    (( ms = (EPOCHREALTIME - _t0) * 1000 ))
+    # NOTE: no separate connect row on this path. `devpod ssh` builds its tunnel
+    # from scratch every call — measuring it would mean paying those ~6s twice,
+    # which is precisely the cost this whole fast/slow distinction is about.
+    _dp_log session $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=devpod "master=$_master" "rc=$rc" "tmux=$_mode"
+    [[ $_mode == exit && -n $_enter ]] && (( rc == 0 )) && exit $rc
+    return $rc
+  fi
+}
+
+# Stopping one, the short way. A function and not an alias so that a bare `dps`
+# can open the picker, the way `ds` does.
+dps() {
+  emulate -L zsh
+  local -a ids
+  if (( $# )); then
+    ids=("$@")
+  else
+    # -m: stopping several at once is the normal case at the end of a day.
+    local out
+    out=$(_dp_pick -m) || return 1
+    ids=(${(f)out})
+  fi
+  ids=(${ids:#})
+  (( $#ids )) || { print -u2 "dps: no workspace selected"; return 1 }
+  _dp_stop $ids
 }
 
 # Row colours, carried by the data itself: fzf paints the whole line and cannot
@@ -121,6 +309,30 @@ _dp_meta() {
 # uid<TAB>state<TAB>image for every container, one docker call per HOST rather
 # than one per workspace: the label carries the workspace uid, and the uid is
 # already known locally, so the join costs nothing.
+# One host asked, and the round trip recorded. A function rather than two lines
+# inline because the measurement belongs next to the call: this ssh is the
+# single slowest thing the tool does, and every timeout question — is 5s enough
+# to connect, does a host ever answer after 2s — is answered from this row.
+_dp_probe_one() {
+  emulate -L zsh
+  local host=$1 t=$2 probe=$3
+  local t0=$EPOCHREALTIME
+  if [[ $host == LOCAL ]]; then
+    sh "$probe" > "$t" 2>/dev/null
+  else
+    ssh -o BatchMode=yes -o ConnectTimeout=5 -T "$host" 'sh -s' \
+      < "$probe" > "$t" 2>/dev/null
+  fi
+  local -i rc=$? ms
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  # The sentinel, not the exit status, is what says the answer is usable — the
+  # same distinction the collection below draws between "no containers" and
+  # "nobody answered".
+  local -i ok=1
+  grep -q '^#ok$' "$t" 2>/dev/null && ok=0
+  _dp_log probe $ms $ok "host=$host" "rc=$rc"
+}
+
 _dp_state() {
   emulate -L zsh
   # NOTE: no_monitor, or every backgrounded host prints its job number over the
@@ -164,12 +376,7 @@ _dp_state() {
     (( n++ ))
     t=$DP_CACHE_DIR/state.${sysparams[pid]:-$$}.$n
     tmps+=("$t"); hnames+=("$host")
-    if [[ $host == LOCAL ]]; then
-      sh "$probe" > "$t" 2>/dev/null &
-    else
-      ssh -o BatchMode=yes -o ConnectTimeout=5 -T "$host" 'sh -s' \
-        < "$probe" > "$t" 2>/dev/null &
-    fi
+    _dp_probe_one "$host" "$t" "$probe" &
   done
   wait
   # NOTE: a host that did not answer is NOT a host with no containers. Without
@@ -258,7 +465,11 @@ _dp_snapshot_refresh() {
   emulate -L zsh
   _dp_cache_dir || return 1
   local part=$DP_SNAPSHOT.${sysparams[pid]:-$$}
+  local t0=$EPOCHREALTIME
+  local -i ms
   if ! _dp_snapshot "$part"; then
+    (( ms = (EPOCHREALTIME - t0) * 1000 ))
+    _dp_log snapshot $ms 1 reason=collect-failed
     rm -f -- $part
     return 1
   fi
@@ -268,9 +479,14 @@ _dp_snapshot_refresh() {
   # background that happens silently. The old code collected on every run and
   # healed itself next time; this one would stay broken.
   if [[ ! -s $part ]]; then
+    (( ms = (EPOCHREALTIME - t0) * 1000 ))
+    _dp_log snapshot $ms 1 reason=empty
     rm -f -- $part
     return 1
   fi
+  local -i rows=${#${(f)"$(< $part)"}}
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  _dp_log snapshot $ms 0 "rows=$rows"
   mv -f -- $part $DP_SNAPSHOT
 }
 
@@ -349,17 +565,42 @@ _dp_rows() {
   # NOTE: the provider is set in faint (SGR 2) on top of the muted colour. It
   # matters only when workspaces live on different hosts, which is rare — this
   # keeps it readable when looked for and out of the way when not.
-  local mark colour
+  # A running job outranks the snapshot: the snapshot says what the container
+  # was when it was last polled, the job says what is being done to it now.
+  local jobs=$DP_CACHE_DIR/jobs
+  local mark colour job jverb jstate
   for line in $lines; do
     c=(${(ps:\t:)line})
-    case $c[2] in
-      running) mark='● running';      colour=$_DP_GREEN ;;
-      exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
-      new)     mark='· not created';  colour=$_DP_MUTED ;;
-      unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
-      *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
-    esac
-    printf "%-${w}s  %s%-16s%s  %s%s%s%s\n" \
+    job=
+    [[ -r $jobs/$c[1].status ]] && job=$(< $jobs/$c[1].status)
+    if [[ -n $job ]]; then
+      jverb=${job%%$'\t'*}; jstate=${job##*$'\t'}
+      case $jstate in
+        # NOTE: only the running form is inflected. "recreating: partial" ran
+        # two columns past the field width and pushed the provider out of line
+        # — the outcome states keep the bare verb so every row stays aligned.
+        # NOTE: no spinner animation. fzf redraws only when the list reloads,
+        # and reloading on a timer to turn a character would fight the picker
+        # for the terminal every 100ms.
+        running) case $jverb in
+                   stop)     mark='● stopping…' ;;
+                   recreate) mark='● recreating…' ;;
+                   *)        mark="● ${jverb}…" ;;
+                 esac
+                 colour=$_DP_YELLOW ;;
+        partial) mark="⚠ ${jverb} partial"; colour=$_DP_YELLOW ;;
+        *)       mark="✗ ${jverb} failed";  colour=$_DP_RED ;;
+      esac
+    else
+      case $c[2] in
+        running) mark='● running';      colour=$_DP_GREEN ;;
+        exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
+        new)     mark='· not created';  colour=$_DP_MUTED ;;
+        unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
+        *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
+      esac
+    fi
+    printf "%-${w}s  %s%-18s%s  %s%s%s%s\n" \
       "$c[1]" "$colour" "$mark" "$_DP_OFF" \
       "$_DP_FAINT$_DP_MUTED" "${c[3]/#-/—}" "$_DP_OFF"
   done
@@ -371,8 +612,16 @@ _dp_rows() {
 # exist in three copies.
 _dp_choose() {
   emulate -L zsh
-  local multi=0
-  [[ $1 == -m ]] && { multi=1; shift }
+  local multi=0 tmux_footer=0
+  while [[ $1 == -* ]]; do
+    case $1 in
+      -m) multi=1 ;;
+      # The chooser `ds` opens: it gets the keys spelled out at the bottom and
+      # the tmux flag, because where you land is decided here and nowhere else.
+      -t) tmux_footer=1 ;;
+    esac
+    shift
+  done
   local prompt=$1 header=$2
   local -a rows
   rows=(${(f)"$(cat)"})
@@ -393,6 +642,12 @@ _dp_choose() {
     # whole line as one field and --nth=1 would match against the date too.
     args=(--ansi --nth=1 --accept-nth=1 --prompt="$prompt" --header="$header")
     (( multi )) && args+=(--multi --bind 'ctrl-a:select-all,ctrl-d:deselect-all')
+    if (( tmux_footer )); then
+      local fdot=${DOTFILES_DIR:-$HOME/.dotfiles}
+      args+=(--footer="$($fdot/tools/devpod/footer.zsh $DP_TMUX_FLAG simple)"
+             --footer-border=top
+             --bind="ctrl-t:execute-silent($fdot/tools/devpod/toggle-tmux.sh $DP_TMUX_FLAG)+transform-footer($fdot/tools/devpod/footer.zsh $DP_TMUX_FLAG simple)")
+    fi
     print -rl -- $rows | fzf "${args[@]}"
     return ${pipestatus[2]}
   fi
@@ -429,7 +684,7 @@ _dp_pick() {
   (( ${#rows} )) || { print -u2 "no workspaces found"; return 1; }
   local hdr='most recent first'
   [[ $1 == -m ]] && hdr='Tab — mark, Ctrl-A — all; most recent first'
-  print -rl -- $rows | _dp_choose ${1:+-m} 'workspace> ' "$hdr"
+  print -rl -- $rows | _dp_choose ${1:+-m} -t 'workspace> ' "$hdr"
 }
 
 # Image picker for kvt-up. Not derived from the catalog on purpose: the image is
@@ -586,6 +841,24 @@ _dp_put_claude() {
   return 0
 }
 
+# The state the last collection saw for one workspace: running, exited, new,
+# or empty when it is not in the snapshot at all.
+_dp_snap_state() {
+  emulate -L zsh
+  [[ -s $DP_SNAPSHOT ]] || return 1
+  awk -F'\t' -v i="$1" '$1==i{print $2; exit}' $DP_SNAPSHOT
+}
+
+# One field out of a workspace's own record. The image pinned at creation and
+# the provider it belongs to both live here, and nowhere else: `devpod list`
+# reports neither.
+_dp_ws_field() {
+  emulate -L zsh
+  local f=${HOME}/.devpod/contexts/default/workspaces/$1/workspace.json
+  [[ -r $f ]] || return 1
+  jq -r "$2 // empty" "$f" 2>/dev/null
+}
+
 # The SSH host behind a provider, empty when it builds locally. `docker pull`
 # needs it: the image is set by a flag, so devcontainer.json's initializeCommand
 # never runs and nothing else refreshes a floating tag on the build host.
@@ -638,12 +911,21 @@ _dp_pull() {
     print -u2 "⚠ provider host for $provider unknown — pull skipped"
     return 0
   fi
+  local t0=$EPOCHREALTIME
+  local -i rc=0 ms
   if [[ -n $host ]]; then
     ssh -o BatchMode=yes -o ConnectTimeout=5 -T "$host" \
         "docker pull ${DP_IMAGE}:${tag}" >/dev/null 2>&1
   else
     docker pull "${DP_IMAGE}:${tag}" >/dev/null 2>&1
-  fi || print -u2 "⚠ pull ${DP_IMAGE}:${tag} failed — will run on the local tag"
+  fi
+  rc=$?
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  # A pull that finds nothing new still costs a round trip to the registry;
+  # telling that apart from a real six-gigabyte transfer is what the duration is
+  # for, since docker says nothing useful about which happened.
+  _dp_log pull $ms $(( rc == 0 ? 0 : 1 )) "tag=$tag" "host=${host:-local}" "rc=$rc"
+  (( rc == 0 )) || print -u2 "⚠ pull ${DP_IMAGE}:${tag} failed — will run on the local tag"
 }
 
 # One workspace up. Every caller goes through here so the flags stay in one
@@ -656,7 +938,12 @@ _dp_up_one() {
   # NOTE: no --workspace-env-file. It put the nine work variables into
   # /etc/envfile.json inside the container with mode 644; they are delivered
   # as a 0600 file by `dp secrets` instead. See _dp_put_workenv.
+  local t0=$EPOCHREALTIME
   devpod up "${args[@]}"
+  local -i rc=$? ms
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  _dp_log up $ms $(( rc == 0 ? 0 : 1 )) "id=$id" "profile=$profile" "rc=$rc"
+  return $rc
 }
 
 # Everything the picker needs in one place: snapshot, rows, keys. Prints
@@ -665,12 +952,18 @@ _dp_pick_action() {
   emulate -L zsh
   setopt local_options no_monitor
   _dp_cache_dir || return 1
+  # Once per opening — the one place cheap enough to check the log's size.
+  _dp_log_roll
+  local _t0=$EPOCHREALTIME
+  local -i _ms
   local dot=${DOTFILES_DIR:-$HOME/.dotfiles}
   # NOTE: fzf renders ANSI inside --footer (checked, it passes the codes
   # through), so the key and what it does can be told apart at a glance. Read as
   # one grey run they blurred into "Ctrl-R recreate Ctrl-D delete".
-  local k=$_DP_BLUE a="${_DP_FAINT}${_DP_MUTED}" o=$_DP_OFF
-  local _dp_footer="${k}Enter${o} ${a}open${o}   ${k}Ctrl-N${o} ${a}new${o}   ${k}Ctrl-S${o} ${a}secrets${o}   ${k}Ctrl-R${o} ${a}recreate${o}   ${k}Ctrl-D${o} ${a}delete${o}"
+  # The footer is generated, not written out here: it carries the tmux flag's
+  # state in colour, and Ctrl-T has to be able to redraw it without reopening
+  # the picker.
+  local _dp_footer=$($dot/tools/devpod/footer.zsh $DP_TMUX_FLAG)
   (( _DP_RUN++ ))
   local tag=${sysparams[pid]:-$$}.$_DP_RUN
   local base=$DP_CACHE_DIR/rows.$tag fresh=$DP_CACHE_DIR/rows.$tag.fresh
@@ -688,7 +981,10 @@ _dp_pick_action() {
   # Only the very first run has nothing at all to draw. -s and not -f: an empty
   # file passes -f, renders no rows, and there is no path from here back to a
   # collection — `dp` would report "no workspaces" forever.
-  [[ -s $DP_SNAPSHOT ]] || _dp_snapshot_refresh || return 1
+  # Whether this opening waited for a collection is the difference between 40ms
+  # and a second and a half, so the row says which of the two it was.
+  local _cached=yes
+  [[ -s $DP_SNAPSHOT ]] || { _cached=no; _dp_snapshot_refresh || return 1 }
   _dp_rows "$DP_SNAPSHOT" > $base
   if [[ ! -s $base ]]; then
     rm -f -- $base
@@ -708,16 +1004,50 @@ _dp_pick_action() {
   # Tab survive the swap instead of being cleared by it. Deliberately without
   # --track: tracking blocks the query line until it has found the item again,
   # and the whole point here is that the picker stays live.
+  # NOTE: --info carries a PREFIX of one space, and that space is the point: a
+  # prefix replaces fzf's spinner. This picker always has a reload command in
+  # flight — the wait for the next row update — so the spinner turned forever
+  # and told nobody anything. What a job is doing is written on its own row.
+  # NOTE: recreate and delete do not act on the keypress. They arm a yes/no
+  # that the next Enter answers, and only the "yes" row runs anything — pressing
+  # the key twice, or leaning on it, changes nothing. Stop is deliberately not
+  # among them: it is undone by opening the workspace again.
+  # NOTE: stop and recreate are NOT in --expect any more. Leaving the picker to
+  # run them meant reopening it afterwards to do the next one, and watching a
+  # bare terminal in between; they run detached now and report back through the
+  # row they belong to.
+  local jobs=$DP_CACHE_DIR/jobs
+  mkdir -p -- $jobs
+  local runner=$dot/tools/devpod/run-job.zsh
+  # The confirmation's own state: which verb is armed and what it would act on.
+  # Cleared on every opening — an Esc out of an armed picker must not leave a
+  # recreate waiting to be confirmed by the next unrelated Enter.
+  local cstate=$DP_CACHE_DIR/confirm.$tag ctargets=$DP_CACHE_DIR/targets.$tag
+  rm -f -- $cstate $ctargets $DP_CACHE_DIR/confirm.*(N.mm+60) $DP_CACHE_DIR/targets.*(N.mm+60)
+  local confirm=$dot/tools/devpod/confirm.zsh
+  local -i _rows=${#${(f)"$(< $base)"}}
+  (( _ms = (EPOCHREALTIME - _t0) * 1000 ))
+  _dp_log picker $_ms 0 "cached=$_cached" "rows=$_rows"
+  local _t_open=$EPOCHREALTIME
   local out
   out=$(fzf --ansi --nth=1 --accept-nth=1 --multi --id-nth=1 \
-      --print-query --expect=ctrl-n,ctrl-s,ctrl-r,ctrl-d \
+      --print-query --expect=ctrl-n,ctrl-s \
       --prompt='workspace> ' \
-      --bind="load:unbind(load)+reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
-      --preview="$dot/tools/devpod/preview.zsh {1} $DP_SNAPSHOT" \
+      --info='inline-right: ' \
+      --bind="load:reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
+      --bind="ctrl-x:execute-silent($runner stop $jobs $fresh {+1})" \
+      --bind="ctrl-r:transform($confirm arm recreate $cstate $ctargets {+1})" \
+      --bind="ctrl-d:transform($confirm arm delete $cstate $ctargets {+1})" \
+      --bind="enter:transform($confirm run $cstate $ctargets {q} $base $jobs $fresh $runner $DP_TMUX_FLAG)" \
+      --bind="ctrl-l:execute($dot/tools/devpod/show-log.zsh $jobs {1})" \
+      --bind="ctrl-t:execute-silent($dot/tools/devpod/toggle-tmux.sh $DP_TMUX_FLAG)+transform-footer($dot/tools/devpod/footer.zsh $DP_TMUX_FLAG)" \
+      --preview="$dot/tools/devpod/preview.zsh {1} $DP_SNAPSHOT $jobs" \
       --preview-window='right,46%,border-left' \
       --footer="$_dp_footer" \
       --footer-border=top < $base)
   local rc=$?
+  (( _ms = (EPOCHREALTIME - _t_open) * 1000 ))
+  _dp_log picker-close $_ms $(( rc == 0 ? 0 : 1 )) "rc=$rc"
   rm -f -- $base $fresh $fresh.part
   # NOTE: rc 130 is a deliberate Esc, rc 1 with --print-query still carries the
   # query — that is exactly the "nothing matched, make it" case.
@@ -775,6 +1105,24 @@ _dp_new() {
   _dp_secrets "$id" ${DP_SECRETS%%\|*}
 }
 
+# Deleting, as a function so it can run detached like the others and be logged
+# the same way. Reached only through the picker's confirmation.
+_dp_delete() {
+  emulate -L zsh
+  local id
+  local t0
+  local -i rc ms
+  for id in "$@"; do
+    [[ -z $id ]] && continue
+    print "✗ $id"
+    t0=$EPOCHREALTIME
+    rc=0
+    devpod delete "$id" || rc=$?
+    (( ms = (EPOCHREALTIME - t0) * 1000 ))
+    _dp_log delete $ms $(( rc == 0 ? 0 : 1 )) "id=$id" "rc=$rc"
+  done
+}
+
 # Rebuilding a workspace that already exists. Deliberately NOT routed through
 # the catalog: an instance made by `dp new` is never in it, and that is the whole
 # point of `dp new` — the first version of this only handled catalog entries and
@@ -782,26 +1130,83 @@ _dp_new() {
 # devpod already stores the source and the image, so id plus --recreate is
 # enough; the image is passed again because losing that override is what dropped
 # a container to root once already.
+# Stopping is the cheap half of recreate: the container goes down, its home and
+# everything in it stays. `ds` brings it back up on the next entry.
+_dp_stop() {
+  emulate -L zsh
+  local id state
+  for id in "$@"; do
+    [[ -z $id ]] && continue
+    # NOTE: only `running` is skipped-past. An unknown state means the host
+    # never answered, and refusing to act on that would leave the one case
+    # where stopping is most likely the right thing with no way to do it.
+    # NOTE: only a FRESH snapshot may talk us out of stopping something. The
+    # cache is minutes old at times, and acting on it skipped a container that
+    # had been started since — reported "already stopped" while it kept running.
+    # A stop against something already down costs about a second and is
+    # harmless; not stopping what should be stopped is not.
+    local -a fresh_snap=( $DP_SNAPSHOT(Nms-60) )
+    state=
+    (( $#fresh_snap )) && state=$(_dp_snap_state "$id")
+    if [[ $state == exited || $state == new ]]; then
+      print "■ $id is already stopped"
+      _dp_log stop 0 0 "id=$id" skipped=already-stopped
+      continue
+    fi
+    print "■ $id"
+    local t0=$EPOCHREALTIME
+    local -i rc=0 ms
+    devpod stop "$id" || { rc=$?; print -u2 "⚠ stop $id failed" }
+    (( ms = (EPOCHREALTIME - t0) * 1000 ))
+    _dp_log stop $ms $(( rc == 0 ? 0 : 1 )) "id=$id" "rc=$rc"
+  done
+}
+
 _dp_recreate() {
   emulate -L zsh
   local id=$1
   [[ -z $id ]] && return 1
-  local f=${HOME}/.devpod/contexts/default/workspaces/${id}/workspace.json
-  local image=
-  [[ -r $f ]] && image=$(jq -r '.devContainerImage // empty' "$f" 2>/dev/null)
+  local _t0=$EPOCHREALTIME
+  local -i _ms
+  local image=$(_dp_ws_field "$id" .devContainerImage)
   local -a args=("$id" --recreate)
   [[ -n $image ]] && args+=(--devcontainer-image "$image")
+  # NOTE: the same stale-tag trap `dp new` guards against, and it bites harder
+  # here: docker keeps a floating tag it already holds, so a recreate comes up
+  # on whatever the build host pulled first, and provisioning then rebuilds
+  # from source everything the old image is missing — terraform is unfree, so
+  # cache.nixos.org has no binary for it and the host compiles it itself.
+  # Only our own tags: a workspace on a locally built vsc-* image has no
+  # registry to pull from.
+  if [[ $image == ${DP_IMAGE}:* ]]; then
+    local provider=$(_dp_ws_field "$id" .provider.name)
+    print "⇣ $image"
+    _dp_pull "$provider" "${image##*:}"
+  fi
   # NOTE: no --workspace-env-file. It put the nine work variables into
   # /etc/envfile.json inside the container with mode 644; they are delivered
   # as a 0600 file by `dp secrets` instead. See _dp_put_workenv.
   print "↻ $id${image:+ ($image)}"
-  devpod up "${args[@]}" || return 1
+  local _t_up=$EPOCHREALTIME
+  if ! devpod up "${args[@]}"; then
+    (( _ms = (EPOCHREALTIME - _t_up) * 1000 ))
+    _dp_log up $_ms 1 "id=$id" mode=recreate
+    return 1
+  fi
+  (( _ms = (EPOCHREALTIME - _t_up) * 1000 ))
+  _dp_log up $_ms 0 "id=$id" mode=recreate
   # NOTE: the container is new, so its home is new — the secrets went with the
   # old one. This is the gap that cost a session before it became a verb.
   # NOTE: every registered secret by name, NOT the bare call. Without names
   # _dp_secrets opens the picker and waits — which turns an automatic restore
   # after a rebuild into a command that hangs forever when nobody is looking.
   _dp_secrets "$id" ${DP_SECRETS%%\|*}
+  local -i rc=$?
+  (( _ms = (EPOCHREALTIME - _t0) * 1000 ))
+  # End to end: pull, up, and the secret delivery after it. The parts have rows
+  # of their own; this is the number a person actually waits through.
+  _dp_log recreate $_ms $(( rc == 0 ? 0 : 1 )) "id=$id" "rc=$rc"
+  return $rc
 }
 
 # What a workspace can be handed, and what puts it there. One line per secret:
@@ -860,6 +1265,13 @@ _dp_put_age() {
   emulate -L zsh
   if [[ -n $DPKEY_AUTO_ITEM ]]; then
     dpkey "$1" "$DPKEY_AUTO_ITEM"
+  elif [[ -n $DP_JOB ]]; then
+    # NOTE: which vault entry holds the key is a CHOICE, and a detached job has
+    # nobody to ask — dpkey would open a picker onto a terminal that is not
+    # there. Exit 2 is the "everything else went in, this one needs you" signal
+    # the runner turns into a partial rather than a failure.
+    print -u2 "age key needs a choice — dp secrets $1 age (or set DPKEY_AUTO_ITEM)"
+    return 2
   else
     dpkey "$1"
   fi
@@ -869,24 +1281,56 @@ _dp_put_age() {
 # NOTE: the state comes from the cached snapshot, not from a fresh look inside
 # the container — asking would cost a `devpod ssh` before a picker that exists
 # to save exactly that kind of wait.
-_dp_secret_pick() {
+# One row per registered secret, with the state the last collection saw.
+# A function of its own because the picker RELOADS these after every delivery —
+# that reload is what makes a delivered secret stop saying "missing".
+_dp_secret_rows() {
   emulate -L zsh
   local id=$1 sec= e name descr pos mark colour
   [[ -r $DP_SNAPSHOT ]] && \
     sec=$(awk -F'\t' -v i="$id" '$1==i{print $11; exit}' "$DP_SNAPSHOT" 2>/dev/null)
-  local -a rows
   for e in $DP_SECRETS; do
     name=${${(s:|:)e}[1]}; descr=${${(s:|:)e}[2]}; pos=${${(s:|:)e}[4]}
     case ${sec[$pos]} in
-      1) mark='✓ present';    colour=$_DP_GREEN ;;
-      0) mark='✗ missing'; colour=$_DP_YELLOW ;;
+      1) mark='✓ present';  colour=$_DP_GREEN ;;
+      0) mark='✗ missing';  colour=$_DP_YELLOW ;;
       *) mark='· unknown';  colour=$_DP_MUTED ;;
     esac
-    rows+=("$(printf '%-8s %s%-15s%s %s%s%s' \
-      "$name" "$colour" "$mark" "$_DP_OFF" "$_DP_MUTED" "$descr" "$_DP_OFF")")
+    printf '%-8s %s%-15s%s %s%s%s\n' \
+      "$name" "$colour" "$mark" "$_DP_OFF" "$_DP_MUTED" "$descr" "$_DP_OFF"
   done
-  print -rl -- $rows | _dp_choose -m 'secrets> ' \
-    "what to deliver to $id; Tab — mark several"
+}
+
+# The secrets picker DELIVERS; it does not report back what to deliver.
+#
+# It used to return a list of names and let the caller do the work, which meant
+# the picker closed on the first Enter and its states were whatever the snapshot
+# said when it opened — deliver three secrets and all three still read "missing"
+# until something else refreshed. Now Enter delivers the marked ones through
+# `execute` (the whole terminal, so the age key can ask which vault entry), then
+# the rows reload from a freshly collected snapshot and the states are current.
+_dp_secret_pick() {
+  emulate -L zsh
+  local id=$1
+  [[ -n $id ]] || return 1
+  (( $+commands[fzf] )) || {
+    # No fzf: fall back to the old behaviour — name them on the command line.
+    print -u2 "secrets: fzf not found — name them: dp secrets $id ${DP_SECRETS%%\|*}"
+    return 1
+  }
+  local dot=${DOTFILES_DIR:-$HOME/.dotfiles}
+  local k=$_DP_BLUE a="${_DP_FAINT}${_DP_MUTED}" o=$_DP_OFF
+  _dp_secret_rows "$id" | fzf --ansi --nth=1 --accept-nth=1 --multi \
+    --prompt='secrets> ' \
+    --header="what to deliver to $id" \
+    --footer="${k}Enter${o} ${a}deliver${o}   ${k}Tab${o} ${a}mark several${o}   ${k}Esc${o} ${a}done${o}" \
+    --footer-border=top \
+    --bind="enter:execute($dot/tools/devpod/put-secret.zsh $id {+1})+reload($dot/tools/devpod/secret-rows.zsh $id)" \
+    > /dev/null
+  # NOTE: always 0. Esc is how you leave a picker that has already done its
+  # work, and fzf calls that 130 — reporting it as failure made `dp secrets`
+  # look like it had failed after delivering everything asked of it.
+  return 0
 }
 
 # dp secrets — the gap that recreating a workspace opened: the files live in the
@@ -903,15 +1347,15 @@ _dp_secrets() {
   # delivered as given; without names the picker opens and shows what is already
   # in place, so the usual answer — "the one that is missing" — is one Tab away.
   local -a want=("$@")
-  if (( ! $#want )); then
-    want=(${(f)"$(_dp_secret_pick "$id")"})
-    (( $#want )) || { print -u2 "secrets: nothing selected"; return 1 }
-  fi
+  # Without names the picker takes over entirely: it delivers, refreshes and
+  # stays open until Esc.
+  (( $#want )) || { _dp_secret_pick "$id"; return $? }
 
   # NOTE: every step announces itself BEFORE it runs. Each one opens a `devpod
   # ssh` tunnel and takes seconds, and the old version printed only its verdict
   # at the end — from the outside that is indistinguishable from a hang.
   local rc=0 name entry fn descr
+  local -i frc
   print -r -- "${_DP_MUTED}secrets → $id${_DP_OFF}"
   for name in $want; do
     entry=$(_dp_secret_entry "$name") || {
@@ -920,7 +1364,27 @@ _dp_secrets() {
     }
     descr=${${(s:|:)entry}[2]}; fn=${${(s:|:)entry}[3]}
     print -r -- "${_DP_MUTED}  · ${descr}…${_DP_OFF}"
-    $fn "$id" || rc=1
+    local t0=$EPOCHREALTIME
+    local -i ms
+    $fn "$id"
+    frc=$?
+    (( ms = (EPOCHREALTIME - t0) * 1000 ))
+    # Every delivery opens its own `devpod ssh` tunnel, so this measures that
+    # tunnel — the reason restoring three secrets takes as long as it does.
+    _dp_log secret $ms $frc "id=$id" "name=$name"
+    # NOTE: 2 means "this one needs a person", not "this one broke" — it must
+    # not be flattened into 1, and a real failure must not be downgraded by a 2
+    # that came after it.
+    if (( frc == 0 )); then
+      # A hand-delivered secret settles the "partial" a detached recreate left
+      # behind: the row would otherwise keep warning about something already
+      # done, until the next job happened to overwrite it.
+      local _st=$DP_CACHE_DIR/jobs/$id.status
+      [[ -r $_st && $(< $_st) == *partial* ]] && rm -f -- $_st
+      continue
+    fi
+    (( frc == 2 && rc == 0 )) && { rc=2; continue }
+    (( frc != 2 )) && rc=1
   done
   return $rc
 }
@@ -1059,6 +1523,17 @@ _dp_gc() {
   return 0
 }
 
+# What the log adds up to. Both files: the rolled one holds the older half of
+# the same measurements, and percentiles want every sample they can get.
+_dp_stats() {
+  emulate -L zsh
+  local -a files=( $DP_LOG(N) $DP_LOG.1(N) )
+  (( $#files )) || { print -u2 "dp stats: nothing logged yet ($DP_LOG)"; return 1 }
+  awk -f ${DOTFILES_DIR:-$HOME/.dotfiles}/tools/devpod/stats.awk $files
+  print -r -- ""
+  print -r -- "${_DP_FAINT}${_DP_MUTED}${DP_LOG}${_DP_OFF}"
+}
+
 # The verb surface. `dp` with nothing opens the picker and lets a key decide.
 dp() {
   emulate -L zsh
@@ -1075,11 +1550,20 @@ dp() {
                 _dp_up_one "$id" "${${(s:|:)e}[2]}" "${${(s:|:)e}[1]}"
               done ;;
     recreate) local i; for i in "$@"; do _dp_recreate "$i"; done ;;
-    stop)     devpod stop "$@" ;;
+    stop)     _dp_stop "$@" ;;
     rm)       devpod delete "$@" ;;
     secrets)  _dp_secrets "$@" ;;
     doctor)   _dp_doctor "$@" ;;
     gc)       _dp_gc "$@" ;;
+    stats)    _dp_stats "$@" ;;
+    tmux)     case $1 in
+                on|off|exit) _dp_tmux_set "$1" ;;
+                '') _dp_tmux_cycle ;;
+                *) print -u2 "dp tmux: on, off, exit — or nothing to cycle"; return 1 ;;
+              esac
+              print -r -- "tmux landing: $(_dp_tmux_mode)" ;;
+    log)      local -a f=( $DP_LOG(N) ); (( $#f )) && tail -n ${1:-20} $DP_LOG \
+                || print -u2 "dp log: nothing logged yet ($DP_LOG)" ;;
     ''|pick)
       local out
       out=$(_dp_pick_action) || return 1
@@ -1096,8 +1580,6 @@ dp() {
       case $key in
         ctrl-n) _dp_new "${query// /}" ;;
         ctrl-s) for i in $ids; do _dp_secrets "$i"; done ;;
-        ctrl-r) for i in $ids; do _dp_recreate "$i"; done ;;
-        ctrl-d) (( $#ids )) && devpod delete $ids ;;
         *)      (( $#ids )) && ds "$ids[1]" ;;
       esac ;;
     -h|--help|help)
@@ -1109,7 +1591,10 @@ dp() {
       print -r -- 'dp stop|rm <id>    stop, delete'
       print -r -- 'dp secrets [id]    deliver secrets, picking which'
       print -r -- 'dp doctor [id]     drift: image, remoteUser, secrets, git'
-      print -r -- 'dp gc              orphaned directories and containers on the hosts' ;;
+      print -r -- 'dp gc              orphaned directories and containers on the hosts'
+      print -r -- 'dp tmux [on|off|exit]  land in the container'\''s tmux; exit also closes the tab'
+      print -r -- 'dp stats           how long each call takes, p50/p95, failures'
+      print -r -- 'dp log [n]         the last n raw events (default 20)' ;;
     *) print -u2 "dp: unknown verb «$verb» (dp --help)"; return 1 ;;
   esac
 }

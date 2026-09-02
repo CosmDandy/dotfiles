@@ -6,16 +6,35 @@
 # A standalone script and not a shell function on purpose — fzf runs --preview
 # through its own process, where the interactive shell's functions do not exist.
 #
-# Usage: preview.zsh <id> <snapshot>
+# Usage: preview.zsh <id> <snapshot> [jobs-dir]
 
 emulate -L zsh
 setopt local_options
 
-local id=$1 snap=$2
+local id=$1 snap=$2 jobs=$3
 [[ -n $id && -r $snap ]] || { print -r -- "no data"; exit 0 }
 
 local M=$'\e[38;2;88;110;117m' G=$'\e[38;2;133;153;0m' Y=$'\e[38;2;181;137;0m' \
-      B=$'\e[38;2;38;139;210m' O=$'\e[0m'
+      B=$'\e[38;2;38;139;210m' R=$'\e[38;2;220;50;47m' O=$'\e[0m'
+
+# A background action outranks everything below: while one runs, what the
+# snapshot says about this workspace is already out of date.
+if [[ -n $jobs && -r $jobs/$id.status ]]; then
+  local job=$(< $jobs/$id.status)
+  local jv=${job%%$'\t'*} js=${job##*$'\t'}
+  case $js in
+    running) print -r -- "${Y}● ${jv} in progress${O}" ;;
+    partial) print -r -- "${Y}⚠ ${jv} finished, something was left undone${O}" ;;
+    *)       print -r -- "${R}✗ ${jv} failed${O}" ;;
+  esac
+  if [[ -s $jobs/$id.log ]]; then
+    print -r -- ""
+    tail -n 6 -- $jobs/$id.log | sed "s/^/  /"
+  fi
+  print -r -- ""
+  print -r -- "${M}full log — Ctrl-L${O}"
+  print -r -- ""
+fi
 
 local line
 line=$(awk -F'\t' -v i="$id" '$1==i{print; exit}' "$snap")

@@ -22,10 +22,17 @@ docker ps -a --filter label=dev.containers.id \
     sec='---'
     if [ "$state" = running ]; then
       # One exec per container, not one per file: exec is the expensive part.
+      # NOTE: every home, not just $HOME. `docker exec` runs as the image's
+      # user, which is root on a container built from somebody else's
+      # devcontainer.json — while the secrets went to the user you actually log
+      # in as. Checking only $HOME reported everything missing on exactly those
+      # workspaces, including immediately after a successful delivery.
       sec=$(docker exec "$cid" sh -c 'c=0; a=0; e=0
-[ -f "$HOME/.config/claude/token" ] && c=1
-[ -f "$HOME/.config/sops/age/keys.txt" ] && a=1
-[ -f "$HOME/.config/dp/work.env" ] && e=1
+for h in /root /home/*; do
+  [ -f "$h/.config/claude/token" ] && c=1
+  [ -f "$h/.config/dp/work.env" ] && e=1
+  [ -f "$h/.config/sops/age/keys.txt" ] && a=1
+done
 printf "%s%s%s" "$c" "$a" "$e"' 2>/dev/null)
       [ -n "$sec" ] || sec='???'
     fi
