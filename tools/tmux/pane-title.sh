@@ -23,9 +23,21 @@ else
     prefix="$session"
 fi
 
+# The window title is drawn by the system font, not by the terminal font: the dotted
+# circle that reads fine in tmux turns into a tiny speck in SF Pro. Hence its own
+# glyphs here, overriding the script's defaults.
+# Same glyphs as everywhere else. They used to differ here — the system font draws
+# the title, and the dotted circle came out as a speck — but two different circles
+# for one state read as two states, which is worse than a small glyph.
+badge=$("$(dirname "$0")/../claude/claude-sessions.py" 2>/dev/null)
+
 case "$cmd" in
 zsh | bash | fish)
-    echo "$prefix"
+    if [ -n "$badge" ]; then
+        echo "$prefix · $badge"
+    else
+        echo "$prefix"
+    fi
     exit 0
     ;;
 esac
@@ -46,4 +58,8 @@ node | [0-9]*)
     ;;
 esac
 
-echo "$prefix · $label"
+if [ -n "$badge" ]; then
+    echo "$prefix · $label · $badge"
+else
+    echo "$prefix · $label"
+fi

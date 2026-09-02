@@ -41,7 +41,7 @@ warn() { echo "[backup] ВНИМАНИЕ: $*" >&2; }
 # simply does nothing.
 notify() {
   [ -n "${BACKUP_NO_NOTIFY:-}" ] && return 0
-  osascript -e "display notification \"$1\" with title \"Бэкап\" subtitle \"$2\" sound name \"Basso\"" \
+  osascript -e "display notification \"$1\" with title \"Бэкап\" subtitle \"$2\"" \
     >/dev/null 2>&1 || true
 }
 

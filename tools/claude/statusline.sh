@@ -20,7 +20,14 @@ CYAN="${ESC}[36m"
 # against a readability floor of 3. Only 11 stays above it on both sides (3.37
 # dark / 4.13 light).
 GRAY="${ESC}[38;5;11m"
+# 38;5;11 is not "bright yellow" here: under Solarized it is base00, the body text
+# colour, and the theme follows the system — light by day, dark by night. So the
+# shade stays, and what recedes is the WEIGHT: SGR 2 (faint) dims relative to
+# whatever the foreground currently is, which survives both themes where an absolute
+# grey cannot (238 sinks on dark, turns near-black on light — tried, wrong both ways).
 DIM="${ESC}[38;5;11m"
+SEP="${ESC}[2;38;5;11m"
+MONEY="${ESC}[2;38;5;11m"
 
 # NOTE: the red threshold must equal CLAUDE_AUTOCOMPACT_PCT_OVERRIDE — change
 # them as a pair, or the bar turns red only after the compact and warns about
@@ -73,7 +80,7 @@ if [ "$glyphs" = nerd ]; then
   G_THINK=$'\363\260\247\221'    # U+F09D1 md-brain
   G_FIVEH=$'\363\260\246\226'    # U+F0996 md-progress_clock
   G_WEEK=$'\363\260\250\263'     # U+F0A33 md-calendar_week
-  G_SESSIONS=$'\363\260\204\241'   # U+F0121 md-tab
+  G_APPROVE=$'\363\260\214\276'   # U+F033E md-lock — waiting for permission
   G_DEAD=$'\360\237\222\200'      # U+1F480 window fully spent
   G_ARROW=$'\342\237\266'         # U+27F6
   CAP_L=''
@@ -86,7 +93,7 @@ else
   G_THINK='*'
   G_FIVEH='5h'
   G_WEEK='7d'
-  G_SESSIONS='x'
+  G_APPROVE=''
   G_DEAD='!!'
   G_ARROW='->'
   CAP_L=''
@@ -428,7 +435,7 @@ EOF2
 
   segs="$five_seg"
   if [ -n "$week_seg" ]; then
-    if [ -n "$segs" ]; then segs="${segs} ${DIM}·${R} ${week_seg}"; else segs="$week_seg"; fi
+    if [ -n "$segs" ]; then segs="${segs} ${SEP}·${R} ${week_seg}"; else segs="$week_seg"; fi
   fi
   printf '%s' "$segs"
 }
@@ -443,7 +450,7 @@ vis_width() {
   s=$(printf '%s' "$1" | sed "s/${ESC}\\[[0-9;]*m//g")
   n=${#s}
   if [ "$GLYPH_COLS" -gt 1 ]; then
-    for g in "$G_THINK" "$G_FIVEH" "$G_WEEK" "$G_SESSIONS" "$G_DEAD"; do
+    for g in "$G_THINK" "$G_FIVEH" "$G_WEEK" "$G_APPROVE" "$G_DEAD"; do
       [ -n "$g" ] || continue
       t=${s//"$g"/}
       n=$(( n + (${#s} - ${#t}) * (GLYPH_COLS - 1) ))
@@ -459,7 +466,7 @@ join_edges() {
   if [ -z "$right" ]; then printf '%s' "$left"; return; fi
   gap=$(( cols - RIGHT_MARGIN - $(vis_width "$left") - $(vis_width "$right") ))
   if [ "$gap" -lt 2 ]; then
-    printf '%s %s·%s %s' "$left" "$DIM" "$R" "$right"
+    printf '%s %s·%s %s' "$left" "$SEP" "$R" "$right"
   else
     printf '%s%*s%s' "$left" "$gap" '' "$right"
   fi
@@ -473,17 +480,20 @@ now=$(date +%s)
 # NOTE: the 1M fact comes from context_window_size, not from the display name —
 # that one reads "Opus 5 (1M context)" today and is Anthropic's to rename.
 model_str="${model%% (*}"
-[ "${ctx_size:-0}" -ge 1000000 ] 2>/dev/null && model_str="${model_str} 1M"
-model_seg="${BLUE}${model_str}${R}"
-[ -n "$thinking" ] && model_seg="${BLUE}${G_THINK} ${model_str}${R}"
+# 1M is a property of the window, not part of the name: glued to the model in the
+# same blue it read as "Opus 5 1M", one title. Faint separates the fact from the name.
+ctx_mark=""
+[ "${ctx_size:-0}" -ge 1000000 ] 2>/dev/null && ctx_mark="${SEP} 1M${R}"
+model_seg="${BLUE}${model_str}${R}${ctx_mark}"
+[ -n "$thinking" ] && model_seg="${BLUE}${G_THINK} ${model_str}${R}${ctx_mark}"
 # Narrow variant of the same block, without effort.
 model_seg_slim="$model_seg"
 if [ -n "$effort" ]; then
   set_effort_parts "$effort"
   if [ -n "$eff_glyph" ]; then
-    model_seg="${model_seg}${GRAY} · ${eff_color}${eff_glyph} ${eff_label}${R}"
+    model_seg="${model_seg}${SEP} · ${R}${eff_color}${eff_glyph} ${eff_label}${R}"
   else
-    model_seg="${model_seg}${GRAY} · ${eff_label}${R}"
+    model_seg="${model_seg}${SEP} · ${R}${eff_label}${R}"
   fi
 fi
 # the base agent is called "claude" — not information, so only custom ones are
@@ -515,7 +525,9 @@ if [ "$total_input" -gt 0 ]; then
   fi
 fi
 
-fmt_money() { printf '$%d.%02d' "$(($1 / 100))" "$(($1 % 100))"; }
+# Whole dollars: cents cost four columns and decide nothing. Rounded, not truncated,
+# so a session at 90 cents reads $1 rather than $0.
+fmt_money() { printf '$%d' "$((($1 + 50) / 100))"; }
 
 # Money and sessions in one block: how many of us, my share, everyone's total.
 # NOTE: the 5h/7d limits are per-account but the cost in the payload is
@@ -545,11 +557,25 @@ if [ -n "$sid" ]; then
   fi
 fi
 
+# What the other sessions are doing, not how many exist: running, waiting for an
+# answer, waiting for permission. Same counters as the tmux status line, read from
+# ~/.claude/jobs/*/state.json. A bare count of open windows said nothing — five
+# idle sessions and five busy ones printed the same "5" — so when there is nothing
+# in these three states, nothing is printed, and the block falls back to this
+# session's own cost.
+# Located relative to this file, not to $HOME: the clone is ~/.dotfiles on the Mac
+# and ~/dotfiles inside a devcontainer, and ~/.claude/statusline.sh is a symlink
+# into it either way.
+_self=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")
+_repo=$(dirname "$(dirname "$(dirname "$_self")")")
+claude_badge=$("$_repo/tools/claude/claude-sessions.py" full 2>/dev/null)
+
 cost_seg=""
-if [ "$alive" -gt 1 ]; then
-  cost_seg="${GRAY}${G_SESSIONS} ${alive} $(fmt_money "${cost_usd:-0}")/$(fmt_money "$total")${R}"
+if [ -n "$claude_badge" ]; then
+  # the badge brings its own colours — wrapping it in one would flatten all three
+  cost_seg="${claude_badge} ${SEP}·${R} ${MONEY}$(fmt_money "${cost_usd:-0}")/$(fmt_money "$total")${R}"
 elif [ "${cost_usd:-0}" -gt 0 ] 2>/dev/null; then
-  cost_seg="${GRAY}$(fmt_money "$cost_usd")${R}"
+  cost_seg="${MONEY}$(fmt_money "$cost_usd")${R}"
 fi
 
 style_seg=""
@@ -557,7 +583,7 @@ style_seg=""
 
 # --- render ------------------------------------------------------------------
 
-sep="${DIM}·${R}"
+sep="${SEP}·${R}"
 
 add() {  # $1=accumulator $2=segment
   if [ -z "$2" ]; then printf '%s' "$1"

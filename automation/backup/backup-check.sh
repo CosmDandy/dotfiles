@@ -26,7 +26,7 @@ QUIET=""
 log() { echo "[backup-check] $*"; }
 
 notify() {
-  osascript -e "display notification \"$1\" with title \"Бэкап\" subtitle \"$2\" sound name \"Basso\"" \
+  osascript -e "display notification \"$1\" with title \"Бэкап\" subtitle \"$2\"" \
     >/dev/null 2>&1 || true
 }
 

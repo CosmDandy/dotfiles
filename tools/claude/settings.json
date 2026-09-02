@@ -425,6 +425,54 @@
         ]
       }
     ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "",
@@ -447,42 +495,13 @@
         ]
       }
     ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Blow",
-            "async": true
-          }
-        ]
-      }
-    ],
     "PostToolUseFailure": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
-            "async": true
-          },
-          {
-            "type": "command",
             "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
-            "async": true
-          }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/sound.sh Basso",
             "async": true
           }
         ]
