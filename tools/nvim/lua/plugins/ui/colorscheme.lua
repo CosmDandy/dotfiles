@@ -279,6 +279,10 @@ return {
         hl.FloatTitle = { bg = 'NONE', fg = is_dark() and '#2aa198' or '#268bd2', bold = true }
         -- match highlighting in results: yellow, not the red Special it defaults to
         hl.SnacksPickerMatch = { fg = '#b58900', bold = true }
+        -- NOTE: snacks links the selected row to Visual (bold, recoloured text, gray in
+        -- light theme) — follow CursorLine instead, like the editor itself.
+        hl.SnacksPickerListCursorLine = { bg = is_dark() and '#073642' or '#eee8d5' }
+        hl.SnacksPickerPreviewCursorLine = { bg = is_dark() and '#073642' or '#eee8d5' }
         hl.SnacksPickerDir = { fg = c.muted }
         hl.BlinkCmpSignatureHelpActiveParameter = { fg = is_dark() and '#cb4b16' or '#dc322f', bold = true }
       end,
