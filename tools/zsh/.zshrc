@@ -33,7 +33,10 @@ defer() { _deferred+=("${(j: :)@}") }
 _defer_run() {
     emulate -L zsh
     zle -F $1 2>/dev/null          # unregister first: this must never run twice
-    exec {1}>&- 2>/dev/null
+    # NOTE: the braces matter. A bare `exec ... 2>/dev/null` applies the
+    # redirection to the SHELL itself, permanently — every later error in the
+    # interactive session goes to /dev/null. The group keeps it to this line.
+    { exec {1}>&- } 2>/dev/null
     local cmd
     for cmd in $_deferred; do
         eval $cmd
