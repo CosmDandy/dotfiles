@@ -425,49 +425,13 @@
         ]
       }
     ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
-            "async": true
-          }
-        ]
-      }
-    ],
     "StopFailure": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
-            "async": true
-          }
-        ]
-      }
-    ],
-    "PostToolBatch": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
-            "async": true
-          }
-        ]
-      }
-    ],
-    "PermissionDenied": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/permission-marker.sh",
+            "command": "~/.dotfiles/tools/claude/hooks/turn-failed-sound.sh",
             "async": true
           }
         ]
