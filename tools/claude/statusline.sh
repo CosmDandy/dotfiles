@@ -586,17 +586,17 @@ if [ -n "$sid" ]; then
 fi
 
 # What the other sessions are doing, not how many exist: running, waiting for an
-# answer, waiting for permission. Same counters as the tmux status line, read from
-# ~/.claude/jobs/*/state.json. A bare count of open windows said nothing — five
-# idle sessions and five busy ones printed the same "5" — so when there is nothing
-# in these three states, nothing is printed, and the block falls back to this
+# answer, waiting for permission. Same counters as the window title, read from
+# ~/.claude/sessions/*.json. A bare count of open windows said nothing — five idle
+# sessions and five busy ones printed the same "5" — so when there is nothing in
+# these three states, nothing is printed, and the block falls back to this
 # session's own cost.
 # Located relative to this file, not to $HOME: the clone is ~/.dotfiles on the Mac
 # and ~/dotfiles inside a devcontainer, and ~/.claude/statusline.sh is a symlink
 # into it either way.
 _self=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")
 _repo=$(dirname "$(dirname "$(dirname "$_self")")")
-claude_badge=$("$_repo/tools/claude/claude-sessions.py" full 2>/dev/null)
+claude_badge=$("$_repo/tools/claude/claude-sessions.py" full "$sid" 2>/dev/null)
 
 cost_seg=""
 if [ -n "$claude_badge" ]; then
