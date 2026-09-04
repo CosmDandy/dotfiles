@@ -18,18 +18,18 @@ action=${1:-toggle}
 origin=${2:-$(tmux display-message -p '#{pane_id}')}
 size=${CLAUDE_PANE_SIZE:-40%}
 
-# NOTE: the native binary reports comm as its version number while the devcontainer wrapper
-# reports node, so the pane is found by looking for "claude" in the args of any process on
-# that tty — that way it does not depend on the depth of the process tree.
+# NOTE: found by what runs on the pane's tty, never by pane_current_command — that name is
+# whatever launched the process and differs per machine: the version number ("2.1.259") on
+# the Mac, "claude" in a devcontainer, "node" back when the wrapper was one. Filtering on it
+# is what silently broke this script: "claude" matched none of the names it accepted.
+# The pattern is anchored so the script cannot find itself — nvim starts it on the nvim
+# pane's tty, and a bare "claude" matches "claude-pane.sh" too.
 find_claude_pane() {
     session=$(tmux display-message -p -t "$origin" '#{session_name}')
-    tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_tty} #{pane_current_command}' |
-        while read -r id tty cmd; do
-            case "$cmd" in
-            node | [0-9]*) ;;
-            *) continue ;;
-            esac
-            if ps -t "${tty#/dev/}" -o args= 2>/dev/null | grep -q '[c]laude'; then
+    tmux list-panes -s -t "$session" -F '#{pane_id} #{pane_tty}' |
+        while read -r id tty; do
+            if ps -t "${tty#/dev/}" -o args= 2>/dev/null |
+                grep -qE '(^|/)claude([[:space:]]|$)'; then
                 printf '%s\n' "$id"
                 break
             fi
