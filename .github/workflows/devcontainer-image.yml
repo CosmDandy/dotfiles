@@ -142,6 +142,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Provenance is signed with the runner's OIDC token and published as a
+      # repository attestation — the attest steps below need both.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
@@ -160,6 +164,7 @@ jobs:
       # commit, and without it the new image would overwrite the existing
       # <profile>-<sha>.
       - name: Merge per-arch digests into multi-arch manifests
+        id: merge
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -180,6 +185,12 @@ jobs:
               -t "$IMAGE:$profile" \
               -t "$IMAGE:$profile-$version" \
               "${refs[@]}"
+            # The digest of the manifest just written, not of a per-arch image:
+            # that is what a client resolves :<profile> to, and therefore what
+            # the attestation below has to be about.
+            digest="$(docker buildx imagetools inspect "$IMAGE:$profile" \
+              --format '{{.Manifest.Digest}}')"
+            echo "digest-$profile=$digest" >> "$GITHUB_OUTPUT"
           done
           {
             echo "## Иммутабельные теги"
@@ -190,3 +201,20 @@ jobs:
               echo "- \`$IMAGE:$profile-$version\`"
             done
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # One signed provenance statement per multi-arch manifest. Verify with:
+      #   gh attestation verify oci://ghcr.io/cosmdandy/devcontainer:core \
+      #     --owner CosmDandy
+      - name: Attest core manifest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.merge.outputs.digest-core }}
+          push-to-registry: true
+
+      - name: Attest devops manifest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.merge.outputs.digest-devops }}
+          push-to-registry: true
