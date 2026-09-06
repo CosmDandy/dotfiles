@@ -11,6 +11,9 @@ GREEN="${ESC}[32m"
 YELLOW="${ESC}[33m"
 RED="${ESC}[31m"
 BLUE="${ESC}[34m"
+# Solarized orange has no slot in the 16-colour theme (it lands on "bright red"),
+# so this one is absolute. It exists for a single purpose: see the Fable block.
+ORANGE="${ESC}[38;5;166m"
 # Neutral for "on track" — green already means "room to accelerate" in these
 # segments.
 CYAN="${ESC}[36m"
@@ -135,7 +138,7 @@ input=$(cat)
 # everything left.
 IFS=$'\037' read -r used_pct model ctx_size cache_read input_tokens cache_creation \
   style_name effort thinking agent cost_usd \
-  five_pct100 five_reset week_pct week_reset sid <<EOF
+  five_pct100 five_reset week_pct week_reset sid model_id <<EOF
 $(echo "$input" | jq -r '[
   (.context_window.used_percentage // 0 | floor),
   (.model.display_name // "Claude"),
@@ -154,7 +157,8 @@ $(echo "$input" | jq -r '[
   (if .rate_limits.seven_day.used_percentage == null then ""
    else (.rate_limits.seven_day.used_percentage | floor) end),
   (.rate_limits.seven_day.resets_at // ""),
-  (.session_id // "")
+  (.session_id // ""),
+  (.model.id // "")
 ] | map(tostring) | join("")')
 EOF
 
@@ -508,12 +512,21 @@ now=$(date +%s)
 # NOTE: the 1M fact comes from context_window_size, not from the display name —
 # that one reads "Opus 5 (1M context)" today and is Anthropic's to rename.
 model_str="${model%% (*}"
+# Fable costs several times what the others do, and the name alone does not say so
+# after a week of reading it. Orange on the name, and the spend below turns red —
+# the two signals that this session is the expensive kind. Matched on the id and
+# on the display name both: Anthropic renames one or the other, not both at once.
+model_colour=$BLUE
+fable=""
+case "$model_id $model" in
+  *[Ff]able*) model_colour=$ORANGE; fable=1 ;;
+esac
 # 1M is a property of the window, not part of the name: glued to the model in the
 # same blue it read as "Opus 5 1M", one title. Faint separates the fact from the name.
 ctx_mark=""
 [ "${ctx_size:-0}" -ge 1000000 ] 2>/dev/null && ctx_mark="${SEP} 1M${R}"
-model_seg="${BLUE}${model_str}${R}${ctx_mark}"
-[ -n "$thinking" ] && model_seg="${BLUE}${G_THINK} ${model_str}${R}${ctx_mark}"
+model_seg="${model_colour}${model_str}${R}${ctx_mark}"
+[ -n "$thinking" ] && model_seg="${model_colour}${G_THINK} ${model_str}${R}${ctx_mark}"
 # Narrow variant of the same block, without effort.
 model_seg_slim="$model_seg"
 if [ -n "$effort" ]; then
@@ -598,6 +611,8 @@ _self=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")
 _repo=$(dirname "$(dirname "$(dirname "$_self")")")
 claude_badge=$("$_repo/tools/claude/claude-sessions.py" full "$sid" 2>/dev/null)
 
+# full weight, not faint — under Fable the spend is the thing to be seen
+[ -n "$fable" ] && MONEY=$RED
 cost_seg=""
 if [ -n "$claude_badge" ]; then
   # the badge brings its own colours — wrapping it in one would flatten all three
