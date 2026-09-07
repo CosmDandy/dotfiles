@@ -19,7 +19,7 @@ typeset -A DEVPOD_CONTEXT=(
   # commit signing inside a container is off: the signing key stays on the mac
   GIT_SSH_SIGNATURE_FORWARDING  false
   # NOTE: never ssh-add local keys on connect — it pollutes the curated devpod agent
-  # (3 keys) with every passphraseless key and trips MaxAuthTries on servers.
+  # (4 keys) with every passphraseless key and trips MaxAuthTries on servers.
   SSH_ADD_PRIVATE_KEYS          false
   SSH_AGENT_FORWARDING          true
   SSH_INJECT_DOCKER_CREDENTIALS true
