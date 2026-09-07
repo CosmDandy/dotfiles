@@ -410,11 +410,9 @@ defer _zinit_load
 
 # conf.d modules
 
-# NOTE: one pass, and private/ must follow it. Alias substitution inside a
-# function body happens when the function is PARSED, so the dpl/dpf aliases from
-# conf.d/devpod.zsh have to exist before private/zsh/work-stack.sh is sourced.
-# Function-to-function calls do not care about order. Platform files decide for
-# themselves whether to load.
+# NOTE: one pass, and private/ must follow it — the private files override
+# defaults that conf.d has to have set first. Function-to-function calls do not
+# care about order. Platform files decide for themselves whether to load.
 for f in "$DOTFILES_DIR/tools/zsh/conf.d/"*.zsh(N); do source "$f"; done
 
 for f in "$DOTFILES_DIR/private/zsh/"*.sh(N); do source "$f"; done

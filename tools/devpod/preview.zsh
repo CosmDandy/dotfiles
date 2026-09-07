@@ -48,7 +48,6 @@ local state_word
 case $state in
   running) state_word="${G}running${O}" ;;
   exited)  state_word="${B}stopped${O}" ;;
-  new)     state_word="${M}not created${O}" ;;
   # NOTE: told apart on purpose. "gone" means the host answered and the
   # container is not there; "silent" means nobody answered, which is a network
   # problem and not a reason to recreate anything.
@@ -56,9 +55,10 @@ case $state in
   *)       state_word="${Y}workspace exists, container gone${O}" ;;
 esac
 
-# NOTE: an instance made by `dp new` has no catalog line, so the profile is
-# unknown there — but the image tag is the profile, so read it back rather than
-# printing a dash next to a perfectly informative image name.
+# NOTE: the profile comes from the image pinned at creation. A workspace made
+# without that flag has none recorded, and then the tag of the image actually
+# running is the next best answer — better than a dash next to a perfectly
+# informative image name.
 [[ $profile == - && $image == *:* ]] && profile="${image##*:} (from image)"
 
 print -r -- "${M}repository ${O}  ${src:--}"

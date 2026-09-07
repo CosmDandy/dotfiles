@@ -269,11 +269,6 @@ typeset -g _DP_RED=$'\e[38;2;220;50;47m'
 typeset -g _DP_FAINT=$'\e[2m'
 typeset -g _DP_OFF=$'\e[0m'
 
-# The catalog is contributed, not owned: this file only declares the array, the
-# private layer appends the work repositories, and a personal entry can be added
-# anywhere. One line per repository: profile|repo|id|set
-typeset -ga DP_CATALOG
-
 # ── the prepared snapshot ─────────────────────────────────────────────────────
 #
 # Everything the picker shows costs network: one ssh per provider host, and a
@@ -425,7 +420,7 @@ _dp_state() {
 _dp_snapshot() {
   emulate -L zsh
   local out=${1:-/dev/stdout}
-  local -A state_of image_of seen prof_of repo_of sec_of
+  local -A state_of image_of seen sec_of
   local id uid prov host st im line src date want
   local -a meta
 
@@ -440,11 +435,6 @@ _dp_snapshot() {
     [[ $uid == '!down' ]] && { host_down[$st]=1; continue }
     [[ -n $uid ]] && { state_of[$uid]=$st; image_of[$uid]=$im; sec_of[$uid]=$sec }
   done < <(_dp_state)
-  for line in $DP_CATALOG; do
-    prof_of[${${(s:|:)line}[3]}]=${${(s:|:)line}[1]}
-    repo_of[${${(s:|:)line}[3]}]=${${(s:|:)line}[2]}
-  done
-
   {
     for line in $meta; do
       IFS=$'\t' read -r id uid prov host date src im <<< "$line"
@@ -461,16 +451,15 @@ _dp_snapshot() {
         [[ -n ${host_down[${host:-LOCAL}]} || -n ${host_down[LOCAL]} && $host == - ]] \
           && st_now=unknown || st_now=absent
       fi
+      # The profile is the image tag and nothing else. It used to come from the
+      # catalog, which meant a workspace made by `dp new` had none at all — and
+      # the tag was sitting right there in the workspace's own record.
+      local prof=-
+      [[ $im == *:* ]] && prof=${im##*:}
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$id" "$st_now" "${prov:--}" "${host:--}" \
         "${uid:--}" "${image_of[$uid]:--}" "${date[1,10]:--}" "${src:--}" \
-        "${prof_of[$id]:--}" "${repo_of[$id]:-$src}" "${sec_of[$uid]:---}"
-    done
-    for line in $DP_CATALOG; do
-      id=${${(s:|:)line}[3]}
-      (( ${+seen[$id]} )) && continue
-      printf '%s\tnew\t-\t-\t-\t-\t-\t%s\t%s\t%s\t--\n' \
-        "$id" "${${(s:|:)line}[2]}" "${${(s:|:)line}[1]}" "${${(s:|:)line}[2]}"
+        "$prof" "${src:--}" "${sec_of[$uid]:---}"
     done
   } > $out
 }
@@ -614,7 +603,6 @@ _dp_rows() {
       case $c[2] in
         running) mark='● running';      colour=$_DP_GREEN ;;
         exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
-        new)     mark='· not created';  colour=$_DP_MUTED ;;
         unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
         *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
       esac
@@ -706,8 +694,8 @@ _dp_pick() {
   print -rl -- $rows | _dp_choose ${1:+-m} -t 'workspace> ' "$hdr"
 }
 
-# Image picker for kvt-up. Not derived from the catalog on purpose: the image is
-# chosen once and applies to every workspace of that run.
+# Which image a new workspace gets. Two profiles, and the choice is made once
+# per creation — the tag is what the profile actually is.
 _dp_pick_image() {
   emulate -L zsh
   printf '%-8s %s%s%s\n' \
@@ -900,6 +888,7 @@ _dp_pick_provider() {
   names=(${(f)"$(devpod provider list --output json 2>/dev/null | jq -r 'keys[]')"})
   names=(${names:#})
   (( ${#names} )) || { print -u2 "no providers configured"; return 1 }
+  (( ${#names} == 1 )) && { print -r -- $names[1]; return 0 }
   print -rl -- $names | _dp_choose 'provider> ' 'where to bring containers up'
 }
 
@@ -910,14 +899,61 @@ _dp_pick_provider() {
 # makes `dp new` possible at all: the name of a brand new instance is simply
 # what was typed into the search line.
 
-# The catalog line for an id, or nothing.
-_dp_entry() {
+# Where a new workspace comes from: a repository already in use here, or
+# anything typed into the search line.
+#
+# The list used to be a fixed catalog, which meant a repository outside it could
+# not be used at all without editing a file first — and editing a file is not
+# something anyone does mid-thought. The search line is the way in: paste an
+# https:// or ssh:// URL and it is taken verbatim.
+_dp_pick_source() {
   emulate -L zsh
-  local e
-  for e in $DP_CATALOG; do
-    [[ ${${(s:|:)e}[3]} == $1 ]] && { print -r -- "$e"; return 0 }
+  local -a rows
+  # Repositories in use, the most used first — that ordering is free and it
+  # puts the answer at the top for the case that actually repeats.
+  rows=(${(f)"$(_dp_meta | awk -F'\t' '$6 != "-" { c[$6]++ }
+                  END { for (r in c) printf "%s\t%d\n", r, c[r] }' \
+                | sort -t$'\t' -k2,2nr -k1,1)"})
+
+  local -a display
+  local line repo n
+  local -i w=0
+  for line in $rows; do
+    repo=${line%%$'\t'*}
+    (( ${#repo} > w )) && w=${#repo}
   done
-  return 1
+  for line in $rows; do
+    repo=${line%%$'\t'*}; n=${line##*$'\t'}
+    display+=("$(printf "%-${w}s  %s%s%s" "$repo" \
+                  "$_DP_MUTED" "$n in use" "$_DP_OFF")")
+  done
+
+  local hdr="new workspace «$1» — pick a repository, or paste a URL"
+  if (( $+commands[fzf] )); then
+    local out
+    out=$(print -rl -- $display | fzf --ansi --nth=1 --accept-nth=1 \
+            --print-query --prompt='repository> ' --header="$hdr")
+    # fzf prints the query first, then the selection. A row that matched wins;
+    # with nothing matched the query IS the answer, which is what makes a URL
+    # that is not in the list usable at all.
+    local -a lines=("${(@f)out}")
+    [[ -n $lines[2] ]] && { print -r -- $lines[2]; return 0 }
+    [[ -n $lines[1] ]] && { print -r -- $lines[1]; return 0 }
+    return 1
+  fi
+
+  local i
+  for (( i = 1; i <= ${#rows}; i++ )); do
+    print -r -- "  $i) ${rows[i]%%$'\t'*}" > /dev/tty
+  done
+  local reply
+  read "reply?repository (number or URL): " < /dev/tty || return 1
+  [[ -z $reply ]] && return 1
+  if [[ $reply == <-> ]] && (( reply >= 1 && reply <= ${#rows} )); then
+    print -r -- "${rows[reply]%%$'\t'*}"
+  else
+    print -r -- "$reply"
+  fi
 }
 
 # NOTE: docker does NOT re-pull a floating tag it already has locally, and the
@@ -1091,7 +1127,7 @@ _dp_pick_action() {
 # the name. Here it is whatever was typed into the search line.
 _dp_new() {
   emulate -L zsh
-  local id=$1 repo=$2 profile=$3
+  local id=$1 repo=$2 profile=$3 provider=$4
   if [[ -z $id ]]; then
     print -u2 "dp new: a name for the new workspace is required"
     return 1
@@ -1101,31 +1137,27 @@ _dp_new() {
     print -u2 "dp new: workspace «$id» already exists — dp in $id"
     return 1
   fi
+  # Everything is asked before anything is built: a `devpod up` takes minutes,
+  # and a question in the middle of it means sitting at the terminal.
   if [[ -z $repo ]]; then
-    # Which repository the new instance comes from: pick it from the catalog.
-    local -a rows
-    local e
-    for e in $DP_CATALOG; do
-      rows+=("$(printf '%-26s %s%s%s' "${${(s:|:)e}[3]}" \
-                 "$_DP_MUTED" "${${(s:|:)e}[1]}" "$_DP_OFF")")
-    done
-    (( $#rows )) || { print -u2 "dp new: catalog is empty, pass the repository as the second argument"; return 1 }
-    local base
-    base=$(print -rl -- $rows | _dp_choose 'from which repository> ' \
-             "new workspace «$id»") || return 1
-    [[ -z $base ]] && return 1
-    e=$(_dp_entry "$base") || return 1
-    repo=${${(s:|:)e}[2]}; profile=${${(s:|:)e}[1]}
+    repo=$(_dp_pick_source "$id") || return 1
+    [[ -z $repo ]] && return 1
   fi
-  [[ -z $profile ]] && profile=core
-  print "▲ $id ← $repo ($profile)"
-  _dp_pull "${DP_PROVIDER}" "$profile"
+  if [[ -z $profile ]]; then
+    profile=$(_dp_pick_image) || return 1
+    [[ -z $profile ]] && profile=core
+  fi
+  if [[ -z $provider ]]; then
+    provider=$(_dp_pick_provider) || return 1
+  fi
+  print "▲ $id ← $repo ($profile${provider:+, $provider})"
+  _dp_pull "$provider" "$profile"
   # NOTE: a failed `devpod up` does NOT mean nothing happened. Seen for real:
   # provisioning finished, then the agent connection dropped with "run agent
   # command: EOF" — and the workspace was left running as root with no secrets,
   # because remoteUser is applied late and the delivery below never ran. Saying
   # so is the difference between a two-command fix and an afternoon.
-  if ! _dp_up_one "$id" "$repo" "$profile"; then
+  if ! _dp_up_one "$id" "$repo" "$profile" "$provider"; then
     print -u2 "dp new: «$id» did not come up fully. The workspace may still exist —" \
               "check «dp doctor $id» and fix it with «dp recreate $id»."
     return 1
@@ -1179,7 +1211,7 @@ _dp_stop() {
     local -a fresh_snap=( $DP_SNAPSHOT(Nms-60) )
     state=
     (( $#fresh_snap )) && state=$(_dp_snap_state "$id")
-    if [[ $state == exited || $state == new ]]; then
+    if [[ $state == exited ]]; then
       print "■ $id is already stopped"
       _dp_log stop 0 0 "id=$id" skipped=already-stopped
       continue
@@ -1365,8 +1397,8 @@ _dp_secret_pick() {
 }
 
 # dp secrets — the gap that recreating a workspace opened: the files live in the
-# container's home and do not survive it, while the delivery was buried inside
-# kvt-up and never ran again.
+# container's home and do not survive it, while the delivery used to happen only
+# at creation and never ran again.
 _dp_secrets() {
   emulate -L zsh
   # NOTE: shift, or the id itself stays in "$@" and the loop below reports the
@@ -1453,13 +1485,11 @@ _dp_doctor() {
     c=(${(ps:\t:)line})
     id=$c[1]; state=$c[2]; image=$c[6]; profile=$c[9]
     [[ -n $only && $id != $only ]] && continue
-    [[ $state == new ]] && continue
-
     # 1. the image the container actually runs, against the one we asked for
     case $image in
       ${DP_IMAGE}:*)
         if [[ $profile != - && $image != ${DP_IMAGE}:$profile ]]; then
-          print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: image ${image##*:}, catalog promises $profile"
+          print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: running ${image##*:}, created as $profile"
           (( findings++ ))
         fi ;;
       vsc-*|*devpod-*)
@@ -1597,11 +1627,18 @@ dp() {
     in)       ds "$@" ;;
     ls)       _dp_rows ;;
     new)      _dp_new "$@" ;;
-    up)       local id e
+    up)       local id r im prof prov
               for id in "$@"; do
-                e=$(_dp_entry "$id") || { print -u2 "dp up: $id is not in the catalog"; continue }
-                _dp_pull "$DP_PROVIDER" "${${(s:|:)e}[1]}"
-                _dp_up_one "$id" "${${(s:|:)e}[2]}" "${${(s:|:)e}[1]}"
+                # The workspace's own record, not a catalog: it already stores
+                # the repository, the image and the provider it was made with.
+                r=$(_dp_ws_field "$id" '.source.gitRepository // .source.localFolder') \
+                  || { print -u2 "dp up: no workspace «$id» (dp new $id)"; continue }
+                [[ -z $r ]] && { print -u2 "dp up: «$id» records no source"; continue }
+                im=$(_dp_ws_field "$id" .devContainerImage)
+                prof=core; [[ $im == *:* ]] && prof=${im##*:}
+                prov=$(_dp_ws_field "$id" .provider.name)
+                _dp_pull "${prov:-$DP_PROVIDER}" "$prof"
+                _dp_up_one "$id" "$r" "$prof" "${prov:-$DP_PROVIDER}"
               done ;;
     recreate) local i; for i in "$@"; do _dp_recreate "$i"; done ;;
     stop)     _dp_stop "$@" ;;
@@ -1639,8 +1676,8 @@ dp() {
     -h|--help|help)
       print -r -- 'dp                 list, then a key decides'
       print -r -- 'dp in [id]         enter the container'
-      print -r -- 'dp new <name>      new instance from a catalog repository'
-      print -r -- 'dp up <id...>      bring up from the catalog'
+      print -r -- 'dp new <name>      new instance: pick a repository or paste a URL'
+      print -r -- 'dp up <id...>      bring an existing workspace up again'
       print -r -- 'dp recreate <id>   rebuild the container and restore its secrets'
       print -r -- 'dp stop|rm <id>    stop, delete'
       print -r -- 'dp secrets [id]    deliver secrets, picking which'
