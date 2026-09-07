@@ -144,17 +144,36 @@ ds() {
     # NOTE: `[ -x … ]` and not `script || fallback`. A clone that predates the
     # script made the shell print "no such file or directory" before falling
     # back — an error message for a situation that is handled.
-    # NOTE: TERM is normalised here too, for the same reason the script does it:
-    # this runs as a non-interactive shell, .zshrc never corrects an unknown
-    # xterm-ghostty, and tmux refuses to start on one.
+    # NOTE: the agent symlink is refreshed HERE, before anything attaches. The
+    # panes of an existing tmux session hold that stable path, and only an
+    # interactive shell re-points it (.zshrc) — which never runs here, since ssh
+    # is handed a command. Without this, every re-entry that forwards an agent
+    # lands in panes whose agent is the previous session's socket: the file
+    # survives in /tmp, so the `-S` test still passes and nothing looks wrong
+    # until a key is actually needed and ssh answers "Connection refused".
+    # NOTE: ask the old link whether it still answers before overwriting it —
+    # a second tab entering the same workspace would otherwise pull the panes
+    # of the session already working there onto its own socket. Only a clear
+    # "it answered" (0, or 1 for an empty agent) buys the link a reprieve;
+    # anything else, ssh-add missing included, means re-point.
+    _enter='S=$HOME/.ssh/ssh_auth_sock; if [ -n "$SSH_AUTH_SOCK" ] && [ "$SSH_AUTH_SOCK" != "$S" ]; then '
+    _enter+='SSH_AUTH_SOCK=$S ssh-add -l >/dev/null 2>&1; case $? in 0|1) : ;; '
+    _enter+='*) mkdir -p -m 700 "$HOME/.ssh" && ln -sf "$SSH_AUTH_SOCK" "$S";; esac; fi; '
+    # NOTE: TERM is normalised BEFORE the script is exec'd, not after. This runs
+    # as a non-interactive shell, so .zshrc never corrects an unknown
+    # xterm-ghostty and tmux refuses to start on one — and the container's own
+    # copy of the script cannot be relied on to do it, because a clone that
+    # predates the fix still gets exec'd. Seen exactly that: five
+    # "missing or unsuitable terminal: xterm-ghostty" from a stale clone, while
+    # the correction sat in the fallback branch that an existing script skips.
+    _enter+='infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color; '
     local _script='$HOME/dotfiles/tools/devpod/tmux-enter.sh'
-    _enter="if [ -x $_script ]; then exec $_script $id; fi; "
+    _enter+="if [ -x $_script ]; then exec $_script $id; fi; "
     # NOTE: a container without tmux is not an error — the flag means "tmux
     # when there is tmux". Without this the entry died with "command not found:
     # tmux" and dropped the user back on the mac, which is a worse outcome than
     # the plain shell they would have got with the flag off.
     _enter+='command -v tmux >/dev/null 2>&1 || exec "${SHELL:-/bin/sh}" -l; '
-    _enter+='infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color; '
     _enter+="exec tmux new-session -A -s $id"
   fi
   if ssh -G "${id}.devpod" 2>/dev/null | grep -qi '^proxycommand.*devpod'; then
