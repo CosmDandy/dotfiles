@@ -613,12 +613,18 @@ claude_badge=$("$_repo/tools/claude/claude-sessions.py" full "$sid" 2>/dev/null)
 
 # same orange as the name, full weight, not faint — one colour says "Fable" twice
 [ -n "$fable" ] && MONEY=$ORANGE
-cost_seg=""
+
+# Two segments, not one. They used to be glued together, which made the counters
+# die with the price at 80 columns — and the counters are the half worth keeping:
+# money is a number to glance at afterwards, a session waiting for permission is
+# something to walk over to now.
+# NOTE: the badge brings its own colours — wrapping it in one would flatten all three.
+badge_seg="$claude_badge"
+money_seg=""
 if [ -n "$claude_badge" ]; then
-  # the badge brings its own colours — wrapping it in one would flatten all three
-  cost_seg="${claude_badge} ${SEP}·${R} ${MONEY}$(fmt_money "${cost_usd:-0}")/$(fmt_money "$total")${R}"
+  money_seg="${MONEY}$(fmt_money "${cost_usd:-0}")/$(fmt_money "$total")${R}"
 elif [ "${cost_usd:-0}" -gt 0 ] 2>/dev/null; then
-  cost_seg="${MONEY}$(fmt_money "$cost_usd")${R}"
+  money_seg="${MONEY}$(fmt_money "$cost_usd")${R}"
 fi
 
 style_seg=""
@@ -635,26 +641,31 @@ add() {  # $1=accumulator $2=segment
   fi
 }
 
-# Order of eviction as the line narrows, least needed first: cache → price and
-# session count → weekly window → effort. Model, context and the 5h window
-# survive to the end.
+# Order of eviction as the line narrows, least needed first: cache → price →
+# weekly window → effort. Model, context, the 5h window and the session counters
+# survive to the end — the counters are the only part of this line that asks for
+# something to be done, and a narrow pane is exactly where a forgotten session
+# hides.
 if [ "$cols" -lt 60 ]; then
   limits=$(compute_limits "$now" 0 0)   # called for the sample accumulation alone
-  out=$(add "$model_seg_slim" "$ctx_seg")
+  left=$(add "$model_seg_slim" "$ctx_seg")
+  out=$(join_edges "$left" "$badge_seg")
 elif [ "$cols" -lt 80 ]; then
   limits=$(compute_limits "$now" 0 0)
   left=$(add "$model_seg_slim" "$ctx_seg")
-  out=$(join_edges "$left" "$limits")
+  out=$(join_edges "$left" "$(add "$badge_seg" "$limits")")
 elif [ "$cols" -lt 100 ]; then
   limits=$(compute_limits "$now" 0 1)
   left=$(add "$model_seg_slim" "$ctx_seg")
-  right=$(add "$cost_seg" "$limits")
+  right=$(add "$badge_seg" "$money_seg")
+  right=$(add "$right" "$limits")
   out=$(join_edges "$left" "$right")
 else
   limits=$(compute_limits "$now" 1)
   left=$(add "$model_seg" "$ctx_seg")
   [ -n "$style_seg" ] && left=$(add "$left" "$style_seg")
-  right=$(add "$cache_seg" "$cost_seg")
+  right=$(add "$cache_seg" "$badge_seg")
+  right=$(add "$right" "$money_seg")
   right=$(add "$right" "$limits")
   out=$(join_edges "$left" "$right")
 fi
