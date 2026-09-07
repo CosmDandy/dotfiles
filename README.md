@@ -1,4 +1,11 @@
 # DFU Mode
+
+[![install](https://github.com/CosmDandy/dotfiles/actions/workflows/test-install.yml/badge.svg)](https://github.com/CosmDandy/dotfiles/actions/workflows/test-install.yml)
+[![nix](https://github.com/CosmDandy/dotfiles/actions/workflows/nix-check.yml/badge.svg)](https://github.com/CosmDandy/dotfiles/actions/workflows/nix-check.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/CosmDandy/dotfiles/badge)](https://scorecard.dev/viewer/?uri=github.com/CosmDandy/dotfiles)
+[![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
+[![license](https://img.shields.io/github/license/CosmDandy/dotfiles)](LICENSE)
+
 Control + Option + Shift + Power (MacBook Air M1)
 
 # Установка
