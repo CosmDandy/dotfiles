@@ -932,11 +932,23 @@ _dp_pull() {
   fi
   local t0=$EPOCHREALTIME
   local -i rc=0 ms
+  local -a cmd
   if [[ -n $host ]]; then
-    ssh -o BatchMode=yes -o ConnectTimeout=5 -T "$host" \
-        "docker pull ${DP_IMAGE}:${tag}" >/dev/null 2>&1
+    cmd=(ssh -o BatchMode=yes -o ConnectTimeout=5 -T "$host"
+         "docker pull ${DP_IMAGE}:${tag}")
   else
-    docker pull "${DP_IMAGE}:${tag}" >/dev/null 2>&1
+    cmd=(docker pull "${DP_IMAGE}:${tag}")
+  fi
+  # NOTE: the output is shown when somebody is watching, and only then. The
+  # devops image is six gigabytes, so even a pull that changes nothing takes
+  # minutes of silence — indistinguishable from a hung ssh, which is exactly
+  # how it read the first time. A detached job writes to a log file, where
+  # docker's per-layer chatter is noise, so there it stays quiet.
+  if [[ -t 1 ]]; then
+    print -r -- "⇣ pull ${DP_IMAGE}:${tag}${host:+ on $host}"
+    "${cmd[@]}"
+  else
+    "${cmd[@]}" >/dev/null 2>&1
   fi
   rc=$?
   (( ms = (EPOCHREALTIME - t0) * 1000 ))
