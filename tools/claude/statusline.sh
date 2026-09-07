@@ -513,8 +513,8 @@ now=$(date +%s)
 # that one reads "Opus 5 (1M context)" today and is Anthropic's to rename.
 model_str="${model%% (*}"
 # Fable costs several times what the others do, and the name alone does not say so
-# after a week of reading it. Orange on the name, and the spend below turns red —
-# the two signals that this session is the expensive kind. Matched on the id and
+# after a week of reading it. Orange on the name and on the spend below — the two
+# places that say this session is the expensive kind. Matched on the id and
 # on the display name both: Anthropic renames one or the other, not both at once.
 model_colour=$BLUE
 fable=""
@@ -611,8 +611,8 @@ _self=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")
 _repo=$(dirname "$(dirname "$(dirname "$_self")")")
 claude_badge=$("$_repo/tools/claude/claude-sessions.py" full "$sid" 2>/dev/null)
 
-# full weight, not faint — under Fable the spend is the thing to be seen
-[ -n "$fable" ] && MONEY=$RED
+# same orange as the name, full weight, not faint — one colour says "Fable" twice
+[ -n "$fable" ] && MONEY=$ORANGE
 cost_seg=""
 if [ -n "$claude_badge" ]; then
   # the badge brings its own colours — wrapping it in one would flatten all three
