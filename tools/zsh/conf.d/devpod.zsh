@@ -1389,14 +1389,16 @@ _dp_secrets() {
   return $rc
 }
 
-# What the doctor asks a live container about itself. One round trip, three
-# answers, because `devpod ssh` costs seconds and asking three times shows.
+# What the doctor asks a live container about itself. One round trip, every
+# answer at once, because `devpod ssh` costs seconds and asking twice shows.
 : ${_DP_PROBE:='f=.devcontainer/devcontainer.json
 if [ -f "$f" ]; then grep -q remoteUser "$f" && dc=own || dc=root; else dc=none; fi
 [ -f "$HOME/.config/claude/token" ] && cl=1 || cl=0
 [ -f "$HOME/.config/sops/age/keys.txt" ] && ag=1 || ag=0
 d=$(cd /workspaces/* 2>/dev/null && git status --porcelain 2>/dev/null | wc -l)
-echo "$dc $cl $ag ${d:-0}"'}
+dh=$(git -C "$HOME/dotfiles" rev-parse --short HEAD 2>/dev/null)
+dd=$(git -C "$HOME/dotfiles" status --porcelain 2>/dev/null | wc -l)
+echo "$dc $cl $ag ${d:-0} ${dh:--} ${dd:-0}"'}
 
 # dp doctor — the difference between how a workspace was meant to come up and
 # how it actually did. Every check here is one that has already cost a session.
@@ -1413,7 +1415,7 @@ _dp_doctor() {
   # NOTE: declared here, not inside the loop. A second `local` for a name that
   # already exists in this scope makes zsh PRINT it — the doctor was spitting
   # `answer='root 1 1 3'` between its own findings.
-  local answer dc cl ag dirty
+  local answer dc cl ag dirty dhead ddirty
   local -i findings=0
   local -a c
   while IFS= read -r line; do
@@ -1453,7 +1455,7 @@ _dp_doctor() {
     # remaining rows and the doctor silently checked only the first workspace.
     answer=$(devpod ssh "$id" --command "$_DP_PROBE" < /dev/null 2>/dev/null | tr -d '\r')
     [[ -z $answer ]] && { print -r -- "${_DP_MUTED}·${_DP_OFF} $id: container did not answer"; continue }
-    read -r dc cl ag dirty <<< "$answer"
+    read -r dc cl ag dirty dhead ddirty <<< "$answer"
 
     # 2. a devcontainer.json in the repository overrides our flags on the next
     #    reconnect, and without remoteUser the container comes up as root
@@ -1468,6 +1470,27 @@ _dp_doctor() {
     }
     # 4. work a recreate would take with it
     (( dirty )) && print -r -- "${_DP_MUTED}·${_DP_OFF} $id: $dirty uncommitted files"
+    # 5. the container runs entry scripts out of its OWN clone, so a stale one
+    #    keeps executing last month's version of them. Silent until it is not:
+    #    a clone 13 commits behind still had the copy of tmux-enter.sh from
+    #    before the TERM fix, and every entry printed five "missing or
+    #    unsuitable terminal". Measured against THIS repository rather than
+    #    the container's own origin, whose refs are as stale as the clone.
+    local -i behind
+    if [[ $dhead == - || -z $dhead ]]; then
+      print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: no dotfiles clone in the container"
+      (( findings++ ))
+    elif ! git -C "$DOTFILES_DIR" cat-file -e "${dhead}^{commit}" 2>/dev/null; then
+      print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: dotfiles clone at $dhead, a commit this repository does not have"
+      (( findings++ ))
+    else
+      behind=$(git -C "$DOTFILES_DIR" rev-list --count "${dhead}..HEAD" 2>/dev/null)
+      (( behind )) && {
+        print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: dotfiles clone $behind commits behind — updl in the container"
+        (( findings++ ))
+      }
+    fi
+    (( ddirty )) && print -r -- "${_DP_MUTED}·${_DP_OFF} $id: $ddirty uncommitted files in the dotfiles clone"
   done < "$DP_SNAPSHOT"
   (( findings == 0 )) && print -r -- "${_DP_GREEN}✓${_DP_OFF} no discrepancies"
   return 0
