@@ -441,13 +441,26 @@ _init_cached() {
     local tool=$1; shift
     (( $+commands[$tool] )) || return 0
     local file="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/init-${tool}.zsh"
-    if [[ ! -s $file || ${commands[$tool]} -nt $file ]]; then
+    # NOTE: the cache is stamped with the RESOLVED path of the binary, not with
+    # a timestamp. Under nix every file in the store carries mtime 1970 and so
+    # does the profile symlink, so `-nt` can never fire — while the script being
+    # cached may hold an absolute store path that the next garbage collection
+    # removes. That is exactly how direnv broke: the hook pointed at a store
+    # path that no longer existed, and every prompt in every container answered
+    # "no such file or directory" instead of loading .envrc.
+    # A cache written before this existed has no stamp, so it is rebuilt once.
+    local real=${commands[$tool]:A} stamp="$file.src" prev=
+    [[ -r $stamp ]] && prev=$(<$stamp)
+    if [[ ! -s $file || $prev != $real ]]; then
         mkdir -p "${file:h}"
-        "$@" > "$file.new" 2>/dev/null && mv -f "$file.new" "$file" || {
+        if "$@" > "$file.new" 2>/dev/null; then
+            mv -f "$file.new" "$file"
+            print -r -- $real > $stamp
+        else
             rm -f "$file.new"
             eval "$("$@")"      # cache unusable: fall back to the old way
             return 0
-        }
+        fi
     fi
     source "$file"
 }
