@@ -5,7 +5,6 @@
 {
   lib,
   pkgs,
-  options,
   modulesPath,
   user,
   hostname,
@@ -91,13 +90,15 @@ in
   # ubuntu host gets for free and a NixOS host does not.
   programs.nix-ld = {
     enable = true;
-    # NOTE: `.default ++`, not a plain list — assigning `libraries` REPLACES the
-    # module's default set (zlib, openssl, stdenv.cc.cc …), which is what makes
-    # lua-language-server, stylua, hadolint and tflint run at all.
+    # NOTE: this ADDS to the base set (zlib, openssl, stdenv.cc.cc …) rather than
+    # replacing it — the module contributes that set as an ordinary definition inside
+    # its own `config`, not as the option's default, and listOf concatenates
+    # definitions. The base set is what makes lua-language-server, stylua, hadolint
+    # and tflint run at all.
     # NOTE: icu is the one addition. mason's marksman is a .NET binary and dies with
     # "Couldn't find a valid ICU package installed on the system" — on Ubuntu libicu
     # comes with the base image, here nothing pulls it in.
-    libraries = options.programs.nix-ld.libraries.default ++ [ pkgs.icu ];
+    libraries = [ pkgs.icu ];
   };
 
   # The login shell comes from the SYSTEM closure, exactly as on Ubuntu — a broken or
@@ -160,8 +161,9 @@ in
     '';
   };
 
-  # NOTE: kept at the release the user environment was written against
-  # (home/default.nix pins the same value), NOT bumped to the current nixpkgs — the
-  # option exists precisely so stateful defaults do not move under a running host.
-  system.stateVersion = "26.05";
+  # NOTE: the release this host was FIRST installed with, which is the only thing the
+  # option means — it freezes stateful service defaults at what they were then. Not
+  # home/default.nix's `home.stateVersion`: that is home-manager's own state and
+  # legitimately differs. Never bump it on an existing host.
+  system.stateVersion = "26.11";
 }

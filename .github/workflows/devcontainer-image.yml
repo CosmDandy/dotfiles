@@ -11,6 +11,8 @@ on:
       # mac-only files: homeConfigurations never read them
       - '!platform/nix/darwin-configuration.nix'
       - '!platform/nix/home/darwin.nix'
+      # the NixOS stand's system layer: homeConfigurations never read it either
+      - '!platform/nix/nixos/**'
       - 'platform/linux/Dockerfile'
       # the provisioning wrapper is COPYed into the image, so editing it needs a
       # rebuild exactly like editing the Dockerfile

@@ -194,9 +194,11 @@ in
         # declared package never wins — it only created the illusion that the
         # version was pinned while venvs were actually built against the system
         # python.
-        # NOTE: wget explicitly. mason downloads release archives with wget and does
-        # NOT fall back to curl — terraform-ls failed with a bare ENOENT on the NixOS
-        # stand, where there is no /usr/bin to borrow one from.
+        # NOTE: wget explicitly. Some mason packages fetch their release archive with
+        # wget and do NOT fall back to curl; on the NixOS stand that failed with a
+        # bare ENOENT, because there is no /usr/bin to borrow one from. It did not
+        # make terraform-ls install — that one 404s upstream — but it is what turned
+        # an invisible PATH problem into the real error.
         PATH="${profilePath}:${
           lib.makeBinPath (
             [
