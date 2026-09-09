@@ -12,6 +12,12 @@ let
     nodejs_24
     luarocks # for mason (luacheck); brings its own lua
     tree-sitter
+    # NOTE: `cc` at runtime, not only during activation — nvim-treesitter
+    # compiles every parser and mason builds luacheck's luafilesystem. An
+    # ubuntu-minimal machine has no compiler in /usr/bin, and all ~40 parsers
+    # failed with "No such file or directory". (darwin has clang from the CLT
+    # and never imports this file.)
+    gcc
     # CLI
     eza
     fd
@@ -124,16 +130,7 @@ in
     ./hooks.nix # imperative installers (claude, zinit, …)
   ];
 
-  # NOTE: a C compiler is required at runtime, not only during activation —
-  # nvim-treesitter compiles every parser with `cc` and mason builds luacheck's
-  # luafilesystem. Linux only: on darwin clang comes from the Command Line
-  # Tools, and a nix gcc ahead of it in PATH would break the system toolchain.
-  # Caught on an OrbStack ubuntu-minimal machine, where /usr/bin has no cc and
-  # all ~40 parsers failed with "No such file or directory".
-  home.packages =
-    corePackages
-    ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.gcc ]
-    ++ lib.optionals (profile == "devops") devopsPackages;
+  home.packages = corePackages ++ lib.optionals (profile == "devops") devopsPackages;
 
   # the home-manager CLI in the profile, for repeat switches from install.sh and
   # cron
