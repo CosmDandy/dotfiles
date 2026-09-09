@@ -71,6 +71,10 @@ in
               pkgs.git
               pkgs.curl
               pkgs.coreutils
+              # NOTE: the activation PATH has neither /usr/bin nor
+              # ~/.nix-profile/bin, so without this the installer printed
+              # "zsh: command not found" twice and skipped the annexes.
+              pkgs.zsh
             ]
           }:$PATH" NO_INPUT=1 ZSHRC=/dev/null \
              run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
@@ -113,14 +117,18 @@ in
     syncNvimPlugins = after ''
       if [ -e "$HOME/.config/nvim/init.lua" ]; then (
         PATH="$HOME/.nix-profile/bin:${
-          lib.makeBinPath [
-            pkgs.git
-            pkgs.neovim
-            pkgs.curl
-            pkgs.gnutar
-            pkgs.gzip
-            pkgs.tree-sitter
-          ]
+          lib.makeBinPath (
+            [
+              pkgs.git
+              pkgs.neovim
+              pkgs.curl
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.tree-sitter
+            ]
+            # `cc` for the parser build; see the gcc note in default.nix
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.gcc ]
+          )
         }:$PATH:/usr/bin:/bin"
         export PATH
 
@@ -168,17 +176,21 @@ in
         # version was pinned while venvs were actually built against the system
         # python.
         PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${
-          lib.makeBinPath [
-            pkgs.git
-            pkgs.neovim
-            pkgs.curl
-            pkgs.gnutar
-            pkgs.gzip
-            pkgs.unzip
-            pkgs.nodejs_24
-            pkgs.luarocks
-            pkgs.uv
-          ]
+          lib.makeBinPath (
+            [
+              pkgs.git
+              pkgs.neovim
+              pkgs.curl
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.unzip
+              pkgs.nodejs_24
+              pkgs.luarocks
+              pkgs.uv
+            ]
+            # luacheck builds luafilesystem, a C module
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.gcc ]
+          )
         }:$PATH:/usr/bin:/bin"
         export PATH
 
