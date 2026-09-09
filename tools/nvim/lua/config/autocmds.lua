@@ -76,6 +76,33 @@ vim.api.nvim_create_autocmd('FileType', {
   end,
 })
 
+-- Dim the editor when its tmux pane loses focus, in step with tmux's
+-- window-style: the theme is transparent, so nvim keeps emitting a reset
+-- background that tmux cannot shade. Same hex as tools/tmux/.tmux.conf —
+-- one shade, two painters.
+local focus_dim = vim.api.nvim_create_augroup('focus-dim', { clear = true })
+local function set_editor_bg(bg)
+  for _, name in ipairs { 'Normal', 'NormalNC', 'EndOfBuffer' } do
+    local hl = vim.api.nvim_get_hl(0, { name = name })
+    hl.bg = bg
+    vim.api.nvim_set_hl(0, name, hl)
+  end
+end
+vim.api.nvim_create_autocmd('FocusLost', {
+  desc = 'Dim like an inactive tmux pane',
+  group = focus_dim,
+  callback = function()
+    set_editor_bg(vim.o.background == 'dark' and '#073642' or '#eee8d5')
+  end,
+})
+vim.api.nvim_create_autocmd('FocusGained', {
+  desc = 'Undo the inactive-pane dimming',
+  group = focus_dim,
+  callback = function()
+    set_editor_bg 'NONE'
+  end,
+})
+
 -- reload the colorscheme when background flips
 vim.api.nvim_create_autocmd('OptionSet', {
   pattern = 'background',
