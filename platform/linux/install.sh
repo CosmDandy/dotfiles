@@ -170,7 +170,14 @@ echo "$PROFILE" > "$HOME/.dotfiles-profile"
 # System level (sudo): outside home-manager's reach. Already done in the
 # prebuilt image — these steps are idempotent and return instantly.
 print_section "Setting default shell to zsh"
-ZSH_PATH="$(command -v zsh)"
+# NOTE: the SYSTEM zsh wins for the login shell, even once the profile has one
+# of its own. /etc/passwd would otherwise point inside ~/.nix-profile, and a
+# profile that is broken or simply not there yet leaves no way to log in.
+if [[ -x /usr/bin/zsh ]]; then
+  ZSH_PATH=/usr/bin/zsh
+else
+  ZSH_PATH="$(command -v zsh)"
+fi
 # NOTE: compare against the ACTUAL shell from passwd, not $SHELL — in a session
 # already running zsh, $SHELL says zsh while passwd still says bash, and the
 # block was skipped.
