@@ -5,6 +5,7 @@
 {
   lib,
   pkgs,
+  options,
   modulesPath,
   user,
   hostname,
@@ -88,7 +89,16 @@ in
   # NOTE: mason and Claude Code install PREBUILT binaries that expect a
   # /lib64/ld-linux-x86-64.so.2 NixOS does not have. This is the one thing an
   # ubuntu host gets for free and a NixOS host does not.
-  programs.nix-ld.enable = true;
+  programs.nix-ld = {
+    enable = true;
+    # NOTE: `.default ++`, not a plain list — assigning `libraries` REPLACES the
+    # module's default set (zlib, openssl, stdenv.cc.cc …), which is what makes
+    # lua-language-server, stylua, hadolint and tflint run at all.
+    # NOTE: icu is the one addition. mason's marksman is a .NET binary and dies with
+    # "Couldn't find a valid ICU package installed on the system" — on Ubuntu libicu
+    # comes with the base image, here nothing pulls it in.
+    libraries = options.programs.nix-ld.libraries.default ++ [ pkgs.icu ];
+  };
 
   # The login shell comes from the SYSTEM closure, exactly as on Ubuntu — a broken or
   # not-yet-built user profile must never lock the account out.
