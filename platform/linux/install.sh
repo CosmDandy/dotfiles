@@ -46,6 +46,19 @@ if [[ "$NIX_INSTALL" == "auto" ]]; then
   fi
 fi
 
+# Adopt an existing installation before deciding to create one.
+# NOTE: a non-interactive shell reads neither /etc/profile nor ~/.profile, so on
+# a machine where nix is installed `command -v nix` answers "absent" and the
+# block below runs the installer a second time. With a daemon that is not a
+# harmless no-op: the installer finds its own leftovers (/etc/bash.bashrc.backup
+# -before-nix and friends), refuses, and takes the whole run down with it —
+# after the daemon, the store and the nixbld users are all already in place.
+for nix_profile in \
+  /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh \
+  "$HOME/.nix-profile/etc/profile.d/nix.sh"; do
+  [[ -e "$nix_profile" ]] && . "$nix_profile"
+done
+
 # NOTE: --no-channel-add — packages come from flake.lock, and the default
 # channel would pull ~400MB of unpinned tree.
 if ! command -v nix &> /dev/null; then
