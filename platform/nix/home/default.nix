@@ -12,6 +12,12 @@ let
     nodejs_24
     luarocks # for mason (luacheck); brings its own lua
     tree-sitter
+    # NOTE: `cc` at runtime, not only during activation — nvim-treesitter
+    # compiles every parser and mason builds luacheck's luafilesystem. An
+    # ubuntu-minimal machine has no compiler in /usr/bin, and all ~40 parsers
+    # failed with "No such file or directory". (darwin has clang from the CLT
+    # and never imports this file.)
+    gcc
     # CLI
     eza
     fd

@@ -31,6 +31,53 @@ cd ~/.dotfiles
 MCP) на macOS управляется home-manager внутри `darwin-rebuild switch` — те же
 модули `platform/nix/home/`, что и на Linux. Повторное применение: `updm`.
 
+# Linux (голая Ubuntu, OrbStack-машина)
+
+Пребилт-образ `ghcr.io/cosmdandy/devcontainer` всё системное уже несёт
+(`platform/linux/Dockerfile`). На голой Ubuntu до `./install.sh` руками ставится
+только то, что не может поставить home-manager — он работает от пользователя и
+приезжает уже после Nix:
+
+```bash
+sudo apt update && sudo apt install -y zsh git xz-utils curl
+git clone git@github.com:CosmDandy/dotfiles.git ~/dotfiles
+cd ~/dotfiles && ./install.sh          # PROFILE=core — облегчённый профиль
+```
+
+Зачем каждый пакет (без него — так падает):
+
+- `zsh` — shebang `install.sh`; без него `bad interpreter`. Плюс `chsh` в конце.
+- `git` — клон репо, сабмодуль `private/` (без него install.sh падает намеренно),
+  `git ls-tree`. Тянет за собой `perl`, откуда `shasum` для инсталлятора Claude Code.
+- `xz-utils` — инсталлятор Nix распаковывает тарболл: `you do not have 'xz'
+  installed`. Пакет называется именно `xz-utils`, `apt install xz` не найдёт.
+- `curl` — сам инсталлятор Nix и хуки (Claude Code, zinit, схемы CRD).
+- `sudo` — `mkdir /nix`, `/etc/shells`, `chsh`, таймзона. Есть в любой Ubuntu.
+- Локаль `en_US.UTF-8` — в образе OrbStack и на сервере уже есть; в docker-образе
+  `ubuntu` нужны `locales` + `locale-gen` (см. Dockerfile).
+
+Всё остальное (nvim, node, python, go, terraform, kubectl…) — из `flake.lock`
+через home-manager. Nix ставится single-user (`/nix` принадлежит пользователю,
+`nix-daemon` не нужен), поэтому systemd в контейнере не обязателен.
+
+Особенности машины OrbStack (`orb create ubuntu <имя>`), проверено на 26.04:
+
+- Это `ubuntu-minimal` (~260 пакетов), не Ubuntu Server: нет ядра, grub,
+  cloud-init, snapd, openssh-server, `ubuntu-standard`. Ядро общее OrbStack'овское,
+  корень — btrfs-subvolume на общем диске, мак смонтирован в `/mnt/mac`.
+  Репозитории apt те же, что у обычной Ubuntu, — всё, что ставится, ведёт себя
+  одинаково. Сверх минимума OrbStack сам доставил `fuse3 curl openssh-client sudo
+  vim language-pack-en systemd-resolved systemd-timesyncd`.
+- ssh-агент мака проброшен автоматически (`SSH_AUTH_SOCK` →
+  `/opt/orbstack-guest/run/host-ssh-agent.sock`) — сабмодули `private/` и
+  `tools/claude/custom` подтягиваются без дополнительной настройки.
+- Docker CLI в машине нет и сокет в `/var/run` не проброшен — ставить отдельно,
+  если нужен.
+- Пользователь создаётся с uid мака (501), а не 1000 — для машины это неважно,
+  для devpod-контейнеров см. `updateRemoteUserUID` в `.devcontainer/`.
+- Память у всех машин общая, лимит в `tools/orbstack/apply.sh`; `home-manager
+  switch` профиля devops на 4 ГБ / 6 vCPU идёт больше пяти минут.
+
 balena etcher
 Office 2024
 wispr flow
