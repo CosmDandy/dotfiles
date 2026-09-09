@@ -76,7 +76,10 @@ WORKDIR /home/cosmdandy
 # provisioning can reach them from.
 LABEL devcontainer.metadata='[{"remoteUser":"cosmdandy","onCreateCommand":"/usr/local/bin/dotfiles-provision"}]'
 
-# Nix single-user, version pinned and checksum-verified.
+# Nix single-user, version pinned and checksum-verified. This is the `single`
+# mode of platform/linux/install.sh, fixed rather than probed: an image build has
+# no systemd for a daemon to be supervised by, and neither does the container it
+# becomes.
 # NOTE: --no-channel-add — everything comes from the flake, and a channel would
 # bake ~400MB of unpinned nixpkgs-unstable into the image past
 # nix-collect-garbage.
