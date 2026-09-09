@@ -20,6 +20,22 @@ let
     "installPackages"
   ];
 
+  # Where home.packages ACTUALLY end up, which is not one place:
+  #   ~/.nix-profile/bin           — standalone home-manager (DevPod, containers)
+  #   /etc/profiles/per-user/<u>   — home-manager as a NixOS/nix-darwin module with
+  #                                  useUserPackages; ~/.nix-profile stays EMPTY there
+  #   /run/current-system/sw/bin   — the system profile: `go` on the mac, and
+  #                                  perl/shasum on NixOS, which has no /usr/bin at all
+  # NOTE: this list is what the NixOS stand turned up. With only ~/.nix-profile/bin,
+  # mason found neither python3 nor go and silently skipped seven packages
+  # (basedpyright, debugpy, mypy, yamllint, ansible-lint, jsonnet-language-server).
+  # A path that does not exist on a given host costs nothing.
+  profilePath = lib.concatStringsSep ":" [
+    "${config.home.homeDirectory}/.nix-profile/bin"
+    "/etc/profiles/per-user/${config.home.username}/bin"
+    "/run/current-system/sw/bin"
+  ];
+
   # NOTE: a file, not a shell variable — DAG entries are not guaranteed to share
   # one shell, and the file survives the activation for reading afterwards.
   w = import ./warn.nix { inherit config; };
@@ -42,10 +58,13 @@ in
     # NOTE: `:/usr/bin:/bin` at the tail because the activation PATH carries no
     # system paths at all, and the installer calls shasum (a perl script in
     # /usr/bin).
+    # NOTE: profilePath is here for shasum too — NixOS has no /usr/bin, so perl and
+    # shasum are reachable only through /run/current-system/sw/bin, and without it the
+    # installer died and the step reported a bogus "offline?".
     installClaudeCode = after ''
       if [ ! -x "$HOME/.local/bin/claude" ] && ! command -v claude >/dev/null 2>&1; then
         run ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
-          && PATH="${
+          && PATH="${profilePath}:${
             lib.makeBinPath [
               pkgs.curl
               pkgs.coreutils
@@ -116,7 +135,7 @@ in
     # ~/.nix-profile.
     syncNvimPlugins = after ''
       if [ -e "$HOME/.config/nvim/init.lua" ]; then (
-        PATH="$HOME/.nix-profile/bin:${
+        PATH="${profilePath}:${
           lib.makeBinPath (
             [
               pkgs.git
@@ -175,12 +194,16 @@ in
         # declared package never wins — it only created the illusion that the
         # version was pinned while venvs were actually built against the system
         # python.
-        PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${
+        # NOTE: wget explicitly. mason downloads release archives with wget and does
+        # NOT fall back to curl — terraform-ls failed with a bare ENOENT on the NixOS
+        # stand, where there is no /usr/bin to borrow one from.
+        PATH="${profilePath}:${
           lib.makeBinPath (
             [
               pkgs.git
               pkgs.neovim
               pkgs.curl
+              pkgs.wget
               pkgs.gnutar
               pkgs.gzip
               pkgs.unzip

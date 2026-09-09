@@ -3,7 +3,6 @@
 # minimum (zsh git xz-utils curl); here it is this file, and the apt minimum has no
 # counterpart at all — nix is the system.
 {
-  config,
   lib,
   pkgs,
   modulesPath,
@@ -16,7 +15,7 @@ let
   # NOTE: public half only, and deliberately in the public repo — it is what makes the
   # stand reachable after disko has wiped cloud-init's copy off the disk.
   ownerKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIrGaPmqicysKoalLIq7Y6gMGX3n2vImMwCzwhTO+hM2 i@cosmdandy.dev personal file 2026-08";
-  home = "/home/${user}";
+  homeDir = "/home/${user}";
 in
 {
   imports = [
@@ -54,6 +53,11 @@ in
 
   networking.hostName = hostname;
   networking.useDHCP = lib.mkDefault true; # 192.168.20.0/24 has a DHCP server
+  # NOTE: without this the address MOVES. dhcpcd identifies itself by a generated DUID,
+  # Ubuntu's netplan asked by MAC — so the same VM got a second lease the moment it
+  # stopped being Ubuntu (.206 → .209, mid-install, with nixos-anywhere still polling
+  # the old address). `clientid` puts the MAC back in the request.
+  networking.dhcpcd.extraConfig = "clientid";
 
   time.timeZone = "Europe/Moscow";
   i18n.defaultLocale = "en_US.UTF-8";
@@ -91,7 +95,7 @@ in
   programs.zsh.enable = true;
   users.users.${user} = {
     isNormalUser = true;
-    home = home;
+    home = homeDir;
     extraGroups = [ "wheel" ];
     shell = pkgs.zsh;
     openssh.authorizedKeys.keys = [ ownerKey ];
@@ -141,8 +145,8 @@ in
       Group = "users";
     };
     script = ''
-      test -d ${home}/dotfiles/.git && exit 0
-      git clone https://github.com/CosmDandy/dotfiles.git ${home}/dotfiles
+      test -d ${homeDir}/dotfiles/.git && exit 0
+      git clone https://github.com/CosmDandy/dotfiles.git ${homeDir}/dotfiles
     '';
   };
 
