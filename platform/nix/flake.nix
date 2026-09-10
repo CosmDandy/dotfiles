@@ -10,12 +10,18 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # declarative partitioning for the NixOS stand; nixos-anywhere drives it
+    disko = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs =
     {
       nixpkgs,
       darwin,
       home-manager,
+      disko,
       ...
     }:
     let
@@ -97,6 +103,37 @@
             })
           ];
         };
+      # NixOS hosts. The user layer is the SAME ./home module set as the Linux
+      # homeConfigurations and the darwin one — home-manager runs as a NixOS module
+      # here, so `home-manager switch` is wrong on these hosts just as it is on macOS;
+      # the entry point is `nixos-rebuild switch`.
+      mkNixos =
+        {
+          hostname,
+          user,
+          profile,
+          system ? "x86_64-linux",
+        }:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs = { inherit user hostname; };
+          modules = [
+            disko.nixosModules.disko
+            ./nixos
+            home-manager.nixosModules.home-manager
+            {
+              home-manager = {
+                useGlobalPkgs = true;
+                useUserPackages = true;
+                # see mkDarwin: activation must not die on a pre-existing file
+                backupFileExtension = "hm-backup";
+                overwriteBackup = true;
+                extraSpecialArgs = { inherit profile; };
+                users.${user}.imports = [ ./home ];
+              };
+            }
+          ];
+        };
     in
     {
       # macOS (M1). The attribute name is referenced by updm, install-nix.sh and the docs.
@@ -106,6 +143,14 @@
         # MacBook Air M1: `sysctl -n hw.ncpu hw.memsize`
         cpuCores = 8;
         memoryGiB = 8;
+      };
+
+      # Proxmox stand (VMID 9002 on pve-local-l-02). Raised with nixos-anywhere, see
+      # the README section "NixOS-стенд".
+      nixosConfigurations.nixos-stand = mkNixos {
+        hostname = "nixos-stand";
+        user = "cosmdandy";
+        profile = "devops";
       };
 
       # Linux user environments, attribute <user>-<profile>-<system>.
