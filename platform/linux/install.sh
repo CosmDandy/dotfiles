@@ -46,6 +46,13 @@ if [[ "$NIX_INSTALL" == "auto" ]]; then
   fi
 fi
 
+# NOTE: nix.sh exports nothing at all unless BOTH $HOME and $USER are set — it
+# guards on them. A `docker exec`, a cron job or a systemd unit started without
+# the environment supplies neither, so sourcing the profile quietly does nothing
+# and the next command dies with "command not found: nix", pointing nowhere near
+# the cause. Caught in a bare container while testing the single-user path.
+export USER="${USER:-$(id -un)}"
+
 # Adopt an existing installation before deciding to create one.
 # NOTE: a non-interactive shell reads neither /etc/profile nor ~/.profile, so on
 # a machine where nix is installed `command -v nix` answers "absent" and the
