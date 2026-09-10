@@ -31,6 +31,26 @@ cd ~/.dotfiles
 MCP) на macOS управляется home-manager внутри `darwin-rebuild switch` — те же
 модули `platform/nix/home/`, что и на Linux. Повторное применение: `updm`.
 
+# Логи установки
+
+Работает на обеих платформах: запись включает корневой `install.sh`.
+Каждый прогон пишется целиком в
+`~/.local/state/dotfiles/install-<дата>-<время>.log`; `install-last.log` —
+симлинк на последний. Путь печатается первой и последней строкой прогона.
+Хранятся десять последних.
+
+В шапке лога: дата, хост с архитектурой, пользователь, коммит репозитория и
+профиль. Без них два лога невозможно сравнить, а это единственное, зачем их
+обычно открывают.
+
+```bash
+tail -f ~/.local/state/dotfiles/install-last.log   # смотреть идущую установку
+grep -iE 'warn:|error|FATAL' ~/.local/state/dotfiles/install-last.log
+```
+
+Цвет из лога не вычищается: BSD и GNU `sed` по-разному буферизуют строки, а
+наполовину записанный лог хуже цветного. Читать — `less -R`.
+
 # Linux (голая Ubuntu, OrbStack-машина)
 
 Пребилт-образ `ghcr.io/cosmdandy/devcontainer` всё системное уже несёт
@@ -59,24 +79,23 @@ cd ~/dotfiles && ./install.sh          # PROFILE=core — облегчённый
 Всё остальное (nvim, node, python, go, terraform, kubectl…) — из `flake.lock`
 через home-manager.
 
-## Логи установки
+Особенности машины OrbStack (`orb create ubuntu <имя>`), проверено на 26.04:
 
-Каждый прогон `install.sh` пишется целиком в
-`~/.local/state/dotfiles/install-<дата>-<время>.log`; `install-last.log` —
-симлинк на последний. Путь печатается первой и последней строкой прогона.
-Хранятся десять последних.
-
-В шапке лога: дата, хост с архитектурой, пользователь, коммит репозитория и
-профиль. Без них два лога невозможно сравнить, а это единственное, зачем их
-обычно открывают.
-
-```bash
-tail -f ~/.local/state/dotfiles/install-last.log   # смотреть идущую установку
-grep -iE 'warn:|error|FATAL' ~/.local/state/dotfiles/install-last.log
-```
-
-Цвет из лога не вычищается: BSD и GNU `sed` по-разному буферизуют строки, а
-наполовину записанный лог хуже цветного. Читать — `less -R`.
+- Это `ubuntu-minimal` (~260 пакетов), не Ubuntu Server: нет ядра, grub,
+  cloud-init, snapd, openssh-server, `ubuntu-standard`. Ядро общее OrbStack'овское,
+  корень — btrfs-subvolume на общем диске, мак смонтирован в `/mnt/mac`.
+  Репозитории apt те же, что у обычной Ubuntu, — всё, что ставится, ведёт себя
+  одинаково. Сверх минимума OrbStack сам доставил `fuse3 curl openssh-client sudo
+  vim language-pack-en systemd-resolved systemd-timesyncd`.
+- ssh-агент мака проброшен автоматически (`SSH_AUTH_SOCK` →
+  `/opt/orbstack-guest/run/host-ssh-agent.sock`) — сабмодули `private/` и
+  `tools/claude/custom` подтягиваются без дополнительной настройки.
+- Docker CLI в машине нет и сокет в `/var/run` не проброшен — ставить отдельно,
+  если нужен.
+- Пользователь создаётся с uid мака (501), а не 1000 — для машины это неважно,
+  для devpod-контейнеров см. `updateRemoteUserUID` в `.devcontainer/`.
+- Память у всех машин общая, лимит в `tools/orbstack/apply.sh`; `home-manager
+  switch` профиля devops на 4 ГБ / 6 vCPU идёт больше пяти минут.
 
 ## Режим установки Nix: контейнер против системы
 
@@ -109,24 +128,6 @@ grep -iE 'warn:|error|FATAL' ~/.local/state/dotfiles/install-last.log
 Смена формы на уже установленной машине — это переустановка nix, а не флаг:
 `/nix` меняет владельца. Проверить, что стоит сейчас: `ls -ld /nix` и
 `systemctl is-active nix-daemon`.
-
-Особенности машины OrbStack (`orb create ubuntu <имя>`), проверено на 26.04:
-
-- Это `ubuntu-minimal` (~260 пакетов), не Ubuntu Server: нет ядра, grub,
-  cloud-init, snapd, openssh-server, `ubuntu-standard`. Ядро общее OrbStack'овское,
-  корень — btrfs-subvolume на общем диске, мак смонтирован в `/mnt/mac`.
-  Репозитории apt те же, что у обычной Ubuntu, — всё, что ставится, ведёт себя
-  одинаково. Сверх минимума OrbStack сам доставил `fuse3 curl openssh-client sudo
-  vim language-pack-en systemd-resolved systemd-timesyncd`.
-- ssh-агент мака проброшен автоматически (`SSH_AUTH_SOCK` →
-  `/opt/orbstack-guest/run/host-ssh-agent.sock`) — сабмодули `private/` и
-  `tools/claude/custom` подтягиваются без дополнительной настройки.
-- Docker CLI в машине нет и сокет в `/var/run` не проброшен — ставить отдельно,
-  если нужен.
-- Пользователь создаётся с uid мака (501), а не 1000 — для машины это неважно,
-  для devpod-контейнеров см. `updateRemoteUserUID` в `.devcontainer/`.
-- Память у всех машин общая, лимит в `tools/orbstack/apply.sh`; `home-manager
-  switch` профиля devops на 4 ГБ / 6 vCPU идёт больше пяти минут.
 
 # NixOS-стенд (Proxmox, VMID 9002)
 
