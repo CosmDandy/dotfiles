@@ -1,10 +1,22 @@
 return {
-  filetypes = { 'terraform', 'terraform-vars', 'hcl' },
-  settings = {
-    terraform = {
-      experimentalFeatures = {
-        validateOnSave = true,
-      },
+  -- NOTE: no hcl. terraform-ls has no features for plain HCL ("no feature found for
+  -- language hcl" on every request) except formatting, which is terraform fmt — on Nomad
+  -- jobs it unwrapped "${...}" interpolations and failed on templated job names.
+  filetypes = { 'terraform', 'terraform-vars' },
+  -- without -log-file terraform-ls traces to stderr, which nvim keeps in lsp.log at ERROR
+  -- level: 11 MB from one repo
+  cmd = { 'terraform-ls', 'serve', '-log-file=/dev/null' },
+  -- NOTE: init_options, not settings: terraform-ls reads these from initializationOptions
+  -- only and answers workspace/didChangeConfiguration with "method not found", so
+  -- validate-on-save never ran.
+  init_options = {
+    experimentalFeatures = {
+      validateOnSave = true,
+    },
+    -- ansible-lint installs galaxy collections into <project>/.ansible: 1809 of the 2046
+    -- directories terraform-ls walked in one repo
+    indexing = {
+      ignoreDirectoryNames = { '.ansible' },
     },
   },
 

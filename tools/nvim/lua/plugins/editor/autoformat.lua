@@ -8,7 +8,6 @@ return {
       function()
         require('conform').format {
           async = true,
-          lsp_format = 'fallback', -- LSP only where no formatter is configured
           timeout_ms = 3000,
         }
       end,
@@ -29,6 +28,14 @@ return {
   opts = {
     notify_no_formatters = false,
 
+    -- LSP only where no formatter is configured.
+    -- NOTE: here and not in the format() calls: conform fills in a filetype's own
+    -- lsp_format only when the call leaves it unset, and the yaml function below needs
+    -- 'never' to win — a passed 'fallback' handed every skipped file to yamlls instead.
+    default_format_opts = {
+      lsp_format = 'fallback',
+    },
+
     format_on_save = function(bufnr)
       if vim.g.conform_format_on_save == false then
         return false
@@ -42,6 +49,13 @@ return {
         return false
       end
 
+      -- files a role ships verbatim (Grafana dashboards, alert rules) and vendored code
+      -- stay as their upstream wrote them: jsonls re-indented a 5k-line dashboard, yamlfmt
+      -- turned a PromQL block into a quoted string
+      if bufname:match '/roles/.*/files/' or bufname:match '/vendor/' then
+        return false
+      end
+
       local max_filesize = 100 * 1024
       local ok, stats = pcall(vim.uv.fs_stat, bufname)
       if ok and stats and stats.size > max_filesize then
@@ -50,7 +64,6 @@ return {
 
       return {
         timeout_ms = 3000,
-        lsp_format = 'fallback',
       }
     end,
 
@@ -67,11 +80,19 @@ return {
       -- gopls carries gofumpt = true so the LSP path agrees with this one.
       go = { 'goimports', 'gofumpt' },
 
+      -- NOTE: a skipped file returns lsp_format = 'never', not an empty list — with no
+      -- formatters the fallback handed it to yamlls, which re-indented a CRD by 1400 lines.
       -- NOTE: helm templates are left alone — yamlfmt breaks Go templating.
       yaml = function(bufnr)
+        local skip = { lsp_format = 'never' }
         local name = vim.api.nvim_buf_get_name(bufnr)
         if vim.bo[bufnr].filetype == 'helm' or name:match '/templates/' then
-          return {}
+          return skip
+        end
+        -- GitLab CI (the files yamlls maps to its schema): yamlfmt joins every multi-line
+        -- plain scalar, and a wrapped script: command became one line of up to 834 chars
+        if name:match '%.gitlab%-ci%.ya?ml$' or name:match '/%.gitlab/ci/' or name:match '/ci%-cd/' or name:match '/gitlab%-templates/' then
+          return skip
         end
         -- NOTE: encrypted files are never formatted. yamlfmt folded an ansible-vault file
         -- ($ANSIBLE_VAULT header + hex lines) into a single scalar, which no longer
@@ -79,11 +100,20 @@ return {
         -- ansible-vault may write these.
         local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
         if (lines[1] or ''):match '^%$ANSIBLE_VAULT' then
-          return {}
+          return skip
         end
         for _, line in ipairs(lines) do
           if line:match '^sops:' then
-            return {}
+            return skip
+          end
+          -- unquoted Jinja parses as a flow map: yamlfmt turned `foo: {{ bar }}` into
+          -- `foo: {? {bar: ''} : ''}`; left alone, yamllint and ansible-lint point at it
+          if line:match '^%s*[%w_-]+:%s*{%s*{' or line:match '^%s*%- {%s*{' then
+            return skip
+          end
+          -- a CRD is upstream's file; re-indenting it is a 12k-line diff
+          if line:match '^kind:%s*CustomResourceDefinition' then
+            return skip
           end
         end
         return { 'yamlfmt' }
@@ -93,7 +123,9 @@ return {
       zsh = { 'shfmt' },
       sh = { 'shfmt' },
 
-      -- HCL goes through the LSP (terraform fmt)
+      -- NOTE: plain HCL is not formatted. The only formatter at hand is terraform fmt,
+      -- which on Nomad jobs unwrapped "${...}" interpolations and failed on templated job
+      -- names; terraform-ls no longer attaches to hcl, so there is no LSP fallback either.
       hcl = {},
       terraform = { 'terraform_fmt' },
       ['terraform-vars'] = { 'terraform_fmt' },
@@ -121,10 +153,10 @@ return {
         },
       },
 
+      -- NOTE: no -i here: conform appends -i <shiftwidth> whenever expandtab is set and
+      -- the last flag wins, so the file's own indent (vim-sleuth) decides.
       shfmt = {
         prepend_args = {
-          '-i',
-          '2', -- two-space indent
           '-bn', -- binary operators at the start of a line
           '-ci', -- indent case branches
           '-sr', -- redirections after the command

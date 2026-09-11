@@ -18,18 +18,32 @@ end
 -- Compose has no entry at all: the catalogue already maps docker-compose*/compose*.
 -- NOTE: yamlls prefixes every glob with `**/` and matches with picomatch in bash mode, so
 -- a single `*` also crosses `/`, and a `!` exclusion turns into `**/!…` and excludes
--- nothing — never write one here.
+-- nothing — never write one here. picomatch runs without `dot`: a `*` right after `/`
+-- skips dot-files, which need a `.*` glob of their own.
 local custom_schemas = {
   ['https://www.schemastore.org/github-workflow.json'] = { '/.github/workflows/*.{yml,yaml}', '/.github/workflows/*.tpl' },
-  ['https://gitlab.com/gitlab-org/gitlab/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
+  -- GitLab CI, keyed by the catalogue's URL so these globs replace its entry: the files
+  -- pulled in by include: (.gitlab/ci/, ci-cd/) and the shared templates, mostly
+  -- dot-files like .kaniko.yaml, got no schema before.
+  ['https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
     '**/.gitlab-ci.yml',
     '**/.gitlab-ci.yaml',
+    '**/*.gitlab-ci.yml',
+    '**/*.gitlab-ci.yaml',
+    '**/.gitlab/ci/*.{yml,yaml}',
+    '**/ci-cd/*.{yml,yaml}',
+    '**/ci-cd/**/.*.{yml,yaml}',
+    '**/gitlab-templates/*.{yml,yaml}',
+    '**/gitlab-templates/.*.{yml,yaml}',
   },
+  -- replaces the catalogue's entry, so its site.yml globs are repeated here
   ['https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/playbook'] = {
     '**/*playbook*.yml',
     '**/*playbook*.yaml',
     '**/playbooks/*.yml',
     '**/playbooks/*.yaml',
+    '**/site.yml',
+    '**/site.yaml',
   },
   -- CRD schemas: the built-in kubernetes schema only knows core types. The globs follow
   -- the naming convention (file named after the kind).
@@ -99,6 +113,12 @@ return {
     new_config.settings.yaml = new_config.settings.yaml or {}
     -- schemastore covers everything, custom_schemas win on the same key
     local schemas = require('schemastore').yaml.schemas()
+    -- Symfony's **/config/services.yaml glob caught a Homepage dashboard config
+    for url in pairs(schemas) do
+      if url:find('symfony', 1, true) and url:find('services.schema.json', 1, true) then
+        schemas[url] = nil
+      end
+    end
     for url, globs in pairs(custom_schemas) do
       schemas[url] = vim.deepcopy(globs)
     end
