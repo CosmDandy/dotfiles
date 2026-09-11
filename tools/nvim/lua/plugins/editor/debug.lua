@@ -13,9 +13,13 @@ return {
     'nvim-neotest/nvim-nio',
     'mason-org/mason.nvim',
     'theHamsta/nvim-dap-virtual-text',
+    -- NOTE: lazy=true instead of ft= on the two adapters — as dependencies they load
+    -- with nvim-dap on the first debug key, while ft= dragged nvim-dap and dap-ui into
+    -- every .py/.go open (~12ms of the first screen, measured). Without any trigger a
+    -- spec that has a config is loaded at startup, which cost 18ms on every start.
     {
       'mfussenegger/nvim-dap-python',
-      ft = 'python',
+      lazy = true,
       config = function()
         -- the debugpy adapter comes from the mason venv; dap-python finds the python
         -- for the debugged program itself (project .venv / VIRTUAL_ENV)
@@ -26,7 +30,7 @@ return {
     },
     {
       'leoluz/nvim-dap-go',
-      ft = 'go',
+      lazy = true,
       config = function()
         -- No path argument, unlike dap-python above: delve comes from nixpkgs
         -- (platform/nix/home/default.nix), so dlv is on the ordinary PATH

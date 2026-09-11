@@ -22,20 +22,22 @@ local function detect_python(root)
 end
 
 return {
+  -- NOTE: basedpyright reads only the basedpyright.* section; python.analysis.* is
+  -- silently ignored and the server falls back to its strict 'recommended' mode.
+  -- python.pythonPath (before_init below) is still read from the python section.
   settings = {
-    python = {
+    basedpyright = {
       analysis = {
         typeCheckingMode = 'basic',
         autoImportCompletions = true,
         autoSearchPaths = true,
         useLibraryCodeForTypes = true,
         diagnosticMode = 'openFilesOnly',
-        reportMissingImports = true,
-        reportMissingTypeStubs = false,
-        reportGeneralTypeIssues = true,
-        reportOptionalMemberAccess = true,
-        reportOptionalSubscript = true,
-        reportPrivateImportUsage = false,
+        -- rule levels go through overrides, not as keys of analysis; 'basic' already
+        -- reports missing imports and optional access, this is the one deviation
+        diagnosticSeverityOverrides = {
+          reportPrivateImportUsage = 'none',
+        },
       },
     },
   },

@@ -1,0 +1,23 @@
+# User-level fallback: yamllint reads it only when the project has no .yamllint
+# of its own. Mirrors the rules ansible-lint runs yamllint with
+# (ansiblelint/data/.yamllint), so plain yaml and ansible files are held to the
+# same standard instead of the strict upstream default (80 columns,
+# document-start, truthy on GitHub Actions' `on:`).
+extends: default
+
+rules:
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  document-start: disable
+  line-length:
+    max: 160
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  # NOTE: keys are not checked — `on:` in GitHub Actions is a key, not a boolean.
+  truthy:
+    check-keys: false

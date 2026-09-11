@@ -121,6 +121,17 @@ in
                  echo "warn: $m"; echo "$m" >> "${warnFile}"; }
         fi
       done
+      # GitLab CI gains keywords every release, so unlike the CRDs it is refreshed once
+      # it is a month old; the old copy stays if the download fails.
+      ci="$SCHEMA_DIR/gitlab-ci.json"
+      if [ -z "$(find "$ci" -mtime -30 2>/dev/null)" ]; then
+        run mkdir -p "$SCHEMA_DIR"
+        run ${pkgs.curl}/bin/curl -fsSL \
+          "https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/app/assets/javascripts/editor/schema/ci.json" \
+          -o "$ci.tmp" && run mv "$ci.tmp" "$ci" \
+          || { rm -f "$ci.tmp"; m="schema gitlab-ci.json not refreshed (yamlls uses the old copy or the URL)"; \
+               echo "warn: $m"; echo "$m" >> "${warnFile}"; }
+      fi
     '';
 
     # NOTE: the init.lua guard is what skips this during an image build before
@@ -167,10 +178,9 @@ in
     '';
 
     # Mason packages (LSP servers, linters, formatters from ensure_installed).
-    # NOTE: a separate step after Lazy sync, with an explicit `Lazy! load` and
-    # the Sync variant — mason-tool-installer is a dependency of nvim-lspconfig,
-    # which loads on BufReadPre, an event that never fires headless; and the
-    # async command would let nvim exit before the install finishes.
+    # NOTE: a separate step after Lazy sync, with the Sync variant — the async
+    # command would let nvim exit before the install finishes. The command
+    # itself lazy-loads mason-tool-installer (its own spec in lsp.lua).
     # NOTE: no guard on the mason directory either. The command is idempotent
     # and costs 0s when complete, while "skip if something is installed" would
     # break the multi-stage image: the devops stage inherits a non-empty mason/
@@ -262,7 +272,7 @@ in
           fi
         fi
 
-        run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
+        run nvim --headless "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
         if [ -f "$MASON_LOG" ]; then
           # NOTE: the log check is mandatory — MasonToolsInstallSync returns 0

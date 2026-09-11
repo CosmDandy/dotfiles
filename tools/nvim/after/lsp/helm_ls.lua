@@ -4,7 +4,8 @@
 -- NOTE: the ordinary yamlls does NOT attach to filetype 'helm' — its filetypes list is
 -- yaml/yaml.ansible only — or there would be a double attach and junk errors.
 return {
-  filetypes = { 'helm' },
+  -- yaml.helm-values: a chart's values*.yaml (autocmds.lua), linked with its templates
+  filetypes = { 'helm', 'yaml.helm-values' },
   settings = {
     ['helm-ls'] = {
       logLevel = 'info',
