@@ -55,6 +55,33 @@ return {
         return ansible_parser(output, bufnr, linter_cwd)
       end
 
+      -- tflint --recursive reports a module it could not load under `errors`, which the
+      -- stock parser ignores: a broken module showed no findings at all, silently. An
+      -- error naming this file lands on its line; one about this file's module, or a
+      -- global one (a bad .tflint.hcl), on line 1.
+      local tflint_parser = lint.linters.tflint.parser
+      lint.linters.tflint.parser = function(output, bufnr, ...)
+        local diagnostics = tflint_parser(output, bufnr, ...)
+        local ok, decoded = pcall(vim.json.decode, output)
+        if not ok or type(decoded) ~= 'table' or type(decoded.errors) ~= 'table' then
+          return diagnostics
+        end
+        local buf_path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ':.')
+        for _, err in ipairs(decoded.errors) do
+          local msg = (err.message or ''):gsub('\27%[[%d;]*m', '')
+          local dir = msg:match '^Failed to run in ([^;]+);'
+          local file, line, col, detail = msg:match '([^%s;:]+%.tf):(%d+),(%d+)[%-%d]*: ([^\n]+)'
+          local diag = { lnum = 0, col = 0, severity = vim.diagnostic.severity.ERROR, source = 'tflint', message = msg:match '^[^\n]*' }
+          if file == buf_path then
+            diag.lnum, diag.col, diag.message = tonumber(line) - 1, tonumber(col) - 1, detail:gsub(':$', '')
+            table.insert(diagnostics, diag)
+          elseif (dir and vim.startswith(buf_path, dir .. '/')) or not dir then
+            table.insert(diagnostics, diag)
+          end
+        end
+        return diagnostics
+      end
+
       local lint_augroup = vim.api.nvim_create_augroup('lint', { clear = true })
       local timer = assert((vim.uv or vim.loop).new_timer())
       -- NOTE: linters without stdin (ansible-lint, tflint) read the file from disk, so on

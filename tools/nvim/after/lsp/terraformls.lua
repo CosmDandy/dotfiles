@@ -65,27 +65,8 @@ return {
           if out.code == 0 then
             -- NOTE: a restart, because on Linux nvim 0.12 advertises no file watching
             -- (protocol.lua, Darwin/Windows only) and terraform-ls in a devcontainer never
-            -- hears about .terraform. A hand-made one: `:lsp restart` stopped the client
-            -- and started none (verified) — lsp.start reused the stopped client, which
-            -- stays listed, so reuse_client here skips stopped ones.
-            for _, c in ipairs(vim.lsp.get_clients { name = 'terraformls' }) do
-              local bufs, config = vim.tbl_keys(c.attached_buffers), c.config
-              c:stop()
-              vim.wait(5000, function()
-                return c:is_stopped()
-              end, 50)
-              for _, b in ipairs(bufs) do
-                -- NOTE: the root is found again: opened before the init, the module had
-                -- no .terraform yet and the old client's root is the repo (.git)
-                local root = vim.fs.root(b, { '.terraform', '.git' }) or config.root_dir
-                vim.lsp.start(vim.tbl_extend('force', config, { root_dir = root }), {
-                  bufnr = b,
-                  reuse_client = function(client, cfg)
-                    return client.name == cfg.name and client.root_dir == cfg.root_dir and not client:is_stopped()
-                  end,
-                })
-              end
-            end
+            -- hears about .terraform; the hand-made one, as `:lsp restart` left it stopped
+            require 'config.lsp_restart'(vim.lsp.get_clients { name = 'terraformls' })
             vim.notify('terraform init: providers in place, terraform-ls restarted', vim.log.levels.INFO)
           else
             vim.notify('terraform init failed:\n' .. (out.stderr or ''), vim.log.levels.ERROR)

@@ -60,8 +60,10 @@ local custom_schemas = {
   },
   [crd 'gateway.networking.k8s.io/gateway_v1.json'] = { '**/gateway.yaml' },
   [crd 'gateway.networking.k8s.io/gatewayclass_v1.json'] = { '**/gatewayclass.yaml' },
-  [crd 'gateway.networking.k8s.io/httproute_v1.json'] = { '**/*httproute*.yaml' },
-  [crd 'gateway.networking.k8s.io/referencegrant_v1beta1.json'] = { '**/*referencegrant*.yaml' },
+  -- NOTE: singular, so the CRD definitions (gateway.networking.k8s.io_httproutes.yaml)
+  -- no longer get the schema of the resource they define
+  [crd 'gateway.networking.k8s.io/httproute_v1.json'] = { '**/*httproute.yaml' },
+  [crd 'gateway.networking.k8s.io/referencegrant_v1beta1.json'] = { '**/*referencegrant.yaml' },
 
   -- NOTE: 'kubernetes' is yamlls's built-in trigger — a special mode that picks the schema
   -- by GVK. The cost: the schema is fetched over the network, ~4-5s on the first k8s file

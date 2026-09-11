@@ -150,7 +150,10 @@ return {
 
           -- NOTE: the built-in :lsp (nvim 0.12); nvim-lspconfig stops defining its
           -- Lsp* commands once :lsp exists, so :LspRestart was E492 here
-          map('<leader>lr', '<cmd>lsp restart<CR>', '[L]SP [R]estart')
+          -- not `:lsp restart`: it left terraform-ls stopped (see config/lsp_restart.lua)
+          map('<leader>lr', function()
+            require 'config.lsp_restart'(vim.lsp.get_clients { bufnr = 0 })
+          end, '[L]SP [R]estart')
 
           local client = vim.lsp.get_client_by_id(event.data.client_id)
 
