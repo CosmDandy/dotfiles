@@ -100,17 +100,17 @@ in
       "leader-key"
       # Browsers
       "arc"
-      "netnewswire"
+      # "netnewswire"
       # Development
       "ghostty"
       # "cursor"
-      "visual-studio-code"
+      # "visual-studio-code"
       "devpod"
       "postico"
       "utm"
       # AI
       # "chatgpt"
-      "claude"
+      # "claude"
       # "lm-studio"
       # Productivity
       "obsidian"
@@ -127,7 +127,10 @@ in
       "nikitabobko/tap/aerospace"
       "spokenly"
       # Utilities
-      "logi-options+"
+      # NOTE: logi-options+ lives in platform/macos/install-extra.sh instead, and must
+      # NOT come back here. Its installer sleeps forever without a GUI session, and
+      # `brew bundle` runs inside activation with none — it hung the whole switch twice
+      # (2026-09-11), on install and on uninstall alike.
       "tailscale-app"
       "yandextelemost"
       "horos"

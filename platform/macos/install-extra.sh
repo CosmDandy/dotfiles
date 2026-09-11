@@ -39,6 +39,40 @@ setup_app "Leader Key" \
     "Show Leader Key in menubar → off" \
     "Force English keyboard layout → on"
 
+# Logi Options+ is deliberately NOT in the casks list, and this is the only place it
+# can be installed from.
+# NOTE: its installer hangs forever when started without a GUI session. `brew bundle`
+# runs inside `darwin-rebuild switch` activation — under sudo, no session — and the
+# installer goes to sleep there and never returns: no CPU, no sockets, no files opened.
+# It took the whole switch down twice (2026-09-11), once on install and once on
+# uninstall, each time leaving brew and the filesystem disagreeing about whether the
+# app exists. Started from a real session, as below, it installs normally.
+# NOTE: brew is still the source of the archive — the version stays pinned to the cask
+# and `brew fetch` alone never runs the installer.
+install_logi_options() {
+    [[ -d /Applications/logioptionsplus.app ]] && return 0
+
+    print_section "Logi Options+ (установщик требует GUI-сессии)"
+    if ! brew fetch --cask logi-options+; then
+        echo "⊘ не удалось скачать logi-options+ — пропускаю"
+        return 0
+    fi
+
+    local archive unpacked
+    archive="$(brew --cache --cask logi-options+)"
+    unpacked="$(mktemp -d)"
+    if ! unzip -q -o "$archive" -d "$unpacked"; then
+        echo "⊘ не удалось распаковать $archive — пропускаю"
+        return 0
+    fi
+
+    open "$unpacked/logioptionsplus_installer.app"
+    read "?Нажми Enter, когда установщик Logi Options+ закончит работу: "
+    rm -rf "$unpacked"
+}
+
+install_logi_options
+
 setup_app "logioptionsplus" \
     "Add MX Master via Bluetooth" \
     "ВОССТАНОВИТЬ НАСТРОЙКИ ИЗ РЕЗЕРВНОЙ КОПИИ"
