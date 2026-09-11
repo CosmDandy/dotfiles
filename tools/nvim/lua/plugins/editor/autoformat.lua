@@ -73,6 +73,19 @@ return {
         if vim.bo[bufnr].filetype == 'helm' or name:match '/templates/' then
           return {}
         end
+        -- NOTE: encrypted files are never formatted. yamlfmt folded an ansible-vault file
+        -- ($ANSIBLE_VAULT header + hex lines) into a single scalar, which no longer
+        -- decrypts, and re-indented the sops: metadata of every *.sops.yaml. Only sops and
+        -- ansible-vault may write these.
+        local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        if (lines[1] or ''):match '^%$ANSIBLE_VAULT' then
+          return {}
+        end
+        for _, line in ipairs(lines) do
+          if line:match '^sops:' then
+            return {}
+          end
+        end
         return { 'yamlfmt' }
       end,
 
@@ -83,6 +96,7 @@ return {
       -- HCL goes through the LSP (terraform fmt)
       hcl = {},
       terraform = { 'terraform_fmt' },
+      ['terraform-vars'] = { 'terraform_fmt' },
 
       dockerfile = {}, -- LSP formatting only
 
@@ -90,44 +104,20 @@ return {
     },
 
     formatters = {
-      -- NOTE: full args, not prepend_args — the built-in ruff_fix already carries
-      -- 'check --fix', and prepending duplicated the subcommand into
-      -- 'ruff check … check …', which broke.
-      ruff_fix = {
-        args = {
-          'check',
-          '--fix',
-          '--select',
-          'I,F,E,W,UP,B',
-          '--force-exclude',
-          '--exit-zero',
-          '--no-cache',
-          '--stdin-filename',
-          '$FILENAME',
-          '-',
-        },
-      },
-
-      -- NOTE: no '--respect-gitignore' — that is a flag of 'check' and invalid for 'format'.
-      ruff_format = {
-        args = {
-          'format',
-          '--line-length',
-          '88',
-          '--force-exclude',
-          '--stdin-filename',
-          '$FILENAME',
-          '-',
-        },
-      },
+      -- NOTE: ruff_fix/ruff_format keep conform's stock args. The rule set and line
+      -- length live in ~/.config/ruff/ruff.toml (tools/ruff), which ruff reads only when
+      -- the project has no config — CLI flags here would override the project's own.
 
       -- include_document_start adds the leading '---'; retain_line_breaks_single keeps
       -- blank lines between tasks (collapsing doubles); pad_line_comments=2 matches what
       -- yamllint expects before an inline comment.
+      -- NOTE: scan_folded_as_literal keeps the author's line breaks inside `>` blocks.
+      -- Without it yamlfmt joined every folded msg:/fail_msg: into one line of up to
+      -- 340 characters — 22 such lines in cloud-lab, each a new line-length finding.
       yamlfmt = {
         prepend_args = {
           '-formatter',
-          'indent=2,include_document_start=true,retain_line_breaks_single=true,pad_line_comments=2,drop_merge_tag=true',
+          'indent=2,include_document_start=true,retain_line_breaks_single=true,pad_line_comments=2,drop_merge_tag=true,scan_folded_as_literal=true',
         },
       },
 

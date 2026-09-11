@@ -167,10 +167,9 @@ in
     '';
 
     # Mason packages (LSP servers, linters, formatters from ensure_installed).
-    # NOTE: a separate step after Lazy sync, with an explicit `Lazy! load` and
-    # the Sync variant — mason-tool-installer is a dependency of nvim-lspconfig,
-    # which loads on BufReadPre, an event that never fires headless; and the
-    # async command would let nvim exit before the install finishes.
+    # NOTE: a separate step after Lazy sync, with the Sync variant — the async
+    # command would let nvim exit before the install finishes. The command
+    # itself lazy-loads mason-tool-installer (its own spec in lsp.lua).
     # NOTE: no guard on the mason directory either. The command is idempotent
     # and costs 0s when complete, while "skip if something is installed" would
     # break the multi-stage image: the devops stage inherits a non-empty mason/
@@ -262,7 +261,7 @@ in
           fi
         fi
 
-        run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
+        run nvim --headless "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
         if [ -f "$MASON_LOG" ]; then
           # NOTE: the log check is mandatory — MasonToolsInstallSync returns 0

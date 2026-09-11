@@ -4,7 +4,8 @@ vim.filetype.add {
     nomad = 'hcl',
     j2 = 'jinja',
     tf = 'terraform',
-    tfvars = 'terraform',
+    -- NOTE: .tfvars keeps nvim's own 'terraform-vars' — terraform-ls then checks the
+    -- values against variables.tf instead of parsing the file as a module.
     tftpl = 'terraform',
     tpl = 'yaml',
   },
@@ -12,9 +13,26 @@ vim.filetype.add {
     ['.terraformrc'] = 'hcl',
     ['.terraform.tfrc'] = 'hcl',
   },
-  -- NOTE: compose and gitlab-ci stay plain yaml — yamlls picks their schema by glob.
+  -- NOTE: gitlab-ci stays plain yaml — yamlls picks its schema by glob.
   pattern = {
+    -- compose gets its own filetype so docker-compose-language-service attaches (image
+    -- and service-name completion) next to yamlls; nvim itself leaves it plain yaml
+    ['docker%-compose.*%.ya?ml'] = 'yaml.docker-compose',
+    ['compose.*%.ya?ml'] = 'yaml.docker-compose',
+    -- a values file next to a Chart.yaml: helm-ls then links it with the templates
+    ['.*values.*%.ya?ml'] = function(path)
+      if vim.uv.fs_stat(vim.fs.dirname(path) .. '/Chart.yaml') then
+        return 'yaml.helm-values'
+      end
+    end,
     ['.*playbook.*%.ya?ml'] = 'yaml.ansible',
+    -- NOTE: a pattern without '/' is matched against the file name only, so the one
+    -- above never sees the directory — playbooks/site.yml opened as plain yaml.
+    ['.*/playbooks/.*%.ya?ml'] = 'yaml.ansible',
+    -- role variables: ansible-lint's var-naming and yaml rules instead of bare yamllint
+    ['.*/roles/.*/defaults/.*%.ya?ml'] = 'yaml.ansible',
+    ['.*/roles/.*/vars/.*%.ya?ml'] = 'yaml.ansible',
+    ['.*/roles/.*/meta/.*%.ya?ml'] = 'yaml.ansible',
     ['.*requirements.*%.ya?ml'] = 'yaml.ansible',
     ['.*roles/.*/tasks/.*%.ya?ml'] = 'yaml.ansible',
     ['.*roles/.*/handlers/.*%.ya?ml'] = 'yaml.ansible',
@@ -25,6 +43,7 @@ vim.filetype.add {
     ['.*%.github/workflows/.*%.tpl'] = 'yaml',
     -- Ansible .tpl
     ['.*playbook.*%.tpl'] = 'yaml.ansible',
+    ['.*/playbooks/.*%.tpl'] = 'yaml.ansible',
     ['.*requirements.*%.tpl'] = 'yaml.ansible',
     ['.*roles/.*/tasks/.*%.tpl'] = 'yaml.ansible',
     ['.*roles/.*/handlers/.*%.tpl'] = 'yaml.ansible',
