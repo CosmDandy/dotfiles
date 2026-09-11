@@ -167,17 +167,18 @@ in
 
   environment.systemPackages = with pkgs; [
     nodejs_24 # explicit major: hooks.nix pins the same one
+    # NOTE: mason's own runtimes, not languages written on this machine. node
+    # installs most of the LSP servers, python3 backs debugpy and mypy (and
+    # basedpyright is useless without an interpreter), go builds
+    # jsonnet-language-server. Drop any of them and mason fails that package on
+    # every install — the failure is a warning, not an error, so the server is
+    # simply missing until someone opens the log.
+    # NOTE: go WITHOUT its toolchain on purpose. gopls, gotools, gofumpt, delve
+    # and golangci-lint only matter for writing Go here, which now happens in
+    # Linux. Removing go itself instead would mean dropping
+    # jsonnet-language-server from the mason list in tools/nvim.
     python3
     go
-    # Go toolchain next to the compiler. The nvim config is shared with Linux,
-    # so without these a .go file opens here with no LSP, no formatting and no
-    # debugger. Duplicating home/default.nix is unavoidable: the mac imports
-    # only home/darwin.nix (files + hooks), never the shared default.nix.
-    gopls
-    gotools
-    gofumpt
-    delve
-    golangci-lint
     uv
     luarocks # for mason (luacheck); brings its own lua
     eza
@@ -186,7 +187,6 @@ in
     fzf # interactive pickers: dpkey, kubectx/kubens
     ipmitool # BMC access: power, SOL console, sensors
     arp-scan # answers even from hosts with every port closed; needs root and own L2 segment
-    nmap # the other half: arp-scan says who is there, nmap what is open
     unzip
     curl
     jq
@@ -212,10 +212,6 @@ in
     delta # diff renderer for lazygit
     lazydocker
     lima # declarative Linux VMs (PXE bench)
-    iperf3 # throughput measurements (PXE bench, future 10G)
-    mtr # first tool for "the internet works every other time"
-    ansible
-    ansible-lint # NOTE: the PostToolUse hook calls it through the shell PATH, where mason's copy is invisible
     gdu
     gitleaks
     restic # automation/backup/backup.sh
@@ -225,9 +221,13 @@ in
     pinentry_mac
     sops
     age
-    zizmor # static analysis of GitHub Actions workflows (pre-commit + CI)
+    # NOTE: these three are called by tools/claude/hooks/posttooluse-lint.sh
+    # through the shell PATH, where mason's copies are invisible. The helper
+    # returns 0 when a binary is missing, so removing them does not break
+    # anything visibly — it silently stops linting every file edited here.
     yamllint
     shellcheck
+    ansible-lint
     nil # LSP for this very file
     nixfmt # official formatter (RFC 166), called by rules and CI
     statix # anti-patterns

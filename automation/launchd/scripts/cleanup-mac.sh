@@ -9,8 +9,11 @@ set -uo pipefail
 #   --deep     also drop expensive-to-rebuild caches (Hyprnote's compiled ANE models —
 #              they come back on the next app launch, but that launch is slow)
 #
-# NOTE: deliberately untouched — ~/.lima (PXE lab images), UTM machines, Spokenly data,
-# and the OrbStack disk with its containers; only dangling layers and the build cache go.
+# NOTE: deliberately untouched — ~/.lima (the PXE lab machines themselves, as opposed to
+# ~/Library/Caches/lima, which is only downloaded base images and goes under --deep), UTM
+# machines, Spokenly data, the speech model in ~/Library/Caches/qwen3-speech, the nvim
+# plugin and mason trees (~1.3 GB, restored only by a very slow first launch), and the
+# OrbStack disk with its containers; of docker, only dangling layers and the build cache.
 
 export PATH="/opt/homebrew/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:$HOME/.nix-profile/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -46,12 +49,29 @@ reclaim() {
   kb=$(du -sk "$path" 2>/dev/null | awk '{print $1}')
   [[ -n "$kb" ]] || return 0
   [[ "$kb" -gt 0 ]] || return 0
-  FREED=$((FREED + kb))
   if [[ -n "$DRY_RUN" ]]; then
+    FREED=$((FREED + kb))
     log "  · $label — $(human "$kb")"
-  else
-    rm -rf "$path" 2>/dev/null && log "  · $label — освобождено $(human "$kb")"
+  # NOTE: counted AFTER the removal succeeds, not before. rm silences its own
+  # errors here, so a path that could not be deleted used to be added to the
+  # total anyway and the closing "учтено к освобождению" overstated the result —
+  # while the honest before/after figure right below it disagreed.
+  elif rm -rf "$path" 2>/dev/null; then
+    FREED=$((FREED + kb))
+    log "  · $label — освобождено $(human "$kb")"
   fi
+}
+
+# Reports a size without touching anything. For caches that are cleaned by their
+# own tool (which decides what is unused) but whose real footprint is worth
+# seeing — otherwise a 400 MB directory stays invisible because the tool
+# considers all of it live.
+report() {
+  local path="$1" label="$2" kb
+  [[ -e "$path" ]] || return 0
+  kb=$(du -sk "$path" 2>/dev/null | awk '{print $1}')
+  [[ -n "$kb" ]] || return 0
+  log "  · $label — сейчас $(human "$kb"), не удаляется"
 }
 
 # Wrapper for package-manager cleaners, which count what they freed themselves.
@@ -80,6 +100,12 @@ UV_LOCK_TIMEOUT=10 run_tool "uv" uv cache prune --force
 # — but the moment this script moves into a launchd daemon that `-d` would silently
 # destroy the rollback.
 run_tool "nix (профиль пользователя)" nix-collect-garbage --delete-older-than 3d
+# NOTE: not a deletion at all — identical files in the store are replaced by hard
+# links to one copy. The store is the biggest single thing on this disk (~6 GB)
+# and the garbage collector above cannot touch what is still referenced, while
+# this reclaims the duplication inside it. Slow (it hashes the store), which is
+# why it runs after the collector rather than before.
+run_tool "nix (дедупликация store)" nix-store --optimise
 
 # NOTE: dangling layers and the build cache only. No `system prune -a` and no container
 # removal — the working devpod images must survive the cleanup.
@@ -102,6 +128,17 @@ reclaim "$HOME/Library/Application Support/Code/CachedData" "VS Code: прогр
 log "Кэши сборки..."
 reclaim "$HOME/Library/Caches/go-build" "кэш сборки Go"
 reclaim "$HOME/Library/Caches/pip" "кэш pip"
+# NOTE: the EVALUATION cache, not the store — nix rebuilds it on the next command.
+# Nothing else prunes it and it was the largest untouched directory in ~/.cache.
+reclaim "$HOME/.cache/nix" "кэш вычисления nix"
+# Application logs: individually tiny, collectively unbounded, and rotated by
+# nobody.
+reclaim "$HOME/Library/Logs" "логи приложений"
+
+# uv is pruned above by its own cache command, which only drops what uv itself
+# considers unused — the directory stays the biggest one in ~/.cache either way,
+# so at least report its real size instead of leaving it invisible.
+report "$HOME/.cache/uv" "кэш uv"
 
 # Sparkle/Tauri leave downloaded update installers here and never clean up after
 # themselves — dead weight once installed.
@@ -114,6 +151,13 @@ if [[ -n "$DEEP" ]]; then
   log "Глубокая чистка..."
   reclaim "$HOME/Library/Caches/com.hyprnote.stable/com.apple.e5rt.e5bundlecache" \
     "скомпилированные ANE-модели Hyprnote"
+  # Browser binaries, restored by `playwright install`. Deep only: the download
+  # is large and comes back over the network.
+  reclaim "$HOME/Library/Caches/ms-playwright" "браузеры Playwright"
+  # NOTE: this is the DOWNLOAD cache, a different thing from ~/.lima, which holds
+  # the machines themselves and is never touched. Re-downloading a base image is
+  # slow, hence deep only.
+  reclaim "$HOME/Library/Caches/lima" "кэш образов lima"
 fi
 
 AFTER=$(free_kb)

@@ -24,6 +24,10 @@ let
     jq # statusline.sh parses the payload with it — without jq the line is empty
     ripgrep
     starship
+    # NOTE: the shell itself, so every machine runs the same version instead of
+    # whatever the distro shipped. It does NOT drop zsh from the apt minimum —
+    # install.sh has a zsh shebang and runs long before nix exists.
+    zsh
     neovim
     tmux
     atuin
