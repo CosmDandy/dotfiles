@@ -1,15 +1,12 @@
 -- Restart LSP clients by hand (<leader>lr, :TerraformInit).
--- NOTE: the built-in `:lsp restart` left terraform-ls stopped and started nothing
--- (verified twice; yamlls came back fine): a server slow to exit is still listed, and
--- lsp.start's default reuse_client attaches the buffer to it again. So: stop, then start
--- afresh with a reuse_client that skips stopped clients.
+-- NOTE: the built-in `:lsp restart` starts the new client only once the old process has
+-- exited, and terraform-ls was still not gone 10 s after shutdown (verified twice; yamlls
+-- came back at once): the buffer sat without a server. Here the new client starts right
+-- away, next to the one shutting down.
 return function(clients)
   for _, c in ipairs(clients) do
     local bufs, config = vim.tbl_keys(c.attached_buffers), c.config
     c:stop()
-    vim.wait(5000, function()
-      return c:is_stopped()
-    end, 50)
     for _, b in ipairs(bufs) do
       -- NOTE: the root is found again: a terraform module opened before its init had no
       -- .terraform yet, and the old client's root is the repo (.git)

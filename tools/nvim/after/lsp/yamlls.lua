@@ -38,6 +38,7 @@ local custom_schemas = {
     '**/*.gitlab-ci.yml',
     '**/*.gitlab-ci.yaml',
     '**/.gitlab/ci/*.{yml,yaml}',
+    '**/.gitlab/ci/.*.{yml,yaml}',
     '**/ci-cd/*.{yml,yaml}',
     '**/ci-cd/**/.*.{yml,yaml}',
     '**/gitlab-templates/*.{yml,yaml}',

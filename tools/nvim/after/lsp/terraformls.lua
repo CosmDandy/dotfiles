@@ -13,23 +13,32 @@ return {
   -- nvim logs as an error — DIRENV_LOG_FORMAT='' does not silence it in direnv 2.37.
   -- A blocked .envrc exports nothing, and nvim's own environment is used.
   cmd = function(dispatchers, config)
-    local env
+    local env, unset = nil, {}
     if config.root_dir and vim.fn.executable 'direnv' == 1 then
-      local out = vim.system({ 'direnv', 'export', 'json' }, { cwd = config.root_dir, text = true }):wait()
-      local ok, vars = pcall(vim.json.decode, out.stdout ~= '' and out.stdout or 'null')
+      -- NOTE: 5 s cap — this runs on the UI thread, and a slow .envrc (an uncached
+      -- `use flake`) would freeze nvim; past it the server keeps nvim's environment
+      local out = vim.system({ 'direnv', 'export', 'json' }, { cwd = config.root_dir, text = true }):wait(5000)
+      local ok, vars = pcall(vim.json.decode, out.code == 0 and out.stdout ~= '' and out.stdout or 'null')
       if ok and type(vars) == 'table' then
         env = {}
-        -- null means "unset"; an added variable is enough here
         for k, v in pairs(vars) do
           if type(v) == 'string' then
             env[k] = v
+          else
+            -- null: unset — left over from another directory's .envrc nvim was started
+            -- under; vim.system can only add variables, so env -u drops them
+            vim.list_extend(unset, { '-u', k })
           end
         end
       end
     end
     -- without -log-file terraform-ls traces to stderr, which nvim keeps in lsp.log at
     -- ERROR level: 11 MB from one repo
-    return vim.lsp.rpc.start({ 'terraform-ls', 'serve', '-log-file=/dev/null' }, dispatchers, { cwd = config.root_dir, env = env })
+    local cmd = { 'terraform-ls', 'serve', '-log-file=/dev/null' }
+    if #unset > 0 then
+      cmd = vim.list_extend(vim.list_extend({ 'env' }, unset), cmd)
+    end
+    return vim.lsp.rpc.start(cmd, dispatchers, { cwd = config.root_dir, env = env })
   end,
   -- NOTE: init_options, not settings: terraform-ls reads these from initializationOptions
   -- only and answers workspace/didChangeConfiguration with "method not found", so

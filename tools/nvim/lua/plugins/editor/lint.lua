@@ -59,6 +59,8 @@ return {
       -- stock parser ignores: a broken module showed no findings at all, silently. An
       -- error naming this file lands on its line; one about this file's module, or a
       -- global one (a bad .tflint.hcl), on line 1.
+      -- NOTE: the module is compared whole: tflint names the one it runs in '.', and a
+      -- prefix test put a parent's error on every file of its nested modules.
       local tflint_parser = lint.linters.tflint.parser
       lint.linters.tflint.parser = function(output, bufnr, ...)
         local diagnostics = tflint_parser(output, bufnr, ...)
@@ -75,7 +77,7 @@ return {
           if file == buf_path then
             diag.lnum, diag.col, diag.message = tonumber(line) - 1, tonumber(col) - 1, detail:gsub(':$', '')
             table.insert(diagnostics, diag)
-          elseif (dir and vim.startswith(buf_path, dir .. '/')) or not dir then
+          elseif not dir or vim.fs.dirname(buf_path) == dir then
             table.insert(diagnostics, diag)
           end
         end

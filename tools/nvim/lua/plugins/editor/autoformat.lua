@@ -120,7 +120,7 @@ return {
           end
           -- unquoted Jinja parses as a flow map: yamlfmt turned `foo: {{ bar }}` into
           -- `foo: {? {bar: ''} : ''}`; left alone, yamllint and ansible-lint point at it
-          if line:match '^%s*[%w_-]+:%s*{%s*{' or line:match '^%s*%- {%s*{' then
+          if line:match '^%s*%-?%s*[%w_.-]+:%s*{%s*{' or line:match '^%s*%- {%s*{' then
             return skip
           end
           -- a CRD is upstream's file; re-indenting it is a 12k-line diff
