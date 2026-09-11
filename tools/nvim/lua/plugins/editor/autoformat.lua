@@ -1,7 +1,19 @@
+-- Filetypes left alone on save; :FormatOnSaveToggle [ft] flips one for the session.
+-- NOTE: python is off by default: ruff reads ~/.config/ruff/ruff.toml wherever a project
+-- has no config of its own, and a save re-sorted imports in colleagues' code.
+local off_on_save = { python = true }
+
 return {
   'stevearc/conform.nvim',
   event = { 'BufWritePre' },
   cmd = { 'ConformInfo' },
+  init = function()
+    vim.api.nvim_create_user_command('FormatOnSaveToggle', function(args)
+      local ft = args.args ~= '' and args.args or vim.bo.filetype
+      off_on_save[ft] = not off_on_save[ft] or nil
+      vim.notify(('Format on save for %s: %s'):format(ft, off_on_save[ft] and 'OFF' or 'ON'), vim.log.levels.INFO)
+    end, { nargs = '?', complete = 'filetype', desc = 'Toggle format on save for a filetype' })
+  end,
   keys = {
     {
       '<leader>f',
@@ -45,7 +57,7 @@ return {
       local filetype = vim.bo[bufnr].filetype
 
       local disable_filetypes = { 'sql', 'text', 'markdown' }
-      if vim.tbl_contains(disable_filetypes, filetype) then
+      if vim.tbl_contains(disable_filetypes, filetype) or off_on_save[filetype] then
         return false
       end
 

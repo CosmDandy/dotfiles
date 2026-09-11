@@ -84,6 +84,12 @@ return {
               -- a compound filetype without its own entry (yaml.docker-compose,
               -- yaml.helm-values) takes its base's linters; yaml.ansible has its own
               local ft_linters = lint.linters_by_ft[ft] or lint.linters_by_ft[vim.split(ft, '.', { plain = true })[1]] or {}
+              -- a sops file is ciphertext: yamllint only reported line-length on its values
+              if vim.tbl_contains(ft_linters, 'yamllint') and vim.fn.search('^sops:', 'nw') > 0 then
+                ft_linters = vim.tbl_filter(function(n)
+                  return n ~= 'yamllint'
+                end, ft_linters)
+              end
               local available, missing = {}, {}
               for _, name in ipairs(ft_linters) do
                 local linter = lint.linters[name]

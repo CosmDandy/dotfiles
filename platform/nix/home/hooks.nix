@@ -121,6 +121,17 @@ in
                  echo "warn: $m"; echo "$m" >> "${warnFile}"; }
         fi
       done
+      # GitLab CI gains keywords every release, so unlike the CRDs it is refreshed once
+      # it is a month old; the old copy stays if the download fails.
+      ci="$SCHEMA_DIR/gitlab-ci.json"
+      if [ -z "$(find "$ci" -mtime -30 2>/dev/null)" ]; then
+        run mkdir -p "$SCHEMA_DIR"
+        run ${pkgs.curl}/bin/curl -fsSL \
+          "https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/app/assets/javascripts/editor/schema/ci.json" \
+          -o "$ci.tmp" && run mv "$ci.tmp" "$ci" \
+          || { rm -f "$ci.tmp"; m="schema gitlab-ci.json not refreshed (yamlls uses the old copy or the URL)"; \
+               echo "warn: $m"; echo "$m" >> "${warnFile}"; }
+      fi
     '';
 
     # NOTE: the init.lua guard is what skips this during an image build before

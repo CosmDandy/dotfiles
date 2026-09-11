@@ -5,13 +5,20 @@
 -- restart does not hit the network and works offline. crd() returns a file:// path when
 -- the cache exists and degrades to the URL otherwise.
 local cache_dir = (vim.env.XDG_CACHE_HOME or (vim.env.HOME .. '/.cache')) .. '/yaml-schemas'
-local function crd(rel)
+local function cached(rel, url)
   local p = cache_dir .. '/' .. rel
   if vim.uv.fs_stat(p) then
     return 'file://' .. p
   end
-  return 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/' .. rel
+  return url
 end
+local function crd(rel)
+  return cached(rel, 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/' .. rel)
+end
+
+-- The GitLab CI schema is cached too (hooks.nix, refreshed monthly): fetching it failed
+-- now and then, and CI completion and validation silently disappeared.
+local gitlab_ci_url = 'https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/app/assets/javascripts/editor/schema/ci.json'
 
 -- NOTE: a key equal to a schemastore URL REPLACES that entry's globs; any other URL for
 -- the same schema attaches it a second time (GitHub Workflow did, as json.* and www.*).
@@ -22,10 +29,10 @@ end
 -- skips dot-files, which need a `.*` glob of their own.
 local custom_schemas = {
   ['https://www.schemastore.org/github-workflow.json'] = { '/.github/workflows/*.{yml,yaml}', '/.github/workflows/*.tpl' },
-  -- GitLab CI, keyed by the catalogue's URL so these globs replace its entry: the files
-  -- pulled in by include: (.gitlab/ci/, ci-cd/) and the shared templates, mostly
-  -- dot-files like .kaniko.yaml, got no schema before.
-  ['https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/app/assets/javascripts/editor/schema/ci.json'] = {
+  -- GitLab CI: the files pulled in by include: (.gitlab/ci/, ci-cd/) and the shared
+  -- templates, mostly dot-files like .kaniko.yaml, got no schema before. before_init
+  -- drops the catalogue's own entry, which a file:// key would not replace.
+  [cached('gitlab-ci.json', gitlab_ci_url)] = {
     '**/.gitlab-ci.yml',
     '**/.gitlab-ci.yaml',
     '**/*.gitlab-ci.yml',
@@ -113,6 +120,7 @@ return {
     new_config.settings.yaml = new_config.settings.yaml or {}
     -- schemastore covers everything, custom_schemas win on the same key
     local schemas = require('schemastore').yaml.schemas()
+    schemas[gitlab_ci_url] = nil
     -- Symfony's **/config/services.yaml glob caught a Homepage dashboard config
     for url in pairs(schemas) do
       if url:find('symfony', 1, true) and url:find('services.schema.json', 1, true) then
