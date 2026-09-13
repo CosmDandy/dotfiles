@@ -2,6 +2,12 @@
 
 set -e
 
+# NOTE: PATH is re-established here rather than inherited. The activation hook exports
+# hookPath, but nix-darwin's /etc/zshenv re-runs set-environment for every new zsh process
+# and wipes it — so /opt/homebrew/bin was gone by the time this ran, the guard below found
+# no orb and skipped the whole apply, silently, on every switch.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # Desired state of the OrbStack settings as code.
 # NOTE: driven through `orb config` because OrbStack rewrites its own files, so a symlink
 # is no good. The declarative apply is idempotent and portable.
