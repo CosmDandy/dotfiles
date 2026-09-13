@@ -48,6 +48,18 @@ let
     builtins.readFile ../../automation/launchd/scripts/ssh-sign-key.sh
   );
 
+  # Claude Code updates only from updm, never in the background. TCC records the
+  # binary by its absolute path under ~/.local/share/claude/versions/<N>, so every
+  # new version re-asks for Desktop, Documents and the rest — with the latest
+  # channel that was a dialog almost daily.
+  # NOTE: managed settings, not tools/claude/settings.json: that file is shared
+  # with the containers, where there is no TCC and nothing else would update
+  # claude. It is also not a shell export: meeting-summary runs `claude -p` from
+  # launchd every 15 minutes, past zsh, and would pull every release itself.
+  claudeManagedSettings = pkgs.writeText "claude-managed-settings.json" (
+    builtins.toJSON { env.DISABLE_AUTOUPDATER = "1"; }
+  );
+
   # ProgramArguments для агента, который стартует ПРИ ЛОГИНЕ.
   #
   # Прямая ссылка на store-путь для такого агента не работает: /nix лежит на
@@ -162,6 +174,12 @@ in
     # screensaver.askForPassword = a locked Mac.
     pmset -c sleep 0 displaysleep 8
     pmset -b sleep 1 displaysleep 2 lowpowermode 1
+
+    # NOTE: a copy, not a symlink into the store — /nix mounts seconds after login
+    # items start, and a claude launched in that window would read a dangling link
+    # and quietly fall back to auto-updating.
+    install -d -m 0755 "/Library/Application Support/ClaudeCode"
+    install -m 0644 ${claudeManagedSettings} "/Library/Application Support/ClaudeCode/managed-settings.json"
   '';
 
   # Unattended agents must survive a kernel panic. restartAfterPowerFailure is
