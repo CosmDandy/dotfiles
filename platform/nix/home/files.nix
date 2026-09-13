@@ -57,6 +57,11 @@ in
     "starship.toml".source = link "tools/starship/starship.toml";
     "atuin/config.toml".source = link "tools/atuin/config.toml";
     "nvim".source = link "tools/nvim";
+    # Fallback rule set for projects without a ruff config of their own; conform and
+    # nvim-lint both run plain ruff, so both read it.
+    "ruff/ruff.toml".source = link "tools/ruff/ruff.toml";
+    # Same idea for yamllint: used only where the project has no .yamllint.
+    "yamllint/config".source = link "tools/yamllint/config";
     "btop/btop.conf".source = link "tools/btop/btop.conf";
     # NOTE: k9s is linked file by file rather than as one directory — k9s.zsh switches the
     # active skin by rewriting ~/.config/k9s/skins/solarized.yaml. With the whole directory

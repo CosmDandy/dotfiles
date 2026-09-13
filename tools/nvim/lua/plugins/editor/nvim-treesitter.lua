@@ -33,6 +33,8 @@ return {
         'terraform',
         'jinja',
         'toml',
+        -- ansible.cfg, odoo.conf and friends (dosini)
+        'ini',
         'xml',
         'regex',
         'vim',

@@ -1,0 +1,9 @@
+# User-level fallback: ruff reads it only when a project has no ruff.toml or
+# pyproject.toml [tool.ruff] of its own, so a project's settings always win.
+# NOTE: these used to be --select/--line-length flags in conform, which beat
+# every project config, while nvim-lint's ruff ran with the defaults — the
+# rules shown and the rules fixed disagreed. Now both read this one file.
+line-length = 88
+
+[lint]
+select = ["I", "F", "E", "W", "UP", "B"]
