@@ -42,6 +42,32 @@ _upd_uv_tool() {
   fi
 }
 
+# timing-mcp is a local project inside the custom submodule, not a published tool, so
+# `uv tool` never reaches it and its venv used to be built once at install time and never
+# touched again — that is how one machine sat on mcp 1.x while a fresh install resolved
+# 2.x and crash-looped on the renamed API.
+# NOTE: `uv lock --upgrade` then `uv sync`, not a bare sync: the lock is tracked now, so
+# the bump has to land as a reviewable diff in the submodule, the same way updm treats
+# flake.lock. A sync alone would only reinstall what the lock already pins.
+# NOTE: bootout + bootstrap, not `launchctl kickstart -k`. kickstart restarts the process
+# but keeps the job definition launchd loaded at login, and the listen address now comes
+# from the plist's EnvironmentVariables (TIMING_MCP_HOST). A kickstarted agent would run
+# the new code with the old environment, fall back to loopback, and every container would
+# lose timing until the next login. The plist is a symlink into the submodule, so
+# re-bootstrapping it is what picks up a changed one.
+_upd_timing_mcp() {
+  local dir="$HOME/.dotfiles/tools/claude/custom/mcp/timing"
+  local plist="$HOME/Library/LaunchAgents/com.cosmdandy.timing-mcp.plist"
+  [[ -f "$dir/pyproject.toml" ]] || return 0
+  uv lock --upgrade --directory "$dir" --quiet || return 1
+  uv sync --directory "$dir" --quiet || return 1
+  if [[ -e "$plist" ]]; then
+    launchctl bootout "gui/$(id -u)" "$plist" &> /dev/null
+    launchctl bootstrap "gui/$(id -u)" "$plist" || return 1
+  fi
+  return 0
+}
+
 # NOTE: this step never fails the run — MCP is an auxiliary layer, and the network to
 # npm/PyPI drops more often than everything else in updm combined.
 _upd_mcp_tools() {
@@ -54,6 +80,7 @@ _upd_mcp_tools() {
     # things-mcp needs Things.app — mac only, as in install.sh
     if [[ "$OSTYPE" == darwin* ]]; then
       _upd_uv_tool things-mcp || rc=1
+      _upd_timing_mcp || rc=1
     fi
   fi
   (( rc )) && print -P "%F{yellow}  часть MCP-инструментов не обновилась%f" >&2
