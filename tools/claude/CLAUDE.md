@@ -47,6 +47,9 @@ Diagnostics are the exception — logs, status, ssh, network: keep digging.
   starting, and keep `PROGRESS.md` when the run outlives its context window.
 - A dead end is a result too: write down what was ruled out and stop, rather than
   spending the remaining hours on the same wall.
+- A task that is not the one you were given — a broken dotfile, a neighbouring bug — goes
+  to a new session, not into this context at 600k tokens.
+- A pushed branch ends with `gh pr create`, not with the link from the push output.
 - The last message of a run I left is the report on all of it: what is done, what is
   not, what you could not check — not the step that happened to be last.
 
@@ -77,6 +80,10 @@ filters and aggregates first, so only what survives is read.
   will always find something; weigh by effect on correctness.
 - Background sessions forbid subagents unless you asked for them — say so rather than
   quietly doing the work here.
+- A reference — photo, spec, someone else's code beyond one function — is read once, by a
+  subagent, into a digest with `file:line`; not five times into this context.
+- The diff review runs after each finished part, not in one block at the end of the day;
+  in a DELEGATED run it is the only reviewer there is.
 
 ## Definition of done
 
@@ -91,6 +98,10 @@ reasoning is not a check, and neither is a green suite that never touches your d
   per file it burns a whole context for nothing. (INTERACTIVE)
 - A change that invalidates something written in memory is not done until that line
   is fixed. Memory is as-is and present tense: how it works now, not history.
+- A visual or geometric change against a reference starts with a numeric check — an
+  assert, a diff, a pixel sample — not with a screenshot. The screenshot is the final
+  confirmation, not the tuning loop.
+- A time or latency threshold comes from the median of three or more runs, never from one.
 
 ## Tools
 
@@ -109,6 +120,12 @@ ends up in my hands, say what stopped you from running it.
   the background from the first call; I should never be the one who notices a hang.
 - Parallel calls share the machine: serialise anything that contends for one resource
   — the same host, the same lock, the same remote agent.
+- One wait per background task: start it with `run_in_background` and take the
+  notification. No `until` loop with a timeout wrapped around it, no second poll on the
+  same output. Kill by task id or PID, never `pkill -f` by name — the name matches your
+  own tasks too.
+- What you started, you stop: a dev server, a watcher, a poll loop — all gone before the
+  report.
 - Artifact only for what outlives the session. Work in progress goes in the chat.
 
 ## Shell
@@ -135,6 +152,9 @@ not happened; a fix touches only what is broken.
 
 - Validate at system boundaries only — user input, external APIs. Inside, trust the
   code and the framework.
+- Edits go through Edit/Write, in bypass mode too. A heredoc in Bash (`cat >`,
+  `python3 - <<PY`) is for a new script under `$CLAUDE_JOB_DIR/tmp` only: inside a
+  worktree the isolation check rejects it, and the whole patch stays in context for good.
 - Leave the work clean, not better: no trace of how you got there, and the
   neighbourhood is not your task.
 - A comment answers why, never what — restating the code is noise, and the comment

@@ -17,15 +17,41 @@ input="$(cat)"
 # NOTE: the separator is NUL, not a tab — both the command and the output can be
 # multi-line, and @tsv would escape them. NUL survives only through process substitution;
 # $(...) strips it.
-{ IFS= read -r -d '' out; IFS= read -r -d '' cmd; } < <(printf '%s' "$input" | jq -j '
+{ IFS= read -r -d '' out; IFS= read -r -d '' cmd; IFS= read -r -d '' sid; } < <(printf '%s' "$input" | jq -j '
   (.tool_response
    | if type == "string" then .
      elif type == "object" then ((.stdout // "") + "\n" + (.stderr // "") + "\n" + (.output // ""))
-     else "" end), "\u0000", (.tool_input.command // ""), "\u0000"' 2>/dev/null)
+     else "" end), "\u0000", (.tool_input.command // ""), "\u0000", (.session_id // ""), "\u0000"' 2>/dev/null)
 [[ -n "$out" ]] || exit 0
 hint=""
 
 case "$out" in
+  *"too complex to verify"*)
+    # NOTE: the worktree isolation of background jobs rejects heredocs, loops and `git -C`
+    # because it cannot prove statically that they stay inside the worktree; there is no
+    # setting that relaxes it. Transcripts show the same rejected command re-sent seconds
+    # later, and the way out rediscovered every time — hence the per-session counter.
+    n=1
+    if [[ -n "$sid" ]]; then
+      cnt="${TMPDIR:-/tmp}/claude-bashhint-worktree-${sid}"
+      n=$(( $(cat "$cnt" 2>/dev/null || echo 0) + 1 ))
+      printf '%s' "$n" > "$cnt" 2>/dev/null
+    fi
+    if (( n == 1 )); then
+      hint="Изоляция worktree не разбирает heredoc, циклы и \`git -C\` статически, и настройкой это не ослабить. Правку существующего файла делай через Edit; новый скрипт — Write в \$CLAUDE_JOB_DIR/tmp и запуск файлом. Повтор той же команды даст тот же отказ."
+    else
+      hint="Это уже ${n}-й отказ изоляции worktree за сессию: каждый heredoc и цикл здесь будет отклонён. Переходи на Edit/Write насовсем, скрипты — только файлом из \$CLAUDE_JOB_DIR/tmp."
+    fi
+    ;;
+  *"Create a pull request for"*|*"/pull/new/"*)
+    # NOTE: GitHub prints this on push only while the branch has no PR — so the push
+    # output itself is the check, no gh call needed.
+    case "$cmd" in
+      *"git push"*)
+        hint="Пуш прошёл, а PR для ветки нет — GitHub предлагает его создать. Последний шаг DELEGATED-запуска — \`gh pr create\`, не ссылка в отчёте."
+        ;;
+    esac
+    ;;
   *"control characters that would be hidden"*)
     hint="Управляющий символ попал в команду литералом. Отклоняется валидацией ДО исполнения, поэтому предотвратить это хуком нельзя — только не писать так. Собирай символ через printf в переменную: SEP=\$(printf '\\037') и дальше передавай \"\$SEP\"."
     ;;
