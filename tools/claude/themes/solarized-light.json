@@ -1,0 +1,49 @@
+{
+  "name": "Solarized Light",
+  "base": "light",
+  "overrides": {
+    "userMessageBackground": "#eee8d5",
+    "userMessageBackgroundHover": "#fdf6e3",
+    "composerSidebarBackground": "#fdf6e3",
+    "bashMessageBackgroundColor": "#eee8d5",
+    "memoryBackgroundColor": "#eee8d5",
+    "selectionBg": "#93a1a1",
+
+    "text": "#657b83",
+    "inverseText": "#fdf6e3",
+    "subtle": "#93a1a1",
+    "inactive": "#839496",
+    "promptBorder": "#93a1a1",
+
+    "claude": "#cb4b16",
+    "clawd_body": "#cb4b16",
+    "bashBorder": "#d33682",
+    "success": "#859900",
+    "error": "#dc322f",
+    "warning": "#b58900",
+    "suggestion": "#268bd2",
+    "permission": "#268bd2",
+    "ide": "#268bd2",
+    "planMode": "#2aa198",
+    "skill": "#6c71c4",
+    "autoAccept": "#6c71c4",
+    "remember": "#6c71c4",
+    "merged": "#6c71c4",
+
+    "diffAdded": "#d8d99d",
+    "diffRemoved": "#f6cdbd",
+    "diffAddedDimmed": "#dbdaaf",
+    "diffRemovedDimmed": "#ecd4c3",
+    "diffAddedWord": "#a7b340",
+    "diffRemovedWord": "#ed958a",
+
+    "red_FOR_SUBAGENTS_ONLY": "#dc322f",
+    "blue_FOR_SUBAGENTS_ONLY": "#268bd2",
+    "green_FOR_SUBAGENTS_ONLY": "#859900",
+    "yellow_FOR_SUBAGENTS_ONLY": "#b58900",
+    "purple_FOR_SUBAGENTS_ONLY": "#6c71c4",
+    "orange_FOR_SUBAGENTS_ONLY": "#cb4b16",
+    "pink_FOR_SUBAGENTS_ONLY": "#d33682",
+    "cyan_FOR_SUBAGENTS_ONLY": "#2aa198"
+  }
+}

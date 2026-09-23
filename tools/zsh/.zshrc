@@ -645,6 +645,9 @@ if (($+commands[fzf])); then
         mkdir -p ${cache:h} 2>/dev/null
         print -r -- $DP_TERM_BG > $cache 2>/dev/null
         _fzf_theme_apply
+        # Claude rereads its theme file on its own, so this repaints sessions that are
+        # ALREADY running — the one tool here that does not need to be restarted.
+        _claude_theme_apply "$DP_TERM_BG"
         print -r -- "theme: $DP_TERM_BG"
     }
 fi

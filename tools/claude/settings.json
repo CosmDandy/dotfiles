@@ -488,7 +488,7 @@
   },
   "autoDreamEnabled": true,
   "skipDangerousModePermissionPrompt": true,
-  "theme": "auto",
+  "theme": "custom:solarized",
   "preferredNotifChannel": "terminal_bell",
   "switchModelsOnFlag": true,
   "remoteControlAtStartup": false,
