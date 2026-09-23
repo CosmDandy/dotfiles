@@ -2,14 +2,14 @@
   "name": "Solarized Light",
   "base": "light",
   "overrides": {
-    "userMessageBackground": "#eee8d5",
-    "userMessageBackgroundHover": "#fdf6e3",
+    "userMessageBackground": "#dcdacb",
+    "userMessageBackgroundHover": "#eee8d5",
     "composerSidebarBackground": "#fdf6e3",
     "bashMessageBackgroundColor": "#eee8d5",
     "memoryBackgroundColor": "#eee8d5",
     "selectionBg": "#93a1a1",
 
-    "text": "#657b83",
+    "text": "#586e75",
     "inverseText": "#fdf6e3",
     "subtle": "#93a1a1",
     "inactive": "#839496",

@@ -2,14 +2,14 @@
   "name": "Solarized Dark",
   "base": "dark",
   "overrides": {
-    "userMessageBackground": "#073642",
+    "userMessageBackground": "#164450",
     "userMessageBackgroundHover": "#335e69",
     "composerSidebarBackground": "#002b36",
     "bashMessageBackgroundColor": "#073642",
     "memoryBackgroundColor": "#073642",
     "selectionBg": "#335e69",
 
-    "text": "#839496",
+    "text": "#93a1a1",
     "inverseText": "#002b36",
     "subtle": "#586e75",
     "inactive": "#657b83",
