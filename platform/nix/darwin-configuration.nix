@@ -122,11 +122,11 @@ in
       "utm"
       # AI
       # "chatgpt"
-      # "claude"
+      "claude"
       # "lm-studio"
       # Productivity
       "obsidian"
-      "timing"
+      # "timing"
       "raycast"
       # Communication
       "telegram"
