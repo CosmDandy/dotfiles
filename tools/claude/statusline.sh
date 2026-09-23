@@ -11,9 +11,12 @@ GREEN="${ESC}[32m"
 YELLOW="${ESC}[33m"
 RED="${ESC}[31m"
 BLUE="${ESC}[34m"
-# Solarized orange has no slot in the 16-colour theme (it lands on "bright red"),
-# so this one is absolute. It exists for a single purpose: see the Fable block.
-ORANGE="${ESC}[38;5;166m"
+# Solarized orange DOES have a slot: it lands on 9, the one named "bright red", and
+# the ghostty iTerm2 presets put #cb4b16 there in both the light and the dark variant.
+# So this follows the theme like everything else. 166 was an absolute xterm tone that
+# did not. Contrast holds on both sides: 3.26 dark, 4.27 light.
+# It exists for a single purpose: see the Fable block.
+ORANGE="${ESC}[38;5;9m"
 # Neutral for "on track" — green already means "room to accelerate" in these
 # segments.
 CYAN="${ESC}[36m"
