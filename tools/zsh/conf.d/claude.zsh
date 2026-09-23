@@ -9,6 +9,18 @@
 # the shell session reached 819K with no autocompact at all.
 export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=65
 
+# Inside tmux Claude Code caps its own palette at 256 colours — the check is literally
+# `if (TMUX && level > 2) level = 2`, with this variable as the documented way out. The
+# cap is not harmless: 24-bit theme colours get rounded to the nearest xterm cube entry,
+# and those are not Solarized. The message plate #164450 came out as a washed blue and
+# the body text #93a1a1 as 38;5;103 — #8787af, visibly violet. Verified by reading the
+# bytes tmux writes to the pty: with the variable set they are 38;2;... again.
+# tmux itself is innocent — a printf of a 24-bit sequence passes through it untouched.
+# NOTE: the shell, not the env block of settings.json. Claude Code reads this from its
+# OWN process.env at startup, and settings.json env only reaches child processes — the
+# same reason CLAUDE_AUTOCOMPACT_PCT_OVERRIDE lives here.
+export CLAUDE_CODE_TMUX_TRUECOLOR=1
+
 # The everyday one.
 # NOTE: the auto-mode classifier is off — an audit of five containers showed it caused 100%
 # of the interruptions in background sessions, while interactively 135 of 136 prompts were
