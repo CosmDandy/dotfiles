@@ -26,6 +26,19 @@ input="$(cat)"
 hint=""
 
 case "$out" in
+  # NOTE: no case for the worktree-isolation rejection ("too complex to verify"): the
+  # harness refuses that command before it runs, and PostToolUseFailure fires only for
+  # commands that ran and failed (hooks reference). The guard's deny on heredocs is what
+  # reaches the model instead, before the harness ever sees the command.
+  *"Create a pull request for"*|*"/pull/new/"*)
+    # NOTE: GitHub prints this on push only while the branch has no PR — so the push
+    # output itself is the check, no gh call needed.
+    # NOTE: `git -C dir push` and `git --no-pager push` carry flags between the two
+    # words, so the match is git … push, not the literal pair.
+    if grep -Eq '(^|[[:space:];&|])git[[:space:]]+((-C|-c)[[:space:]]*[^[:space:]]+[[:space:]]+|-[^[:space:]]+[[:space:]]+)*push([[:space:]]|$)' <<<"$cmd"; then
+      hint="Пуш прошёл, а PR для ветки нет — GitHub предлагает его создать. Последний шаг DELEGATED-запуска — \`gh pr create\`, не ссылка в отчёте."
+    fi
+    ;;
   *"control characters that would be hidden"*)
     hint="Управляющий символ попал в команду литералом. Отклоняется валидацией ДО исполнения, поэтому предотвратить это хуком нельзя — только не писать так. Собирай символ через printf в переменную: SEP=\$(printf '\\037') и дальше передавай \"\$SEP\"."
     ;;

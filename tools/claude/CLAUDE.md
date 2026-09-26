@@ -121,8 +121,10 @@ Each of these cost real turns; they are the mistakes I actually repeat.
   included, so this is not a macOS quirk.
 - Separate commands with `&&` or a newline: in `cd path P=$(…)` the second command
   becomes an argument of the first, and the failure surfaces somewhere else entirely.
-- Nested quoting inside `python -c` or `perl -e` is where this breaks most often —
-  use a heredoc or a temp file instead of nesting quotes.
+- Files: Edit for a change, sed for the same change across many files, a script for
+  generated content; Read with offset/limit for a known file, Grep to find. Never a
+  heredoc or `cat` on a repo file — a nested `python -c` goes into a Write-ed temp
+  file under `$CLAUDE_JOB_DIR/tmp` instead.
 - zsh does not word-split an unquoted `$var`: `for f in $files` passes the whole list
   as one argument. Use an array, or read line by line.
 - A pipe reports only the last command's exit status. When the result matters,

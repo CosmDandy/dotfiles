@@ -401,6 +401,15 @@
             "command": "~/.dotfiles/tools/claude/hooks/pretooluse-opsctx.sh"
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/pretooluse-read.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
