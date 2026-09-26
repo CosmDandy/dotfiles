@@ -14,7 +14,9 @@ HOOK="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pretooluse-read.sh"
 command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
 
 pass=0 fail=0
-T="$(mktemp -d)"
+# NOTE: not mktemp's default location — on macOS that is /var/folders, which the hook
+# treats as scratch, and every "deny" case would pass for the wrong reason.
+T="$(mktemp -d "$(dirname -- "$HOOK")/.read-guard-test.XXXXXX")"
 seq 1 500 > "$T/long.py"
 seq 1 50  > "$T/short.py"
 seq 1 500 > "$T/big.log"
@@ -37,14 +39,28 @@ chk() {
 
 chk deny "$T/long.py"   ""    'длинный файл целиком'
 chk pass "$T/long.py"   "100" 'длинный файл с limit'
+got=$(jq -nc --arg f "$T/long.py" '{tool_input:{file_path:$f,offset:380}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ -z $got ]]; then pass=$((pass + 1)); printf '  ok   pass  %s\n' 'длинный файл с одним offset'
+else fail=$((fail + 1)); printf '  FAIL ждали pass, получили %s: %s\n' "$got" 'длинный файл с одним offset'; fi
+mkdir -p "$T/tool-results"; seq 1 500 > "$T/tool-results/bg6eva099.txt"
+chk pass "$T/tool-results/bg6eva099.txt" "" 'переполненный вывод Bash, который харнес велит прочитать'
+seq 1 500 > "$T/notes.txt"
+chk pass "$T/notes.txt" "" '.txt — как в guard'
 chk pass "$T/short.py"  ""    'короткий файл целиком'
 chk pass "$T/big.log"   ""    'лог — вывод работы, не код'
 chk pass "$T/Long.PNG"  ""    'картинка (регистр расширения не важен)'
 chk pass "$T/nope.py"   ""    'нет такого файла — не наша забота'
-chk pass "/tmp/$(basename "$T")/x.py" "" 'путь в /tmp'
-chk pass "\$CLAUDE_JOB_DIR/tmp/x.py" "" 'путь в job tmp'
+# NOTE: the path exemptions are checked AFTER `-f`, so each case needs a real long
+# file at the exempt path — a missing file passes for the wrong reason. Hence the
+# literal /tmp directory (mktemp on macOS lands in /var/folders, which is not exempt),
+# and no `$CLAUDE_JOB_DIR` literal: the harness always hands the hook an expanded path,
+# so only the `.claude/jobs/<id>/tmp` form is reachable in practice.
+TMPX="/tmp/read-guard-test.$$"; mkdir -p "$TMPX"; seq 1 500 > "$TMPX/x.py"
+chk pass "$TMPX/x.py" "" 'длинный файл в /tmp'
 mkdir -p "$T/.claude/jobs/abc12345/tmp"; seq 1 500 > "$T/.claude/jobs/abc12345/tmp/helper.py"
-chk pass "$T/.claude/jobs/abc12345/tmp/helper.py" "" 'job tmp литеральным путём'
+chk pass "$T/.claude/jobs/abc12345/tmp/helper.py" "" 'длинный файл в job tmp (раскрытый путь)'
+chk deny "$T/long.py" "" 'тот же размер вне scratch — deny (контроль исключений)'
+rm -rf "$TMPX"
 READ_GUARD_MAX_LINES=40 chk deny "$T/short.py" "" 'порог настраивается через READ_GUARD_MAX_LINES'
 
 rm -rf "$T"

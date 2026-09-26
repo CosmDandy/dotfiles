@@ -23,25 +23,51 @@ command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
 
 pass=0 fail=0 skip=0
 
+# Cases are independent and the guard costs 0.3–0.5 s per call (it forks per rule), so
+# chk runs them in the background, GUARD_TEST_JOBS at a time, and each writes its
+# verdict to a numbered file; the report is assembled at the end in definition order,
+# with the section headers where they were. Sequential helpers (xchk below) keep
+# counting into pass/fail directly.
+RES="$(mktemp -d)"
+trap 'rm -rf "$RES"' EXIT
+JOBS=${GUARD_TEST_JOBS:-8}
+SECTION=''
+N=0
+
 # chk <expected verdict: deny|ask|pass> <command> <description>
 chk() {
-  local want=$1 command=$2 desc=$3 got
-  got=$(jq -nc --arg c "$command" '{tool_input:{command:$c}}' | "$HOOK" \
-        | jq -r '.hookSpecificOutput.permissionDecision // empty')
-  got=${got:-pass}
-  # NOTE: only the verdict field is aligned, and it is ASCII — BSD printf counts width in
-  # bytes, so a Cyrillic description would break the columns.
-  if [[ $got == "$want" ]]; then
-    pass=$((pass + 1))
-    printf '  ok   %-4s  %s\n' "$got" "$desc"
-  else
-    fail=$((fail + 1))
-    printf '  FAIL ждали %s, получили %s: %s\n' "$want" "$got" "$desc"
-    printf '       команда: %s\n' "$command"
-  fi
+  local want=$1 command=$2 desc=$3 id
+  N=$((N + 1)); id=$(printf '%04d' "$N")
+  while (( $(jobs -rp | wc -l) >= JOBS )); do wait -n; done
+  {
+    local got
+    got=$(jq -nc --arg c "$command" '{tool_input:{command:$c}}' | "$HOOK" \
+          | jq -r '.hookSpecificOutput.permissionDecision // empty')
+    got=${got:-pass}
+    # NOTE: only the verdict field is aligned, and it is ASCII — BSD printf counts width
+    # in bytes, so a Cyrillic description would break the columns.
+    if [[ $got == "$want" ]]; then
+      printf '%s\n  ok   %-4s  %s\n' "$SECTION" "$got" "$desc"
+    else
+      printf '%s\n  FAIL ждали %s, получили %s: %s\n       команда: %s\n' "$SECTION" "$want" "$got" "$desc" "$command"
+    fi > "$RES/$id"
+  } &
 }
 
-section() { printf '\n== %s ==\n' "$1"; }
+section() { SECTION="== $1 =="; }
+
+# report: wait for the background cases, print them in order, count them.
+report() {
+  wait
+  local f last='' head
+  for f in "$RES"/*; do
+    [[ -f $f ]] || continue
+    head=$(head -n 1 "$f")
+    if [[ $head != "$last" ]]; then printf '\n%s\n' "$head"; last=$head; fi
+    tail -n +2 "$f"
+    if grep -q '^  ok ' "$f"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+  done
+}
 
 section 'интерпретаторы: гейт по форме вызова'
 # The gate must recognise an interpreter beyond a bare leading token: substitution and
@@ -67,7 +93,8 @@ chk pass 'python3 -c "print(open(\"w.txt\").read())"'           'чтение ф
 chk pass 'python3 -c "import sys;sys.stdout.write(str(1))"'     'sys.stdout.write'
 chk pass 'node -e "console.log(process.version)"'               'node печатает версию'
 chk pass 'rg -n subprocess .'                                   'grep по слову subprocess'
-chk pass 'python3 -c "open(\"f\",\"w\").write(x)"'              'запись файла — ask снят по аудиту 2026-08-12'
+chk deny 'python3 -c "open(\"f\",\"w\").write(x)"'              'запись файла репо из -c — deny (политика Edit/Write; до 2026-09 был pass)'
+chk pass 'python3 -c "open(\"/tmp/f\",\"w\").write(x)"'         'запись в scratch из -c — молча'
 chk ask  'python3 -c "import requests;requests.get(1)"'         'выход в сеть'
 
 section 'посегментный разбор: флаг соседа не считается своим'
@@ -349,7 +376,48 @@ const ROOT = '/w';
 EOF"                                                               'heredoc относительно после cd в scratch (реальная)'
 chk pass 'cd "$CLAUDE_JOB_DIR/tmp" && cat probe.log; cat out.json' 'чтение относительно после cd в scratch'
 chk deny "cd tools && cat build.py"                                'cd в репо не делает путь scratch'
-chk deny "cd /tmp && cat /workspaces/x/tools/build.py"             'абсолютный путь в репо после cd в scratch'
+chk deny "cd /tmp && cat $PWD/tools/build.py"                      'абсолютный путь под cwd после cd в scratch'
+chk pass 'cd /tmp && cat a.json b.json'                            'cd /tmp без слэша — scratch'
+chk pass 'cd /private/tmp; cat a.json'                             'cd /private/tmp — scratch'
+
+# The repo is the hook's cwd: system files, home and other checkouts are read through
+# the shell by design (ops diagnostics), and the Read hint would be nonsense for /proc.
+chk pass 'cat /etc/hosts'                                          '/etc — не репо'
+chk pass 'cat /proc/cpuinfo'                                       '/proc — не репо'
+chk pass 'tail -n 50 /var/log/syslog'                              '/var/log — не репо'
+chk pass 'cat ~/.zshrc'                                            '~ — не репо'
+chk pass 'cat /Users/x/other-repo/README.md'                       'другой чекаут — не репо'
+chk pass 'cat $f'                                                  '$VAR-операнд — неизвестен, не дамп'
+chk pass 'cat $TMPDIR/x.json'                                      'TMPDIR — scratch'
+chk pass 'cat /var/folders/xx/T/x.json'                            'macOS mktemp — scratch'
+chk deny "cat $PWD/tools/build.py"                                 'абсолютный путь под cwd — репо'
+chk deny 'cat tools/build.py 2>&1'                                 'stderr-редирект не делает дамп записью'
+chk deny 'cat tools/build.py 2>/dev/null'                          'то же с /dev/null'
+chk deny 'cat tools/build.py | cat -n'                             '| cat -n — не фильтр'
+chk deny "sed -n '1,50p' tools/build.py | cat"                     '| cat — не фильтр'
+chk pass 'tail -f server.out'                                      'tail -f — слежение, не дамп'
+chk pass 'cat -A tools/x.py'                                       'cat -A — невидимые символы, Read не умеет'
+chk deny 'echo "x" > tools/build.py'                               'echo в файл репо'
+chk deny "printf 'x\\n' > .gitignore"                              'printf в файл репо'
+chk pass 'echo x > /tmp/x'                                         'echo в scratch'
+chk pass 'echo x >> "$CLAUDE_JOB_DIR/tmp/log"'                     'echo в job tmp'
+chk pass 'echo x > /dev/null'                                      'echo в /dev/null'
+chk pass 'echo "$out" > "$f"'                                      'echo в $VAR — неизвестен'
+chk pass 'echo "=== размер inline <style> и <svg> ===" && grep -c svg index.html' \
+                                                                   '> внутри кавычек — проза, не редирект (реальная)'
+chk deny 'echo "x" > "tools/build.py"'                             'цель редиректа в кавычках — всё ещё запись'
+chk deny "python3 -c \"open('tools/build.py','w').write('x')\""    'python -c с записью в репо'
+chk pass "python3 -c \"open('/tmp/x','w').write('x')\""            'python -c с записью в scratch'
+chk pass "sed -i 's/a/b/' /etc/hosts"                              'sed -i вне репо — не наша политика'
+# NOTE: run in a directory where the glob matches exactly one file — without `set -f`
+# in the guard it expands to that file and the single-file rule fires.
+G="$(mktemp -d)"; mkdir "$G/src"; : > "$G/src/only.py"
+N=$((N + 1)); gid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "sed -i 's/a/b/' src/*.py" '{tool_input:{command:$c}}' \
+      | (cd "$G" && "$HOOK") | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ -z $got ]]; then printf '%s\n  ok   pass  %s\n' "$SECTION" 'glob с одним совпадением в cwd не раскрывается'
+else printf '%s\n  FAIL ждали pass, получили %s: %s\n' "$SECTION" "$got" 'glob с одним совпадением в cwd раскрылся'; fi > "$RES/$gid"
+rm -rf "$G"
 chk deny 'cat -n tools/closeup.mjs'                                'cat файла репо (реальная)'
 chk deny 'sed -n 278,445p tools/board/blocks/rear_io.py'           'sed -n файла репо (реальная)'
 chk deny 'sed -n 1,60p tools/board/blocks/fans.py; echo "=== render ==="; sed -n 225,300p tools/board/blocks/fans.py' \
@@ -465,7 +533,10 @@ rm -f "$big"
 # interpreter one-liner followed by a commit asked about a file write instead of forbidding
 # a commit with a secret in the index. Verified by behaviour, not by reading the script.
 # --------------------------------------------------------------------------
+# Everything above ran in the background; collect it before the sequential block prints.
+report
 section 'порядок: ни один ask не перекрывает deny на секрет в индексе'
+printf '\n%s\n' "$SECTION"
 if ! command -v gitleaks >/dev/null; then
   skip=$((skip + 1))
   echo '  SKIP gitleaks не установлен — блок проверки порядка пропущен'

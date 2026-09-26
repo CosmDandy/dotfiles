@@ -26,7 +26,7 @@ if [[ -n "$transcript" && -r "$transcript" ]]; then
   seen="$(tail -n 4000 "$transcript" 2>/dev/null | jq -r '
     select(.type == "assistant") | .message.content[]? | select(.type == "tool_use")
     | if .name == "Read" or .name == "Edit" or .name == "Write" then "  - " + .name + " " + (.input.file_path // "")
-      elif .name == "Bash" and ((.input.command // "") | test("test|check|lint|pytest|ruff|eslint|behave|opening")) then "  - Bash " + ((.input.command // "") | gsub("\n"; " ") | .[0:120])
+      elif .name == "Bash" and ((.input.command // "") | test("\\b(test|check|lint|pytest|ruff|eslint|behave|opening)\\b")) then "  - Bash " + ((.input.command // "") | gsub("\n"; " ") | .[0:120])
       else empty end' 2>/dev/null | awk '!seen[$0]++' | tail -n 30)"
 fi
 

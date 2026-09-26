@@ -11,15 +11,19 @@
 set -uo pipefail
 
 input="$(cat)"
-{ IFS= read -r f; IFS= read -r limit; } < <(printf '%s' "$input" \
-  | jq -r '(.tool_input.file_path // ""), (.tool_input.limit // "")' 2>/dev/null)
-[[ -n $f && -z $limit && -f $f ]] || exit 0
+# Either offset or limit means the model is already reading a window.
+{ IFS= read -r f; IFS= read -r window; } < <(printf '%s' "$input" \
+  | jq -r '(.tool_input.file_path // ""), ((.tool_input.limit // "") | tostring) + ((.tool_input.offset // "") | tostring)' 2>/dev/null)
+[[ -n $f && -z $window && -f $f ]] || exit 0
 
 ext=$(printf '%s' "${f##*.}" | tr '[:upper:]' '[:lower:]')
 case $ext in
   png|jpg|jpeg|gif|webp|svg|pdf|ipynb) exit 0 ;;
 esac
-grep -qE '^(/private)?/tmp/|CLAUDE_JOB_DIR|\.claude/jobs/[^/]+/tmp(/|$)|/scratchpad(/|$)|\.(output|log)$' <<<"$f" && exit 0
+# NOTE: /tool-results/ is where the harness parks an overflowing Bash output with the
+# instruction "Read it" — the same file the guard's .txt exemption covers on the shell
+# side. macOS mktemp lands in /var/folders.
+grep -qE '^(/private)?/tmp(/|$)|CLAUDE_JOB_DIR|TMPDIR|^/var/folders/|\.claude/jobs/[^/]+/tmp(/|$)|/scratchpad(/|$)|/tool-results/|\.(output|log|txt)$' <<<"$f" && exit 0
 
 MAX=${READ_GUARD_MAX_LINES:-300}
 n=$(wc -l <"$f" 2>/dev/null | tr -d ' ')

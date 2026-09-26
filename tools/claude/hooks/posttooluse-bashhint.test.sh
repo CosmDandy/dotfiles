@@ -29,22 +29,11 @@ run() {
     | "$HOOK" | jq -r '.hookSpecificOutput.additionalContext // empty'
 }
 
-WT_REJECT='This session is isolated in the worktree /w/.claude/worktrees/x, but this command is too complex to verify that it stays inside the worktree'
-
-echo "— отказ изоляции worktree —"
-h=$(run "python3 - <<'PY'
-print(1)
-PY" "$WT_REJECT")
-[[ $h == *"Edit"* && $h == *"CLAUDE_JOB_DIR"* ]] && ok "первый отказ: подсказка Edit/Write" || bad "первый отказ" "$h"
-[[ $h != *"-й отказ"* ]] && ok "первый отказ не считается повтором" || bad "первый отказ помечен повтором" "$h"
+echo "— отказ харнеса не доходит до PostToolUseFailure — подсказки нет —"
 h=$(run "cat > f <<EOF
 x
-EOF" "$WT_REJECT")
-[[ $h == *"2-й отказ"* ]] && ok "второй отказ в той же сессии — счётчик" || bad "второй отказ" "$h"
-h=$(run "cat > f <<EOF
-x
-EOF" "$WT_REJECT" bbbbcccc-0000-0000-0000-000000000000)
-[[ $h != *"-й отказ"* ]] && ok "другая сессия — счёт с нуля" || bad "счётчик протёк между сессиями" "$h"
+EOF" 'This session is isolated in the worktree /w/.claude/worktrees/x, but this command is too complex to verify that it stays inside the worktree')
+[[ -z $h ]] && ok "отказ изоляции worktree — тишина (guard закрывает это раньше)" || bad "лишняя подсказка на отказ харнеса" "$h"
 
 echo "— пуш без PR —"
 PUSH_OUT='remote:
@@ -55,6 +44,8 @@ To github.com:o/r.git
  * [new branch]      feat/x -> feat/x'
 h=$(run "git push -u origin feat/x" "$PUSH_OUT")
 [[ $h == *"gh pr create"* ]] && ok "push без PR — напоминание gh pr create" || bad "push без PR" "$h"
+h=$(run "git -C /w/repo push -u origin feat/x" "$PUSH_OUT")
+[[ $h == *"gh pr create"* ]] && ok "git -C … push тоже" || bad "git -C push" "$h"
 h=$(run "git push" "To github.com:o/r.git
    1234567..89abcde  feat/x -> feat/x")
 [[ -z $h ]] && ok "push в ветку с PR — тишина" || bad "лишняя подсказка на обычный push" "$h"
