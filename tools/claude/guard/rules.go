@@ -1,0 +1,719 @@
+package main
+
+import (
+	"os/exec"
+	"regexp"
+	"strings"
+)
+
+// Ctx holds everything a rule needs to decide on one command: the raw text
+// (for has()/at(), which must see heredoc bodies and everything else
+// verbatim), the parsed segments (for seg_head/seg_with/seg_without, which
+// must NOT see heredoc bodies), and the repo root used to tell a repo path
+// from a scratch or system one.
+type Ctx struct {
+	cmd  string
+	cwd  string
+	segs []string
+
+	cdScratchDone bool
+	cdScratchVal  bool
+}
+
+// Decision is what the hook prints, or the zero value for a silent allow.
+type Decision struct {
+	Verdict string // "deny" or "ask"
+	Reason  string
+}
+
+func deny(reason string) Decision { return Decision{"deny", reason} }
+func ask(reason string) Decision  { return Decision{"ask", reason} }
+
+var noDecision = Decision{}
+
+// ---- cheap prefilter -------------------------------------------------------
+//
+// A strict superset of every word any rule below can fire on. NOTE: adding a
+// rule with a new command name means adding the name here too — see the bash
+// guard's own NOTE on this same regex for why the exfiltration group has no
+// closing \b.
+var reGated = regexp.MustCompile(`\b(terraform|kubectl|helm|nomad|docker|git|rm|sudo|chmod|ansible-playbook|python3?|node|uv|zsh|bash|sh|dash|ksh|age-keygen|cat|tee|sed|head|tail|bat|nl|less|more|echo|printf)\b|\b(curl|wget|nc|base64|xxd)|/dev/tcp|\.ssh\b|\.config/sops/age|\.env`)
+
+// ---- mentions/has/at --------------------------------------------------------
+
+func mentionsPattern(word string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^[:alnum:]_])(` + word + `)([^[:alnum:]_]|$)`)
+}
+
+var (
+	mInfraDocker = mentionsPattern(`terraform|kubectl|helm|nomad|docker`)
+	mInfraNoDoc  = mentionsPattern(`terraform|kubectl|helm|nomad`)
+	mGit         = mentionsPattern(`git`)
+	mSudo        = mentionsPattern(`sudo`)
+	mRm          = mentionsPattern(`rm`)
+	mEnvWords    = mentionsPattern(`printenv|env|set`)
+	mCurlWget    = mentionsPattern(`curl|wget`)
+	mFileWords   = mentionsPattern(`cat|tee|sed|echo|printf|head|tail|bat|nl|less|more`)
+	mSed         = mentionsPattern(`sed`)
+	mPythonNode  = mentionsPattern(`python3?|node`)
+	mChmod       = mentionsPattern(`chmod`)
+	mAnsible     = mentionsPattern(`ansible-playbook`)
+	mCurl        = mentionsPattern(`curl`)
+	mDocker      = mentionsPattern(`docker`)
+)
+
+func (c *Ctx) mentions(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
+
+// has() and at() go through grep in the bash guard, which treats the input
+// as a sequence of lines with ^/$ anchored per line — hence (?m) here, even
+// though most of these patterns never use an anchor.
+func hasPattern(pat string) *regexp.Regexp { return regexp.MustCompile(`(?m)` + pat) }
+
+func (c *Ctx) has(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
+
+const cp = `(^|[;&|]|&&|\|\|)[[:space:]]*`
+
+func atPattern(pat string) *regexp.Regexp { return regexp.MustCompile(`(?m)` + cp + pat) }
+
+func (c *Ctx) at(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
+
+// ---- seg_head/seg_with/seg_without ----------------------------------------
+
+func (c *Ctx) segHead(re *regexp.Regexp) bool {
+	for _, s := range c.segs {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// segWith: some segment matches head AND that same segment matches content.
+func (c *Ctx) segWith(head, content *regexp.Regexp) bool {
+	for _, s := range c.segs {
+		if head.MatchString(s) && content.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// segWithout: some segment matches head but does NOT match content.
+func (c *Ctx) segWithout(head, content *regexp.Regexp) bool {
+	for _, s := range c.segs {
+		if head.MatchString(s) && !content.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+func segHeadRe(pat string) *regexp.Regexp { return regexp.MustCompile(`^[[:space:]]*` + pat) }
+
+// ---- git global-flag prefix ------------------------------------------------
+//
+// Every git rule must tolerate global flags before the subcommand — see the
+// bash guard's GITPFX for the full derivation from `git --help`.
+const gitpfx = `git([[:space:]]+(-C[[:space:]]*[^[:space:]]+|-c[[:space:]]*[^[:space:]]*("[^"]*"|'[^']*')?[^[:space:]]*|--(git-dir|work-tree|namespace|exec-path)([[:space:]]+|=)[^[:space:]]+|-[pP]|--(paginate|no-pager|bare|literal-pathspecs|no-optional-locks|no-replace-objects|no-lazy-fetch)))*[[:space:]]+`
+
+// ---- scratch / repo-path helpers -------------------------------------------
+
+// SCRATCH_RE, tested against a single token (path, cd target, ...).
+var reScratchToken = regexp.MustCompile(`^(/private)?/tmp(/|$)|CLAUDE_JOB_DIR|TMPDIR|^/var/folders/|\.claude/jobs/[^/]+/tmp(/|$)|/scratchpad(/|$)|^/dev/`)
+
+// SCRATCH_ANY, tested against the raw command text (has()-style, multiline).
+var reScratchAny = hasPattern(`(/private)?/tmp(/|$|["'])|CLAUDE_JOB_DIR|TMPDIR|/var/folders/|\.claude/jobs/[^/]+/tmp|/scratchpad`)
+
+func (c *Ctx) isRepoPath(p string) bool {
+	switch {
+	case strings.HasPrefix(p, "/"):
+		return strings.HasPrefix(p, c.cwd+"/")
+	case strings.HasPrefix(p, "~") || strings.HasPrefix(p, "$"):
+		return false
+	default:
+		return true
+	}
+}
+
+func (c *Ctx) isScratch(p string) bool {
+	if reScratchToken.MatchString(p) {
+		return true
+	}
+	if !strings.HasPrefix(p, "/") {
+		return c.cdIntoScratch()
+	}
+	return false
+}
+
+var reCdHead = segHeadRe(`cd[[:space:]]+`)
+
+func (c *Ctx) cdIntoScratch() bool {
+	if c.cdScratchDone {
+		return c.cdScratchVal
+	}
+	c.cdScratchDone = true
+	for _, seg := range c.segs {
+		if !reCdHead.MatchString(seg) {
+			continue
+		}
+		rest := reCdHead.ReplaceAllString(seg, "")
+		if len(rest) > 0 && (rest[0] == '\'' || rest[0] == '"') {
+			rest = rest[1:]
+		}
+		rest = reTrailQuoteSpace.ReplaceAllString(rest, "")
+		if reScratchToken.MatchString(rest) {
+			c.cdScratchVal = true
+			return true
+		}
+	}
+	return false
+}
+
+var reTrailQuoteSpace = regexp.MustCompile(`["']?[[:space:]]*$`)
+
+// ---- shell_writes_a_file ----------------------------------------------------
+
+var (
+	reCatTeeHead     = segHeadRe(`(cat|tee)\b`)
+	reEchoPrintfHead = segHeadRe(`(echo|printf)\b`)
+	reQuotedRedirDbl = regexp.MustCompile(`(>>?)[[:space:]]*"([^"]*)"`)
+	reQuotedRedirSgl = regexp.MustCompile(`(>>?)[[:space:]]*'([^']*)'`)
+	reDblQuotedSpan  = regexp.MustCompile(`"[^"]*"`)
+	reSglQuotedSpan  = regexp.MustCompile(`'[^']*'`)
+	reWriteTarget    = regexp.MustCompile(`(>>?[[:space:]]*|(^|[[:space:]])tee[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*)[^[:space:]<>|;&]+`)
+	reWriteTargetPfx = regexp.MustCompile(`^[[:space:]]*(>>?[[:space:]]*|tee[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*)`)
+)
+
+func (c *Ctx) shellWritesAFile() bool {
+	for _, seg := range c.segs {
+		isCatTee := reCatTeeHead.MatchString(seg) && strings.Contains(seg, "<<")
+		isEchoPrintf := reEchoPrintfHead.MatchString(seg)
+		if !isCatTee && !isEchoPrintf {
+			continue
+		}
+		s := seg
+		s = reQuotedRedirDbl.ReplaceAllString(s, "$1$2")
+		s = reQuotedRedirSgl.ReplaceAllString(s, "$1$2")
+		s = reDblQuotedSpan.ReplaceAllString(s, "")
+		s = reSglQuotedSpan.ReplaceAllString(s, "")
+		for _, m := range reWriteTarget.FindAllString(s, -1) {
+			t := reWriteTargetPfx.ReplaceAllString(m, "")
+			if t == "" || strings.HasPrefix(t, "$") {
+				continue
+			}
+			if !c.isScratch(t) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ---- sed_i_on_one_file -------------------------------------------------------
+
+var (
+	reSedHead     = segHeadRe(`sed[[:space:]]`)
+	reSedInPlace  = regexp.MustCompile(`(^|[[:space:]])(-[a-zA-Z]*i|--in-place)`)
+	reFlagToken   = regexp.MustCompile(`(^|[[:space:]])-[^[:space:]]*`)
+	reSedWordHead = segHeadRe(`sed([[:space:]]|$)`)
+	reGlobChar    = regexp.MustCompile(`[*?\[]`)
+)
+
+func stripQuotedSpans(s string) string {
+	s = reSglQuotedSpan.ReplaceAllString(s, "")
+	s = reDblQuotedSpan.ReplaceAllString(s, "")
+	return s
+}
+
+func (c *Ctx) sedIOnOneFile() bool {
+	for _, seg := range c.segs {
+		if !reSedHead.MatchString(seg) || !reSedInPlace.MatchString(seg) {
+			continue
+		}
+		rest := stripQuotedSpans(seg)
+		rest = reFlagToken.ReplaceAllString(rest, "")
+		rest = reSedWordHead.ReplaceAllString(rest, "")
+		fields := strings.Fields(rest)
+		if len(fields) != 1 {
+			continue
+		}
+		w := fields[0]
+		if reGlobChar.MatchString(w) || c.isScratch(w) || !c.isRepoPath(w) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// ---- only_reads_repo_files ---------------------------------------------------
+
+var (
+	reTrailPipeCat = regexp.MustCompile(`\|[[:space:]]*cat([[:space:]]+-[a-zA-Z]+)*[[:space:]]*$`)
+	reMidPipeCat   = regexp.MustCompile(`\|[[:space:]]*cat([[:space:]]+-[a-zA-Z]+)*[[:space:]]*(;|&&|\|\|)`)
+	// The trailing [0-9]* after & (absent from the bash guard's own pattern)
+	// compensates for a real parser: bash's crude splitter treats `&` as a
+	// hard separator even inside `2>&1`, so `cat f 2>&1` becomes two segments
+	// ("cat f 2>" and "1") there, and it is the bare "2>" that its own
+	// version of this pattern strips. mvdan/sh correctly keeps `2>&1` as one
+	// redirect token in one segment, so this pattern has to swallow the
+	// whole thing to reach the same "no real redirect target" verdict.
+	reTrailFDNoTarget = regexp.MustCompile(`[0-9]*>&?[0-9]*[[:space:]]*$`)
+	reDevNullRedir    = regexp.MustCompile(`[0-9]*>[[:space:]]*/dev/(null|stderr|stdout)`)
+	reTailFollow      = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*[fF]`)
+	reCatSpecial      = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*[AvetT]`)
+	reSedDashN        = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*n`)
+	reLogExt          = regexp.MustCompile(`\.(output|log|txt)$`)
+	reDigits1or2      = regexp.MustCompile(`^[0-9]{1,2}$`)
+)
+
+func stripPassthroughCat(cmd string) string {
+	lines := strings.Split(cmd, "\n")
+	for i, l := range lines {
+		l = reTrailPipeCat.ReplaceAllString(l, "")
+		l = reMidPipeCat.ReplaceAllString(l, "$2")
+		lines[i] = l
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (c *Ctx) onlyReadsRepoFiles() bool {
+	if strings.Contains(stripPassthroughCat(c.cmd), "|") {
+		return false
+	}
+	any := false
+	for _, seg := range c.segs {
+		if strings.TrimSpace(seg) == "" {
+			continue
+		}
+		s := reTrailFDNoTarget.ReplaceAllString(seg, "")
+		s = reDevNullRedir.ReplaceAllString(s, "")
+		if strings.Contains(s, "<<") || strings.Contains(s, ">") {
+			return false
+		}
+		fields := strings.Fields(s)
+		if len(fields) == 0 {
+			continue
+		}
+		head := fields[0]
+		switch {
+		case head == "echo" || head == "printf" || head == "cd" || head == "true" || head == ":" || reDigits1or2.MatchString(head):
+			continue
+		case head == "tail":
+			if reTailFollow.MatchString(s) {
+				return false
+			}
+		case head == "cat":
+			if reCatSpecial.MatchString(s) {
+				return false
+			}
+		case head == "head" || head == "bat" || head == "nl" || head == "less" || head == "more":
+			// no extra check
+		case head == "sed":
+			if !reSedDashN.MatchString(s) {
+				return false
+			}
+		default:
+			return false
+		}
+		rest := stripQuotedSpans(s)
+		rest = reFlagToken.ReplaceAllString(rest, "")
+		restFields := strings.Fields(rest)
+		if len(restFields) < 1 {
+			continue
+		}
+		operands := restFields[1:]
+		if len(operands) < 1 {
+			continue
+		}
+		for _, f := range operands {
+			if strings.HasPrefix(f, "$") || strings.HasPrefix(f, "~") {
+				return false
+			}
+			if c.isScratch(f) {
+				return false
+			}
+			if !c.isRepoPath(f) {
+				return false
+			}
+			if reLogExt.MatchString(f) {
+				return false
+			}
+		}
+		any = true
+	}
+	return any
+}
+
+// ---- rm_has_unsafe_target -----------------------------------------------------
+
+var (
+	reRmHead       = segHeadRe(`rm\b`)
+	reRmRecursive  = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*[rR]`)
+	reNonFlagToken = regexp.MustCompile(`(^|[[:space:]])[^-[:space:]][^[:space:]]*`)
+	reSafeRmTarget = regexp.MustCompile(`^/(private/)?tmp/|CLAUDE_JOB_DIR|/scratchpad(/|$)|(^|/)_site(/|$)|(^|/)node_modules(/|$)|(^|/)\.turbo(/|$)`)
+)
+
+func (c *Ctx) rmHasUnsafeTarget() bool {
+	for _, seg := range c.segs {
+		if !reRmHead.MatchString(seg) || !reRmRecursive.MatchString(seg) {
+			continue
+		}
+		for _, tok := range reNonFlagToken.FindAllString(seg, -1) {
+			t := tok
+			if len(t) > 0 && isSpaceByte(t[0]) {
+				t = t[1:]
+			}
+			if len(t) > 0 && (t[0] == '"' || t[0] == '\'') {
+				t = t[1:]
+			}
+			if t == "rm" {
+				continue
+			}
+			if reSafeRmTarget.MatchString(t) {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func isSpaceByte(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\v', '\f', '\r':
+		return true
+	}
+	return false
+}
+
+// ---- curl_writes_a_file -------------------------------------------------------
+
+var (
+	reCurlHead         = segHeadRe(`curl\b`)
+	reCurlOutputFlag   = regexp.MustCompile(`(^|[[:space:]])(-[a-zA-Z]*o|--output)([[:space:]]|=)*[^[:space:]]*`)
+	reCurlOutputPrefix = regexp.MustCompile(`^[[:space:]]*(-[a-zA-Z]*o|--output)[[:space:]=]*`)
+	reCurlSafeOutput   = regexp.MustCompile(`^(/dev/null)?$|^/(private/)?tmp/|CLAUDE_JOB_DIR|/scratchpad(/|$)`)
+)
+
+func (c *Ctx) curlWritesAFile() bool {
+	for _, seg := range c.segs {
+		if !reCurlHead.MatchString(seg) {
+			continue
+		}
+		for _, m := range reCurlOutputFlag.FindAllString(seg, -1) {
+			v := reCurlOutputPrefix.ReplaceAllString(m, "")
+			if len(v) > 0 && (v[0] == '"' || v[0] == '\'') {
+				v = v[1:]
+			}
+			if reCurlSafeOutput.MatchString(v) {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// ---- gitleaks ------------------------------------------------------------
+
+// gitleaksAvailable is resolved once per process; exec.LookPath is cheap but
+// there is no reason to call it more than once.
+var gitleaksPath, gitleaksErr = exec.LookPath("gitleaks")
+
+func gitleaksAvailable() bool { return gitleaksErr == nil }
+
+var reGitCDir = regexp.MustCompile(`-C[[:space:]]*[^[:space:]]+`)
+
+// commitTargetDir extracts the -C directory of the first `git ... commit`
+// segment, if any, the same way the bash guard's grep -Eo | sed does.
+func (c *Ctx) commitTargetDir() string {
+	for _, seg := range c.segs {
+		if reGitCommitHead.MatchString(seg) {
+			m := reGitCDir.FindString(seg)
+			if m == "" {
+				return ""
+			}
+			return strings.TrimSpace(regexp.MustCompile(`^-C[[:space:]]*`).ReplaceAllString(m, ""))
+		}
+	}
+	return ""
+}
+
+// gitleaksFlagsSecret runs `git diff --cached | gitleaks stdin` against the
+// repo being committed to (not the hook's cwd — see the bash guard's NOTE on
+// why that distinction matters), matching exit code 1 to "leak found". Any
+// other outcome (git failure, gitleaks error) is treated as "nothing to
+// block" so the hook never false-denies on infrastructure trouble.
+func (c *Ctx) gitleaksFlagsSecret() bool {
+	dir := c.commitTargetDir()
+	gitArgs := []string{}
+	if dir != "" {
+		gitArgs = append(gitArgs, "-C", dir)
+	}
+	gitArgs = append(gitArgs, "diff", "--cached", "--no-color")
+	gitCmd := exec.Command("git", gitArgs...)
+	diff, err := gitCmd.Output()
+	if err != nil {
+		return false
+	}
+	gl := exec.Command(gitleaksPath, "stdin", "--no-banner", "--redact")
+	gl.Stdin = strings.NewReader(string(diff))
+	err = gl.Run()
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode() == 1
+	}
+	return false
+}
+
+// ---- interpreter block regexes ---------------------------------------------
+
+// INTERP recognises an interpreter invocation beyond a bare leading token:
+// $(...) substitution, env/nice/nohup wrappers, `uv run [--flags] python`,
+// full paths. The trailing [[:space:]] (not \b) is load-bearing — see the
+// bash guard's NOTE — or `fix(node): ...` in a commit subject reads as a
+// node invocation.
+var reInterp = hasPattern(`(^|[;&|(` + "`" + `]|&&|\|\||\$\()[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*((env|nice|nohup)[[:space:]]+|uv[[:space:]]+run[[:space:]]+([^[:space:]]+[[:space:]]+)*)*([^[:space:]]*/)?(python3?|node)[[:space:]]`)
+
+var reInterpWrite = hasPattern(`\.write_text\(|\bopen\([^)]*,[[:space:]]*\\?["'][wa]|\bwriteFileSync\(|\bwriteFile\(`)
+var reInterpShellOut = hasPattern(`os\.(system|popen|exec[lv]|spawn)|\bsubprocess\b|\bpty\.spawn\b|child_process|\b(exec|spawn|execFile)Sync\b|__import__\([^)]*(os|subprocess|pty)`)
+var reInterpTreeDelete = hasPattern(`\brmtree\(|os\.removedirs|\b(rm|rmdir)Sync\([^)]*recursive|\bfs\.rm(dir)?\([^)]*recursive`)
+var reInterpNetwork = hasPattern(`\b(urllib|requests|httpx|http\.client|socket|ftplib|smtplib|paramiko)\b|\bfetch\(|\baxios\b`)
+
+// ---- ssh/age private-key block ---------------------------------------------
+
+var reSSHAuthorizedEtc = regexp.MustCompile(`\.ssh/(authorized_keys|known_hosts|config|sockets)[^[:space:]']*`)
+var reSSHPubFile = regexp.MustCompile(`\.ssh/[^[:space:]']*\.pub`)
+var reSSHOrAge = hasPattern(`(\.ssh\b|\.config/sops/age|\bage-keygen\b)`)
+
+// ---- reverse shell -----------------------------------------------------------
+
+var reReverseShellInteractive = hasPattern(`\b(bash|sh|zsh|dash|ksh)[[:space:]]+-[a-zA-Z]*i[a-zA-Z]*\b`)
+var reReverseShellDuplex = hasPattern(`(0>&1|0<&1|<>[[:space:]]*/dev/tcp/)`)
+
+// ---- .env ---------------------------------------------------------------
+
+var reEnvReadHead = segHeadRe(`(cat|less|more|head|tail|bat)[[:space:]]+[^|;&]*\.env(\.[[:alnum:]_-]+)?`)
+var reEnvExempt = hasPattern(`\.env\.(example|sample|template|dist)`)
+
+// ---- exfiltration ---------------------------------------------------------
+
+var reEnvExfil = atPattern(`(printenv|env|set)\b[^|]*\|[^|]*(base64|curl|wget|nc|xxd)`)
+var rePipeToShell = atPattern(`(curl|wget)\b[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(bash|sh|zsh)\b`)
+
+// ---- git rules -------------------------------------------------------------
+
+var reGitResetHard = segHeadRe(gitpfx + `reset[[:space:]]+--hard\b`)
+var reGitClean = segHeadRe(gitpfx + `clean\b`)
+var reGitBranchForceDelete = segHeadRe(gitpfx + `branch[[:space:]]+(-[a-zA-Z]*D|-[a-zA-Z]*(fd|df)|--delete[[:space:]]+--force|--force[[:space:]]+--delete)\b`)
+var reGitDiscardAll = segHeadRe(gitpfx + `(checkout([[:space:]]+--)?|restore)[[:space:]]+\.([[:space:]]|$)`)
+var reGitCommitHead = segHeadRe(gitpfx + `commit\b`)
+var reGitPush = segHeadRe(gitpfx + `push\b`)
+var reGitAddHead = segHeadRe(gitpfx + `add\b`)
+var reGitAddAllContent = regexp.MustCompile(`(^|[[:space:]])(-A|--all|\.)([[:space:]]|$)`)
+var reGitConfigHead = segHeadRe(gitpfx + `config\b`)
+var reGitConfigHooksPath = regexp.MustCompile(`hooksPath`)
+var reGitBareHead = segHeadRe(`git\b`)
+var reGitDashCHooksPath = regexp.MustCompile(`(^|[[:space:]])-c[[:space:]]*[^[:space:]]*hooksPath`)
+
+// ---- infra rules -------------------------------------------------------------
+
+var reTerraformDestroy = segHeadRe(`terraform[[:space:]]+destroy\b`)
+var reTerraformStateRmMv = segHeadRe(`terraform[[:space:]]+state[[:space:]]+(rm|mv)\b`)
+var reKubectlDeleteDrain = segHeadRe(`kubectl[[:space:]]+(delete|drain)\b`)
+var reHelmUninstallRollback = segHeadRe(`helm[[:space:]]+(uninstall|rollback)\b`)
+var reNomadStopEtc = segHeadRe(`nomad[[:space:]]+(job[[:space:]]+(stop|purge)|node[[:space:]]+drain|alloc[[:space:]]+stop)\b`)
+var reDockerVolumePrune = segHeadRe(`docker[[:space:]]+volume[[:space:]]+prune\b`)
+
+var reTerraformApply = segHeadRe(`terraform[[:space:]]+apply\b`)
+var reKubectlApply = segHeadRe(`kubectl[[:space:]]+apply\b`)
+var reHelmInstallUpgrade = segHeadRe(`helm[[:space:]]+(install|upgrade)\b`)
+var reNomadJobRun = segHeadRe(`nomad[[:space:]]+job[[:space:]]+run\b`)
+
+var reSudoHead = segHeadRe(`sudo\b`)
+var reRmRootHome = segHeadRe(`rm[[:space:]]+-[a-zA-Z]*[rR][a-zA-Z]*[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*(/|~|\$HOME|/\*|~/\*|\$HOME/\*)([[:space:]]|$)`)
+
+var reChmodHead = segHeadRe(`chmod\b`)
+var reChmod777 = regexp.MustCompile(`\b777\b`)
+
+var reAnsiblePlaybookHead = segHeadRe(`ansible-playbook\b`)
+var reAnsibleCheck = regexp.MustCompile(`(^|[[:space:]])(--check|-C)([[:space:]]|$)`)
+
+var reCurlBareHead = segHeadRe(`curl\b`)
+var reCurlMutating = regexp.MustCompile(`(-X[[:space:]]*(POST|PUT|DELETE|PATCH)|--request[[:space:]]+(POST|PUT|DELETE|PATCH)|--json\b|(^|[[:space:]])(-d|--data(-raw|-binary|-urlencode)?|-F|--form|-T|--upload-file)([[:space:]]|=|@))`)
+
+var reDockerComposeDown = segHeadRe(`docker([[:space:]]+|-)compose[[:space:]]+down\b`)
+var reDockerVolumesFlag = regexp.MustCompile(`(^|[[:space:]])(-v|--volumes)([[:space:]]|$)`)
+var reDockerVolumeRm = segHeadRe(`docker[[:space:]]+volume[[:space:]]+rm\b`)
+
+var reRmRecursiveFlag = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*[rR][a-zA-Z]*([[:space:]]|$)`)
+
+var reCurlDashOFlag = regexp.MustCompile(`(^|[[:space:]])(-[a-zA-Z]*O|--remote-name)([[:space:]]|$)`)
+
+// evaluate ports pretooluse-guard.sh's rule table, in the same order, with
+// the same verdicts and reason strings. It returns noDecision for a silent
+// allow.
+func evaluate(c *Ctx) Decision {
+	// ---- DENY: destructive infrastructure (manual only) ----
+	if c.mentions(mInfraDocker) {
+		if c.segHead(reTerraformDestroy) {
+			return deny("terraform destroy — run it manually")
+		}
+		if c.segHead(reTerraformStateRmMv) {
+			return deny("terraform state rm/mv — manual only")
+		}
+		if c.segHead(reKubectlDeleteDrain) {
+			return deny("kubectl delete/drain — manual only")
+		}
+		if c.segHead(reHelmUninstallRollback) {
+			return deny("helm uninstall/rollback — manual only")
+		}
+		if c.segHead(reNomadStopEtc) {
+			return deny("nomad stop/purge/drain — manual only")
+		}
+		if c.segHead(reDockerVolumePrune) {
+			return deny("docker volume prune wipes unused volumes — manual only")
+		}
+	}
+
+	// ---- DENY: git operations that throw work away ----
+	if c.mentions(mGit) {
+		if c.segHead(reGitResetHard) {
+			return deny("git reset --hard discards uncommitted work — manual only")
+		}
+		if c.segHead(reGitClean) {
+			return deny("git clean deletes untracked files — manual only")
+		}
+		if c.segHead(reGitBranchForceDelete) {
+			return deny("git branch force-delete — manual only")
+		}
+		if c.segHead(reGitDiscardAll) {
+			return deny("discarding all local changes — manual only")
+		}
+	}
+
+	// ---- DENY: destructive system / secret exfiltration ----
+	if c.mentions(mRm) && c.segHead(reRmRootHome) {
+		return deny("recursive delete of / or home")
+	}
+	if c.mentions(mSudo) && c.segHead(reSudoHead) {
+		return deny("sudo — run it manually")
+	}
+	if strings.Contains(c.cmd, ".env") && c.segHead(reEnvReadHead) && !c.has(reEnvExempt) {
+		return deny("reading a plaintext .env file")
+	}
+	if c.mentions(mEnvWords) && c.at(reEnvExfil) {
+		return deny("environment-variable exfiltration")
+	}
+	if c.mentions(mCurlWget) && c.at(rePipeToShell) {
+		return deny("pipe-to-shell from network")
+	}
+	if strings.Contains(c.cmd, "/dev/tcp/") && (c.has(reReverseShellInteractive) || c.has(reReverseShellDuplex)) {
+		return deny("reverse shell")
+	}
+	if strings.Contains(c.cmd, ".ssh") || strings.Contains(c.cmd, "sops/age") || strings.Contains(c.cmd, "age-keygen") {
+		stripped := reSSHAuthorizedEtc.ReplaceAllString(c.cmd, "")
+		stripped = reSSHPubFile.ReplaceAllString(stripped, "")
+		if reSSHOrAge.MatchString(stripped) {
+			return deny("touching private keys")
+		}
+	}
+
+	// ---- DENY: committing a secret (staged diff scanned by gitleaks) ----
+	if c.mentions(mGit) && c.segHead(reGitCommitHead) && gitleaksAvailable() {
+		if c.gitleaksFlagsSecret() {
+			return deny("gitleaks flagged a secret in the staged diff — review it, then commit by hand or add a .gitleaksignore entry if it is a false positive")
+		}
+	}
+
+	// ---- DENY: file work that belongs to Edit / Write / Read ----
+	if c.mentions(mFileWords) && c.shellWritesAFile() {
+		return deny(`writing a file from the shell (heredoc, echo, printf) — Edit for a change, Write for a new file, a script for generated content; a helper script lives in $CLAUDE_JOB_DIR/tmp`)
+	}
+	if c.mentions(mSed) && c.sedIOnOneFile() {
+		return deny("sed -i on one file is a single edit — use Edit; sed is for the same change across many files")
+	}
+	if c.mentions(mFileWords) && c.onlyReadsRepoFiles() {
+		return deny("dumping a repo file into the context — Read with offset/limit for a known file, Grep to find what you need")
+	}
+
+	// ---- Interpreters: judge the code, not the command name ----
+	if c.mentions(mPythonNode) && c.has(reInterp) {
+		if c.has(reInterpWrite) && !reScratchAny.MatchString(c.cmd) {
+			return deny(`patching a file from an interpreter — that is Edit; a helper script lives in $CLAUDE_JOB_DIR/tmp and runs from there`)
+		}
+		if c.has(reInterpShellOut) {
+			return deny("interpreter shelling out — that escapes every pattern in this guard; write the shell command directly")
+		}
+		if c.has(reInterpTreeDelete) {
+			return deny("recursive tree delete from an interpreter")
+		}
+		if c.has(reInterpNetwork) {
+			return ask("interpreter opening the network — confirm?")
+		}
+	}
+
+	// ---- ASK: mutating infrastructure (confirm in the moment) ----
+	if c.mentions(mInfraNoDoc) {
+		if c.segHead(reTerraformApply) {
+			return ask("terraform apply — confirm?")
+		}
+		if c.segHead(reKubectlApply) {
+			return ask("kubectl apply — confirm?")
+		}
+		if c.segHead(reHelmInstallUpgrade) {
+			return ask("helm install/upgrade — confirm?")
+		}
+		if c.segHead(reNomadJobRun) {
+			return ask("nomad job run — confirm?")
+		}
+	}
+	if c.mentions(mChmod) && c.segWith(reChmodHead, reChmod777) {
+		return ask("chmod 777 — confirm?")
+	}
+	if c.mentions(mGit) && c.segHead(reGitPush) {
+		return ask("git push publishes — confirm?")
+	}
+
+	// ---- ASK by argument, not by command name ----
+	if c.mentions(mAnsible) && c.segWithout(reAnsiblePlaybookHead, reAnsibleCheck) {
+		return ask("ansible-playbook without --check — confirm?")
+	}
+	if c.mentions(mCurl) && c.segWith(reCurlBareHead, reCurlMutating) {
+		return ask("curl with a mutating method or body — confirm?")
+	}
+	if strings.Contains(c.cmd, "hooksPath") {
+		if c.segWith(reGitConfigHead, reGitConfigHooksPath) {
+			return ask("git config core.hooksPath runs arbitrary code — confirm?")
+		}
+		if c.segWith(reGitBareHead, reGitDashCHooksPath) {
+			return ask("git -c core.hooksPath runs arbitrary code on the next git operation — confirm?")
+		}
+	}
+	if c.mentions(mDocker) {
+		if c.segWith(reDockerComposeDown, reDockerVolumesFlag) {
+			return ask("docker compose down -v destroys named volumes — confirm?")
+		}
+		if c.segHead(reDockerVolumeRm) {
+			return ask("docker volume rm destroys the volume's data — confirm?")
+		}
+	}
+	if c.mentions(mRm) && c.segWith(reRmHead, reRmRecursiveFlag) && c.rmHasUnsafeTarget() {
+		return ask("recursive rm outside scratch — confirm the target?")
+	}
+	if c.mentions(mCurl) {
+		if c.segWith(reCurlBareHead, reCurlDashOFlag) {
+			return ask("curl -O writes a file named by the server — confirm?")
+		}
+		if c.curlWritesAFile() {
+			return ask("curl writing the response to a file — confirm the path?")
+		}
+	}
+
+	// ---- ASK: broad git-add sweeps everything, incl. the private submodule ----
+	if c.mentions(mGit) && c.segWith(reGitAddHead, reGitAddAllContent) {
+		return ask("git add -A/./--all stages everything — prefer explicit paths?")
+	}
+
+	return noDecision
+}

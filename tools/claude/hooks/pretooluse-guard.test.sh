@@ -17,7 +17,7 @@
 # NOTE: no `set -e` — the test counts failures and must reach the end.
 set -uo pipefail
 
-HOOK="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pretooluse-guard.sh"
+HOOK="${GUARD_HOOK:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pretooluse-guard.sh}"
 [[ -x $HOOK ]] || { echo "не найден исполняемый $HOOK"; exit 2; }
 command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
 
