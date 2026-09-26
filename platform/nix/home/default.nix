@@ -37,6 +37,10 @@ let
     # every project.
     yamllint
     shellcheck
+    # NOTE: posttooluse-lint.sh falls back to `uvx ruff` when ruff is not on PATH, and
+    # on the devpod that fallback costs 5.6 s of cold start per .py write — 711 writes
+    # in one project's sessions, an hour of waiting. The binary starts in 50 ms.
+    ruff
     gh
     glab
     # NOTE: the base image has neither dig nor host nor nslookup, while the

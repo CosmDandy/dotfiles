@@ -265,8 +265,45 @@ chk pass 'bash tools/claude/hooks/pretooluse-guard.test.sh'        'запуск
 section 'git с глобальными флагами: -C и -c не обходят гейты'
 # `Bash(git -C:*)` is allow-listed and the prefix rules do not match `git -C …`, so
 # everything that used to rest on them has to hold here.
-chk ask  'git -C /repo push'                                       'push из другого каталога'
-chk ask  'git push origin main'                                    'обычный push'
+chk ask  'git -C /repo push'                                       'push из другого каталога (ветку не определить)'
+chk ask  'git push origin main'                                    'push в main'
+
+section 'push: feature-ветка молча, защищённая ветка / force / delete — ask'
+# An autonomous run ends with a push of its branch; the blanket ask waited hours for
+# nobody. The cases marked «(реальная)» are pushes from the audited sessions.
+chk pass 'git push -u origin feat/session-audit-hints'             'feature-ветка с -u'
+chk pass 'git push -q -u origin worktree-reviews-nightly-sync'     'worktree-ветка (реальная)'
+chk pass 'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка с редиректом (реальная)'
+chk pass 'git push origin "feat/x"'                                'ветка в кавычках'
+chk ask  'git push origin master'                                  'push в master'
+chk ask  'git push origin HEAD:main'                               'HEAD:main'
+chk ask  'git push origin feat/x main'                             'несколько refspec, один защищённый'
+chk ask  'git push origin release/1.2'                             'release/* защищён'
+chk ask  'git push origin main 2>&1 | tail -1; git log --oneline -1' 'push в main в цепочке (реальная)'
+chk ask  'git push --force origin feat/x'                          '--force'
+chk ask  'git push -f origin feat/x'                               '-f'
+chk ask  'git push --force-with-lease origin feat/x'               '--force-with-lease'
+chk ask  'git push origin +feat/x'                                 '+refspec'
+chk ask  'git push origin :old-branch'                             'удаление удалённой ветки через :'
+chk ask  'git push -d origin old-branch'                           'удаление через -d'
+chk ask  'git push --delete origin old-branch'                     'удаление через --delete'
+# A bare `git push` resolves the current branch of the repo it runs in.
+PR="$(mktemp -d)"; git -C "$PR" init -q -b main; git -C "$PR" config user.email t@example.invalid; git -C "$PR" config user.name t
+git -C "$PR" commit -q --allow-empty -m init
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ $got == ask ]]; then printf '%s\n  ok   ask   %s\n' "$SECTION" 'bare push на ветке main — ask'
+else printf '%s\n  FAIL ждали ask, получили %s: %s\n' "$SECTION" "${got:-pass}" 'bare push на ветке main'; fi > "$RES/$pid"
+git -C "$PR" checkout -q -b feat/x
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push -u origin HEAD" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ -z $got ]]; then printf '%s\n  ok   pass  %s\n' "$SECTION" 'push HEAD с feature-ветки — молча'
+else printf '%s\n  FAIL ждали pass, получили %s: %s\n' "$SECTION" "$got" 'push HEAD с feature-ветки'; fi > "$RES/$pid"
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ -z $got ]]; then printf '%s\n  ok   pass  %s\n' "$SECTION" 'bare push с feature-ветки — молча'
+else printf '%s\n  FAIL ждали pass, получили %s: %s\n' "$SECTION" "$got" 'bare push с feature-ветки'; fi > "$RES/$pid"
+rm -rf "$PR"
 chk deny 'git -C /repo reset --hard HEAD~1'                        'reset --hard через -C'
 chk deny 'git -C /repo clean -fd'                                  'clean через -C'
 chk deny 'git -C /repo branch -D feature'                          'branch -D через -C'
@@ -501,8 +538,8 @@ section 'git: глобальные флаги не обходят гейты'
 # it bypasses every git rule at once.
 chk deny 'git --git-dir /tmp/r/.git reset --hard'                  '--git-dir через пробел'
 chk deny 'git --literal-pathspecs clean -fdx'                      '--literal-pathspecs'
-chk ask  'git -P push'                                             '-P перед push'
-chk ask  'git --no-optional-locks push'                            '--no-optional-locks перед push'
+chk ask  'git -P push origin main'                                 '-P перед push'
+chk ask  'git --no-optional-locks push origin main'                '--no-optional-locks перед push'
 chk ask  'git -c core.hooksPath=/tmp/evil status'                  '-c core.hooksPath = чужой код'
 chk pass 'git -c color.ui=false status'                            'безобидный -c не спрашивает'
 

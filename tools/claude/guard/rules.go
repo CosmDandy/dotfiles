@@ -414,6 +414,88 @@ func (c *Ctx) curlWritesAFile() bool {
 	return false
 }
 
+// ---- git push --------------------------------------------------------------
+//
+// Pushing a feature branch is the normal end of an autonomous run, and a blanket
+// ask there waited 14–118 minutes for nobody in the audited sessions. What still
+// asks: a protected branch, --force, a remote delete, and a target it cannot tell.
+
+var (
+	reProtectedBranch = regexp.MustCompile(`^(refs/heads/)?(main|master|prod|production|release(/.*)?)$`)
+	rePushForce       = regexp.MustCompile(`(^|[[:space:]])(-f|--force|--force-with-lease(=[^[:space:]]*)?)([[:space:]]|$)|[[:space:]]\+[^[:space:]]+`)
+	rePushDelete      = regexp.MustCompile(`(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+`)
+	rePushAfter       = regexp.MustCompile(`[[:space:]]push([[:space:]]|$)`)
+	reGitCDirPrefix   = regexp.MustCompile(`^-C[[:space:]]*`)
+)
+
+// currentBranch resolves the checked-out branch of dir, "" when it cannot.
+func currentBranch(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--short", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// pushNeedsConfirm mirrors the bash guard's push_needs_confirm: the reason to
+// ask, or "" and false for a silent feature-branch push.
+func (c *Ctx) pushNeedsConfirm() (string, bool) {
+	for _, seg := range c.segs {
+		if !reGitPush.MatchString(seg) {
+			continue
+		}
+		if rePushForce.MatchString(seg) {
+			return "git push --force rewrites history — confirm?", true
+		}
+		if rePushDelete.MatchString(seg) {
+			return "git push deleting a remote branch — confirm?", true
+		}
+		dir := c.cwd
+		if m := reGitCDir.FindString(seg); m != "" {
+			dir = strings.TrimSpace(reGitCDirPrefix.ReplaceAllString(m, ""))
+		}
+		rest := ""
+		if loc := rePushAfter.FindStringIndex(seg); loc != nil {
+			rest = seg[loc[1]:]
+		}
+		remote, hasRef := "", false
+		for _, tok := range strings.Fields(rest) {
+			tok = strings.Trim(tok, `"'`)
+			if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "<>") {
+				continue
+			}
+			if remote == "" {
+				remote = tok
+				continue
+			}
+			hasRef = true
+			dst := tok
+			if i := strings.Index(tok, ":"); i >= 0 {
+				dst = tok[i+1:]
+			}
+			if dst == "HEAD" {
+				dst = currentBranch(dir)
+			}
+			if dst == "" {
+				return "git push — could not tell the target branch, confirm?", true
+			}
+			if reProtectedBranch.MatchString(dst) {
+				return "git push to a protected branch (" + dst + ") — confirm?", true
+			}
+		}
+		if !hasRef {
+			dst := currentBranch(dir)
+			if dst == "" {
+				return "git push — could not tell the current branch, confirm?", true
+			}
+			if reProtectedBranch.MatchString(dst) {
+				return "git push to a protected branch (" + dst + ") — confirm?", true
+			}
+		}
+	}
+	return "", false
+}
+
 // ---- gitleaks ------------------------------------------------------------
 
 // gitleaksAvailable is resolved once per process; exec.LookPath is cheap but
@@ -671,7 +753,9 @@ func evaluate(c *Ctx) Decision {
 		return ask("chmod 777 — confirm?")
 	}
 	if c.mentions(mGit) && c.segHead(reGitPush) {
-		return ask("git push publishes — confirm?")
+		if reason, ok := c.pushNeedsConfirm(); ok {
+			return ask(reason)
+		}
 	}
 
 	// ---- ASK by argument, not by command name ----
