@@ -390,7 +390,6 @@ func isSpaceByte(b byte) bool {
 // ---- curl_writes_a_file -------------------------------------------------------
 
 var (
-	reCurlHead         = segHeadRe(`curl\b`)
 	reCurlOutputFlag   = regexp.MustCompile(`(^|[[:space:]])(-[a-zA-Z]*o|--output)([[:space:]]|=)*[^[:space:]]*`)
 	reCurlOutputPrefix = regexp.MustCompile(`^[[:space:]]*(-[a-zA-Z]*o|--output)[[:space:]=]*`)
 	reCurlSafeOutput   = regexp.MustCompile(`^(/dev/null)?$|^/(private/)?tmp/|CLAUDE_JOB_DIR|/scratchpad(/|$)`)
@@ -398,7 +397,7 @@ var (
 
 func (c *Ctx) curlWritesAFile() bool {
 	for _, seg := range c.segs {
-		if !reCurlHead.MatchString(seg) {
+		if !reCurlBareHead.MatchString(seg) {
 			continue
 		}
 		for _, m := range reCurlOutputFlag.FindAllString(seg, -1) {

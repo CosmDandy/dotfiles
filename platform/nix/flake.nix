@@ -57,6 +57,18 @@
       # rather than derived from user, because the attribute name (macbook-cosmdandy, used
       # by install-nix.sh and updm) and networking.hostName were linked only through
       # primaryUser and would drift on another user.
+      # The PreToolUse guard hook (tools/claude/guard), a Go port of the bash version,
+      # exposed as a package so `nix build .#claude-guard` builds it without anyone
+      # having to run `go build` by hand.
+      mkGuard =
+        system:
+        (import nixpkgs { inherit system; }).buildGoModule {
+          pname = "claude-guard";
+          version = "0.1.0";
+          src = ../../tools/claude/guard;
+          vendorHash = "sha256-sULOJKCnZ9nS/EVH8Q4MhH7U9zdrcruxCKI6HqP/1a4=";
+          meta.mainProgram = "guard";
+        };
       # NOTE: cpuCores/memoryGiB are DECLARED, not detected — eval must be reproducible
       # and compute the same on any machine, so the current host's specs are invisible to
       # it (getEnv needs --impure). The daemon's max-jobs/cores are derived from them.
@@ -121,6 +133,10 @@
           ) users
         ) linuxSystems
       );
+
+      packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (system: {
+        claude-guard = mkGuard system;
+      });
 
       # NOTE: without formatter.<system> the `nix fmt` command does not work at all.
       # nixfmt (RFC 166), not nixfmt-classic — the same one the rules and CI call.
