@@ -14,7 +14,21 @@ input="$(cat)"
 trigger="$(printf '%s' "$input" | jq -r '.trigger // "unknown"')"
 cwd="$(printf '%s' "$input" | jq -r '.cwd // empty')"
 sid="$(printf '%s' "$input" | jq -r '.session_id // empty')"
+transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty')"
 sid8="${sid:0:8}"
+
+# What the session has already looked at and already run, from the tail of the transcript.
+# After a compact the summary tends to drop exactly this, and the session re-reads the
+# same screenshots and re-runs the same checks. Bounded to the last records so a 50 MB
+# transcript does not stall the hook.
+seen=""
+if [[ -n "$transcript" && -r "$transcript" ]]; then
+  seen="$(tail -n 4000 "$transcript" 2>/dev/null | jq -r '
+    select(.type == "assistant") | .message.content[]? | select(.type == "tool_use")
+    | if .name == "Read" or .name == "Edit" or .name == "Write" then "  - " + .name + " " + (.input.file_path // "")
+      elif .name == "Bash" and ((.input.command // "") | test("test|check|lint|pytest|ruff|eslint|behave|opening")) then "  - Bash " + ((.input.command // "") | gsub("\n"; " ") | .[0:120])
+      else empty end' 2>/dev/null | awk '!seen[$0]++' | tail -n 30)"
+fi
 
 [[ -n "$cwd" ]] || exit 0
 cd "$cwd" 2>/dev/null || exit 0
@@ -44,6 +58,10 @@ fi
     printf '%s\n' "$dirty" | sed 's/^/  - /'
   else
     printf -- '- Компакт на ветке `%s`, рабочее дерево чистое.\n' "${branch:-?}"
+  fi
+  if [[ -n "$seen" ]]; then
+    printf -- '- Уже просмотрено и проверено к этому моменту (не перечитывать без причины):\n'
+    printf '%s\n' "$seen"
   fi
 } >> "$f"
 

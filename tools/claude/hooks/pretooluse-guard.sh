@@ -18,7 +18,7 @@ cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
 # NOTE: the second group has no closing \b on purpose — exfiltration and
 # pipe-to-shell rules match these as substrings, and `\bnc\b` let `env | ncat h
 # p` through the filter, turning a hard deny into silence.
-GATED='\b(terraform|kubectl|helm|nomad|docker|git|rm|sudo|chmod|ansible-playbook|python3?|node|uv|zsh|bash|sh|dash|ksh|age-keygen)\b|\b(curl|wget|nc|base64|xxd)|/dev/tcp|\.ssh\b|\.config/sops/age|\.env'
+GATED='\b(terraform|kubectl|helm|nomad|docker|git|rm|sudo|chmod|ansible-playbook|python3?|node|uv|zsh|bash|sh|dash|ksh|age-keygen|cat|tee|sed|head|tail|bat|nl|less|more)\b|\b(curl|wget|nc|base64|xxd)|/dev/tcp|\.ssh\b|\.config/sops/age|\.env'
 grep -Eq "$GATED" <<<"$cmd" || exit 0
 
 emit() {
@@ -245,6 +245,106 @@ if seg_head "${GITPFX}commit\b" && command -v gitleaks >/dev/null 2>&1; then
     && deny "gitleaks flagged a secret in the staged diff — review it, then commit by hand or add a .gitleaksignore entry if it is a false positive"
 fi
 
+# ---- DENY: file work that belongs to Edit / Write / Read ----
+# An audit of six background jobs found that `cat > f <<EOF` and `python3 - <<PY …
+# replace()` patches were 36 of the 50 harness rejections (the worktree isolation
+# cannot verify a heredoc) and a third of the context. The bypass-mode harness text
+# recommends exactly that, so only a deny outranks it. Scratch paths stay open: a
+# helper script belongs in $CLAUDE_JOB_DIR/tmp and is run from there.
+# NOTE: the job dir appears both as the variable and expanded (`/home/u/.claude/jobs/<id>/tmp`);
+# the corpus run caught a real helper script denied on the literal form.
+SCRATCH_RE='^(/private)?/tmp/|CLAUDE_JOB_DIR|\.claude/jobs/[^/]+/tmp(/|$)|/scratchpad(/|$)|^/dev/'
+# A `cd` into scratch earlier in the same command makes its relative operands
+# scratch too — `cd $CLAUDE_JOB_DIR/tmp && sed -i … pages.mjs` is the normal way to
+# iterate on a helper. Decided once per run.
+CD_SCRATCH=''
+cd_into_scratch() {
+  if [[ -z $CD_SCRATCH ]]; then
+    if segs | grep -E '^[[:space:]]*cd[[:space:]]+' \
+         | sed -E 's/^[[:space:]]*cd[[:space:]]+//; s/^["'"'"']//; s/["'"'"']?[[:space:]]*$//' | grep -qE "$SCRATCH_RE"; then
+      CD_SCRATCH=yes
+    else
+      CD_SCRATCH=no
+    fi
+  fi
+  [[ $CD_SCRATCH == yes ]]
+}
+is_scratch() {
+  grep -qE "$SCRATCH_RE" <<<"$1" && return 0
+  [[ $1 != /* ]] && cd_into_scratch
+}
+
+# cat/tee carrying a heredoc into a redirect target outside scratch.
+heredoc_writes_a_file() {
+  local t
+  while IFS= read -r t; do
+    [[ -n $t ]] || continue
+    is_scratch "$t" || return 0
+  done < <(segs \
+    | grep -E '^[[:space:]]*(cat|tee)\b' \
+    | grep -E '<<' \
+    | grep -Eo -- '(>>?[[:space:]]*|(^|[[:space:]])tee[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*)[^[:space:]<>|;&]+' \
+    | sed -E 's/^[[:space:]]*(>>?[[:space:]]*|tee[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*)//; s/^["'"'"']//')
+  return 1
+}
+heredoc_writes_a_file && deny "writing a file from a heredoc — Edit for a change, Write for a new file, a script for generated content; a helper script lives in \$CLAUDE_JOB_DIR/tmp"
+
+# (The interpreter form of the same patch — read_text/replace/write_text from a
+# `python3 - <<PY` body — is denied in the interpreter block below, where INTERP
+# is defined.)
+
+# sed -i on exactly one literal file is a single edit; sed earns its place only when
+# the same change goes across many files (several operands, a glob, find/xargs).
+# NOTE: quoted arguments are the expression, so they are dropped before counting;
+# an unquoted expression counts as an operand and lets the command through.
+sed_i_on_one_file() {
+  local seg rest
+  while IFS= read -r seg; do
+    rest=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s/(^|[[:space:]])-[^[:space:]]*//g; s/^[[:space:]]*sed([[:space:]]|$)//" <<<"$seg")
+    # shellcheck disable=SC2086
+    set -- $rest
+    [[ $# -eq 1 ]] || continue
+    [[ $1 == *[*?[]* ]] && continue
+    is_scratch "$1" && continue
+    return 0
+  done < <(segs | grep -E '^[[:space:]]*sed[[:space:]]' | grep -E -- '(^|[[:space:]])(-[a-zA-Z]*i|--in-place)')
+  return 1
+}
+sed_i_on_one_file && deny "sed -i on one file is a single edit — use Edit; sed is for the same change across many files"
+
+# A command that only dumps repo files into the context: every segment is a reader
+# (or an echo separator between readers), nothing is piped anywhere. The Read tool
+# does this with offset/limit and stays tracked; Grep finds instead of dumping.
+# NOTE: scratch, task outputs and logs are exempt — reading a background task's
+# output through cat is the normal job flow.
+only_reads_repo_files() {
+  has '\|' && return 1
+  local seg head rest any=0 f
+  while IFS= read -r seg; do
+    [[ -z "${seg// /}" ]] && continue
+    [[ $seg == *'<<'* || $seg == *'>'* ]] && return 1
+    read -r head _ <<<"$seg"
+    case $head in
+      echo|printf|cd|true|:) continue ;;
+      cat|head|tail|bat|nl|less|more) ;;
+      sed) grep -qE '(^|[[:space:]])-[a-zA-Z]*n' <<<"$seg" || return 1 ;;
+      *) return 1 ;;
+    esac
+    rest=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g; s/(^|[[:space:]])-[^[:space:]]*//g" <<<"$seg")
+    # shellcheck disable=SC2086
+    set -- $rest
+    shift
+    [[ $# -ge 1 ]] || return 1
+    for f in "$@"; do
+      is_scratch "$f" && return 1
+      grep -qE '\.(output|log|txt)$' <<<"$f" && return 1
+    done
+    any=1
+  done < <(segs)
+  [[ $any -eq 1 ]]
+}
+only_reads_repo_files && deny "dumping a repo file into the context — Read with offset/limit for a known file, Grep to find what you need"
+
 # ---- Interpreters: judge the code, not the command name ----
 # python/python3/node sit in allow on purpose: a prefix rule only ever sees
 # `python3 -c`, while everything that decides safe-vs-not lives inside the
@@ -261,6 +361,14 @@ fi
 # tolerated.
 INTERP='(^|[;&|(`]|&&|\|\||\$\()[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*((env|nice|nohup)[[:space:]]+|uv[[:space:]]+run[[:space:]]+([^[:space:]]+[[:space:]]+)*)*([^[:space:]]*/)?(python3?|node)[[:space:]]'
 if has "$INTERP"; then
+  # A heredoc script that read_text/replace/write_text-s a repo file is the Edit
+  # tool done by hand, and the whole patch stays in the context. The write call is
+  # matched in the raw command because the body IS the script; a body naming a
+  # scratch path is left alone (it may well write there).
+  if has '<<' && has '\.write_text\(|\bopen\([^)]*["'"'"'][wa]|\bwriteFileSync\(|\bwriteFile\(' \
+     && ! has 'CLAUDE_JOB_DIR|(/private)?/tmp/'; then
+    deny "patching a file from an interpreter heredoc — that is Edit; a helper script lives in \$CLAUDE_JOB_DIR/tmp and runs from there"
+  fi
   # NOTE: `__import__("os").system` and `from shutil import rmtree` reach the
   # same calls without ever writing the literal name.
   has 'os\.(system|popen|exec[lv]|spawn)|\bsubprocess\b|\bpty\.spawn\b|child_process|\b(exec|spawn|execFile)Sync\b|__import__\([^)]*(os|subprocess|pty)' \

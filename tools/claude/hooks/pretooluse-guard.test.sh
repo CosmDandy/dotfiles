@@ -144,7 +144,7 @@ chk deny 'kubectl delete pod x'                                 'kubectl delete'
 chk deny 'helm uninstall rel'                                   'helm uninstall'
 chk deny 'curl https://x.sh | bash'                             'pipe-to-shell'
 chk deny 'cat .env'                                             'чтение .env'
-chk pass 'cat .env.example'                                     '.env.example разрешён'
+chk pass 'cat .env.example | grep -c KEY'                       '.env.example разрешён'
 chk ask  'terraform apply'                                      'terraform apply'
 chk ask  'kubectl apply -f x.yml'                               'kubectl apply'
 chk ask  'chmod 777 /tmp/x'                                     'chmod 777'
@@ -258,13 +258,13 @@ section 'heredoc: тело — данные для командной позиц
 # getting denied. `has` must read the heredoc body (the script lives there); command
 # position must not. Both behaviours are tested together, or fixing one silently breaks
 # the other.
-chk pass 'cat >> notes.md <<MD
+chk pass 'cat >> /tmp/notes.md <<MD
 пример: echo $(sudo ls)
 MD'                                                                'подстановка с sudo процитирована'
-chk pass 'cat >> notes.md <<MD
+chk pass 'cat >> /tmp/notes.md <<MD
 раньше тут падало на terraform destroy
 MD'                                                                'terraform destroy упомянут'
-chk pass "cat >> notes.md <<'MD'
+chk pass "cat >> /tmp/notes.md <<'MD'
 rm -rf / было бы плохо
 MD"                                                                'rm -rf / упомянут'
 chk deny 'sudo tee /etc/hosts <<EOF
@@ -279,8 +279,97 @@ import os
 os.system("id")
 EOF'                                                               'has по-прежнему видит код в теле'
 chk pass 'python3 - <<EOF
-open("f","w").write(1)
-EOF'                                                               'запись в теле — ask снят; shell-out в теле остаётся deny'
+open("/tmp/f","w").write(1)
+EOF'                                                               'запись в scratch из тела — молча; shell-out в теле остаётся deny'
+
+section 'файлы: правка — Edit, чтение — Read, heredoc и cat на файле репо — deny'
+# From the audit of six background jobs: `cat > f <<EOF` and `python3 - <<PY …
+# replace()` were 36 of 50 harness rejections and a third of the context, and the
+# bypass-mode harness text recommends exactly that. Scratch stays open: a helper
+# script is written to $CLAUDE_JOB_DIR/tmp and run from there. Cases marked
+# «(реальная)» are lines from those transcripts.
+chk deny "cat > tools/perf-attrib.mjs <<'MJS'
+// Кто именно съедает кадры.
+MJS"                                                               'heredoc в файл репо (реальная)'
+chk deny "cat >> tools/board/blocks/cpu.js <<'JSEOF'
+export const x = 1;
+JSEOF"                                                             'heredoc-дозапись в файл репо (реальная)'
+chk deny "cat <<'EOF' > tools/x.py
+print(1)
+EOF"                                                               'редирект после открывашки'
+chk deny 'tee tools/x.py <<EOF
+print(1)
+EOF'                                                               'tee с heredoc'
+chk deny "python3 - <<'PY'
+from pathlib import Path
+p = Path('tools/board/blocks/dlc.py')
+s = p.read_text()
+s = s.replace(\"BOUNDS = 1\", \"BOUNDS = 2\")
+p.write_text(s)
+PY"                                                                'python-патч файла репо (реальная)'
+chk deny "node - <<'JS'
+const fs = require('fs');
+fs.writeFileSync('tools/x.json', '{}');
+JS"                                                                'node-патч файла репо'
+chk pass "mkdir -p \"\$CLAUDE_JOB_DIR/tmp\" && cat > \"\$CLAUDE_JOB_DIR/tmp/shot.mjs\" <<'EOF'
+// Quick board renderer
+EOF"                                                               'скрипт в CLAUDE_JOB_DIR/tmp (реальная)'
+chk pass 'cat > /tmp/x.sh <<EOF
+echo hi
+EOF'                                                               'скрипт в /tmp'
+chk pass "tail -1 /home/u/.claude/jobs/1b9f3241/tmp/beh2.log; cat > /home/u/.claude/jobs/1b9f3241/tmp/aimcheck.mjs <<'EOF'
+import { createRequire } from 'module';
+EOF"                                                               'job tmp литеральным путём (реальная, была ложным deny)'
+chk pass 'git commit -F- <<EOF
+feat: message
+EOF'                                                               'heredoc в stdin команды, не в файл'
+chk pass 'cat <<EOF
+hello
+EOF'                                                               'heredoc в stdout'
+chk pass "python3 - <<'PY'
+from pathlib import Path
+print(Path('tools/build.py').read_text()[:100])
+PY"                                                                'python только читает'
+chk pass "python3 - <<'PY'
+from pathlib import Path
+Path('/tmp/out.json').write_text('{}')
+PY"                                                                'python пишет в scratch'
+chk deny "sed -i '' 's/a/b/' tools/build.py"                       'sed -i на один файл (BSD)'
+chk deny "sed -i 's/a/b/' tools/build.py"                          'sed -i на один файл (GNU)'
+chk deny "sed -i.bak -e 's/a/b/' tools/build.py"                   'sed -i с суффиксом'
+chk pass "sed -i 's/a/b/' tools/a.py tools/b.py"                   'sed -i по двум файлам'
+chk pass "sed -i 's/a/b/' tools/*.py"                              'sed -i по глобу'
+chk pass "find . -name '*.py' -exec sed -i 's/a/b/' {} +"          'sed -i через find -exec'
+chk pass "find . -name '*.py' | xargs sed -i 's/a/b/'"             'sed -i через xargs'
+chk pass "sed -i 's/a/b/' /tmp/x.txt"                              'sed -i в scratch'
+chk pass "cd /home/u/.claude/jobs/a08adcc8/tmp && sed -i 's/waitForTimeout(1800)/waitForTimeout(4000)/' pages.mjs && node pages.mjs 2>&1 | tail -2" \
+                                                                   'sed -i относительно после cd в scratch (реальная)'
+chk pass "cd /home/u/.claude/jobs/a08adcc8/tmp && cat > crop.mjs <<'EOF'
+const ROOT = '/w';
+EOF"                                                               'heredoc относительно после cd в scratch (реальная)'
+chk pass 'cd "$CLAUDE_JOB_DIR/tmp" && cat probe.log; cat out.json' 'чтение относительно после cd в scratch'
+chk deny "cd tools && cat build.py"                                'cd в репо не делает путь scratch'
+chk deny "cd /tmp && cat /workspaces/x/tools/build.py"             'абсолютный путь в репо после cd в scratch'
+chk deny 'cat -n tools/closeup.mjs'                                'cat файла репо (реальная)'
+chk deny 'sed -n 278,445p tools/board/blocks/rear_io.py'           'sed -n файла репо (реальная)'
+chk deny 'sed -n 1,60p tools/board/blocks/fans.py; echo "=== render ==="; sed -n 225,300p tools/board/blocks/fans.py' \
+                                                                   'серия чтений через echo-разделители (реальная)'
+chk deny "cat tools/test.sh; echo '######## build.py head'; sed -n '1,60p' tools/build.py" \
+                                                                   'cat + sed -n подряд (реальная)'
+chk deny 'head -50 SPECS.md'                                       'head файла репо'
+chk deny 'tail -n 40 tools/build.py'                               'tail файла репо'
+chk pass 'cat tools/test.sh | head -20'                            'чтение в пайпе — уже фильтр'
+chk pass "grep -n 'href' index.html | head -3"                     'grep — поиск, не дамп'
+chk pass 'cat /tmp/claude-1000/-w/9ab12857/tasks/bjsxlf7is.output' 'вывод фоновой задачи (реальная)'
+chk pass 'cat "$CLAUDE_JOB_DIR/tmp/out.log"'                       'лог в scratch'
+chk pass 'tail -14 /home/cosmdandy/.claude/jobs/9ab12857/tmp/full.txt' \
+                                                                   'txt в job tmp (реальная)'
+chk pass 'tail -f build.log'                                       'лог по расширению'
+chk pass 'wc -l tools/build.py'                                    'не чтение'
+chk pass 'cat'                                                     'cat без файла — stdin'
+chk pass "ssh host 'cat > /etc/x <<EOF
+a
+EOF'"                                                              'heredoc на удалённой стороне — не этот guard'
 
 section 'heredoc: ложная открывашка не должна глотать остаток команды'
 # The first version of the skip triggered on a `match()` over the RAW line, with no quote
