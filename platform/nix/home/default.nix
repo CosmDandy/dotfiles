@@ -17,12 +17,22 @@ let
     nodejs_24
     luarocks # for mason (luacheck); brings its own lua
     tree-sitter
+    # NOTE: `cc` at runtime, not only during activation — nvim-treesitter
+    # compiles every parser and mason builds luacheck's luafilesystem. An
+    # ubuntu-minimal machine has no compiler in /usr/bin, and all ~40 parsers
+    # failed with "No such file or directory". (darwin has clang from the CLT
+    # and never imports this file.)
+    gcc
     # CLI
     eza
     fd
     jq # several hooks (guard, lint, read, session lifecycle) parse JSON with it
     ripgrep
     starship
+    # NOTE: the shell itself, so every machine runs the same version instead of
+    # whatever the distro shipped. It does NOT drop zsh from the apt minimum —
+    # install.sh has a zsh shebang and runs long before nix exists.
+    zsh
     neovim
     tmux
     atuin

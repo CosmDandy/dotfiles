@@ -140,10 +140,16 @@ return {
         -- which is why the document-symbol picker came up empty there.
         lsp_symbols = {
           layout = { preset = 'default' },
+          -- NOTE: snacks looks the filter up by the exact filetype, so every compound
+          -- yaml filetype and terraform-vars needs its own entry.
           filter = {
             yaml = true,
+            ['yaml.ansible'] = true,
+            ['yaml.docker-compose'] = true,
+            ['yaml.helm-values'] = true,
             json = true,
             terraform = true,
+            ['terraform-vars'] = true,
             helm = true,
             dockerfile = true,
           },

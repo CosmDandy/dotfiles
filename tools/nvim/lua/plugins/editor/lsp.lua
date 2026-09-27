@@ -1,5 +1,5 @@
--- LSP config on native vim.lsp.config (nvim 0.11+) with mason-lspconfig 2.0
--- auto-enable
+-- LSP config on native vim.lsp.config/vim.lsp.enable (nvim 0.11+); mason only
+-- installs the binaries
 return {
   {
     'folke/lazydev.nvim',
@@ -24,22 +24,86 @@ return {
     },
   },
 
-  -- In 2.0 it calls vim.lsp.enable for installed servers itself. No lazy=false
-  -- needed: setup{} is called from nvim-lspconfig's config(), which pulls this
-  -- plugin in anyway.
+  -- NOTE: loaded by its own commands, not as a dependency of nvim-lspconfig —
+  -- requiring it pulls in the whole mason registry (~8ms before the first file
+  -- is drawn, measured), which only an install needs. The home-manager hook runs
+  -- :MasonToolsInstallSync, and that command is what loads it.
   {
-    'mason-org/mason-lspconfig.nvim',
+    'WhoIsSethDaniel/mason-tool-installer.nvim',
+    dependencies = { 'mason-org/mason.nvim' },
+    cmd = { 'MasonToolsInstall', 'MasonToolsInstallSync', 'MasonToolsUpdate', 'MasonToolsUpdateSync', 'MasonToolsClean' },
+    config = function()
+      -- Mason package names, NOT lspconfig names.
+      local ensure_installed = {
+        -- LSP servers
+        'basedpyright',
+        'lua-language-server',
+        'json-lsp',
+        'yaml-language-server',
+        'bash-language-server',
+        'dockerfile-language-server',
+        'docker-compose-language-service',
+        'marksman',
+        -- NOTE: nil (the Nix LSP) is deliberately absent — mason installs it
+        -- through cargo, which is not on the system, and the install fails
+        -- silently with ENOENT. It comes from nixpkgs instead, and lspconfig
+        -- picks the binary up from PATH. DAP
+        'debugpy',
+        -- Linters
+        'ruff',
+        'mypy',
+        'luacheck',
+        'hadolint',
+        'yamllint',
+        'shellcheck',
+        -- Formatters
+        'stylua',
+        'yamlfmt',
+        'shfmt',
+      }
+
+      -- IaC tooling is installed only where it is used. The container profile
+      -- is written by platform/linux/install.sh and baked by the Dockerfile; on
+      -- the mac the file does not exist and everything is installed.
+      -- NOTE: measured in the :core image, these five took 275 MB of the 988 MB
+      -- mason directory in a profile declared as "editor, shell, git".
+      -- NOTE: jsonnet-language-server belongs here too — mason builds it with
+      -- go, which only exists in the devops profile, so in core it failed with
+      -- "Could not find executable go in PATH".
+      local iac_tools = {
+        'terraform-ls',
+        'ansible-language-server',
+        'helm-ls',
+        'jsonnet-language-server',
+        'tflint',
+        'ansible-lint',
+      }
+      local profile_file = vim.fn.expand '~/.dotfiles-profile'
+      local profile = ''
+      if vim.fn.filereadable(profile_file) == 1 then
+        profile = vim.trim(vim.fn.readfile(profile_file)[1] or '')
+      end
+      if profile ~= 'core' then
+        vim.list_extend(ensure_installed, iac_tools)
+      end
+
+      require('mason-tool-installer').setup {
+        ensure_installed = ensure_installed,
+        auto_update = false,
+        -- NOTE: false because every home-manager activation already runs
+        -- MasonToolsInstallSync; with true the same walk over 25 packages would
+        -- repeat in every nvim run that happens to load this plugin.
+        run_on_start = false,
+      }
+    end,
   },
 
   {
     'neovim/nvim-lspconfig',
     event = { 'BufReadPre', 'BufNewFile' },
     dependencies = {
-      'mason-org/mason.nvim',
-      'mason-org/mason-lspconfig.nvim',
-      'WhoIsSethDaniel/mason-tool-installer.nvim',
       'saghen/blink.cmp',
-      -- loaded with lspconfig so require works in lsp/*.lua; version=false
+      -- loaded with lspconfig so require works in after/lsp/*.lua; version=false
       -- because the latest tag is stale
       { 'b0o/schemastore.nvim', version = false },
     },
@@ -84,7 +148,12 @@ return {
             vim.diagnostic.jump { count = -1 }
           end, 'Previous [D]iagnostic')
 
-          map('<leader>lr', '<cmd>LspRestart<CR>', '[L]SP [R]estart')
+          -- NOTE: the built-in :lsp (nvim 0.12); nvim-lspconfig stops defining its
+          -- Lsp* commands once :lsp exists, so :LspRestart was E492 here
+          -- not `:lsp restart`: it left terraform-ls stopped (see config/lsp_restart.lua)
+          map('<leader>lr', function()
+            require 'config.lsp_restart'(vim.lsp.get_clients { bufnr = 0 })
+          end, '[L]SP [R]estart')
 
           local client = vim.lsp.get_client_by_id(event.data.client_id)
 
@@ -175,103 +244,39 @@ return {
         end
       end, { desc = '[T]oggle auto under-cursor [d]iagnostics' })
 
-      -- Per-server deltas live in lsp/<name>.lua (the native 0.11+ convention)
-      -- and nvim loads them on vim.lsp.enable.
+      -- Per-server deltas live in after/lsp/<name>.lua and nvim loads them on
+      -- vim.lsp.enable.
+      -- NOTE: after/, not lsp/ — nvim merges every lsp/<name>.lua on the rtp in rtp
+      -- order and the later file wins, so nvim-lspconfig's copy (a plugin, after the
+      -- config dir) silently overrode every key both set: yamlls lost yaml.ansible,
+      -- ansiblels ran ansible-lint again, terraformls dropped its on_attach.
       -- NOTE: capabilities are NOT set here through vim.lsp.config('*', …) —
       -- blink.cmp does that itself in its own plugin/ directory, and a second
       -- call would be a hand copy of the same thing.
 
-      -- Mason package names, NOT lspconfig names.
-      local ensure_installed = {
-        -- LSP servers
+      -- The servers, by lspconfig name. An explicit list, so linters and formatters
+      -- mason also installs (ruff, tflint, stylua) never attach as LSP servers.
+      -- NOTE: no executable check — for a missing binary (the core profile has no
+      -- terraform-ls, ansiblels or gopls) vim.lsp.enable skips the server and only
+      -- logs it to lsp.log. mason's bin and nixpkgs (gopls) are both on PATH.
+      vim.lsp.enable {
         'basedpyright',
-        'lua-language-server',
-        'json-lsp',
-        'yaml-language-server',
-        'bash-language-server',
-        'dockerfile-language-server',
-        'docker-compose-language-service',
+        'lua_ls',
+        'jsonls',
+        'yamlls',
+        'bashls',
+        'dockerls',
+        'terraformls',
+        'helm_ls',
+        'ansiblels',
+        'jsonnet_ls',
+        'docker_compose_language_service',
+        'gopls',
+        -- markdown links/headings; installed by mason above but never enabled before
         'marksman',
-        -- NOTE: nil (the Nix LSP) is deliberately absent — mason installs it
-        -- through cargo, which is not on the system, and the install fails
-        -- silently with ENOENT. It comes from nixpkgs instead, and lspconfig
-        -- picks the binary up from PATH. DAP
-        'debugpy',
-        -- Linters
-        'ruff',
-        'mypy',
-        'luacheck',
-        'hadolint',
-        'yamllint',
-        'shellcheck',
-        -- Formatters
-        'stylua',
-        'yamlfmt',
-        'shfmt',
+        -- Nix, from nixpkgs (nix-darwin on the mac); absent in containers, so skipped there
+        'nil_ls',
       }
-
-      -- IaC tooling is installed only where it is used. The container profile
-      -- is written by platform/linux/install.sh and baked by the Dockerfile; on
-      -- the mac the file does not exist and everything is installed.
-      -- NOTE: measured in the :core image, these five took 275 MB of the 988 MB
-      -- mason directory in a profile declared as "editor, shell, git".
-      -- NOTE: jsonnet-language-server belongs here too — mason builds it with
-      -- go, which only exists in the devops profile, so in core it failed with
-      -- "Could not find executable go in PATH".
-      local iac_tools = {
-        'terraform-ls',
-        'ansible-language-server',
-        'helm-ls',
-        'jsonnet-language-server',
-        'tflint',
-        'ansible-lint',
-      }
-      local profile_file = vim.fn.expand '~/.dotfiles-profile'
-      local profile = ''
-      if vim.fn.filereadable(profile_file) == 1 then
-        profile = vim.trim(vim.fn.readfile(profile_file)[1] or '')
-      end
-      if profile ~= 'core' then
-        vim.list_extend(ensure_installed, iac_tools)
-      end
-
-      require('mason-tool-installer').setup {
-        ensure_installed = ensure_installed,
-        auto_update = false,
-        -- NOTE: false because it duplicates MasonToolsInstallSync, which every
-        -- home-manager activation already runs. With true, the same walk over
-        -- 25 packages repeated on the first file opened in every nvim run. To
-        -- install by hand: :MasonToolsInstall
-        run_on_start = false,
-      }
-
-      -- NOTE: automatic_enable is used as a whitelist — otherwise formatters
-      -- and linters like stylua, ruff and tflint attach as LSP servers, while
-      -- they already work through conform and nvim-lint.
-      require('mason-lspconfig').setup {
-        automatic_enable = {
-          'basedpyright',
-          'lua_ls',
-          'jsonls',
-          'yamlls',
-          'bashls',
-          'dockerls',
-          'terraformls',
-          'helm_ls',
-          'ansiblels',
-          'jsonnet_ls',
-          'docker_compose_language_service',
-        },
-      }
-
-      -- gopls comes from nixpkgs, not mason, so automatic_enable above never
-      -- sees it — mason-lspconfig only enables what it installed itself. The
-      -- executable check is for the core profile, which carries no Go tooling
-      -- at all (platform/nix/home/default.nix): without it nvim would try to
-      -- spawn a missing binary on every .go file.
-      if vim.fn.executable 'gopls' == 1 then
-        vim.lsp.enable 'gopls'
-      end
     end,
   },
 }

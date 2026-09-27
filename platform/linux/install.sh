@@ -22,18 +22,86 @@ source "$PLATFORM_DIR/common.sh"
 PROFILE="${PROFILE:-$(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo devops)}"
 print_section "Profile: ${PROFILE}"
 
+# Nix install mode. Two shapes, and the difference is not cosmetic:
+#   single — /nix belongs to the user, no daemon, builds run as the user. The
+#            only shape a container can have: no init to supervise a daemon, no
+#            root at runtime, and one user with nobody to share the store with.
+#   multi  — /nix belongs to root and nix-daemon builds in a sandbox under its
+#            own nixbld users, so store signatures mean something and a build
+#            cannot reach the invoking user's files. Wanted on anything
+#            long-lived that holds real keys: servers, VMs, OrbStack machines.
+# NOTE: the probe is systemd, not "am I in a container" — an OrbStack machine
+# looks like a container by every marker (/opt/orbstack-guest, no hardware) and
+# is nevertheless a full systemd system that should get the daemon. What the
+# daemon needs is an init to be supervised by, so that is what gets asked.
+# NOTE: left to itself the upstream installer picks single-user under a pipe,
+# having no tty to ask on — which is how every machine here quietly ended up
+# single-user regardless of what it was.
+NIX_INSTALL="${NIX_INSTALL:-auto}"
+if [[ "$NIX_INSTALL" == "auto" ]]; then
+  if [[ -d /run/systemd/system ]]; then
+    NIX_INSTALL=multi
+  else
+    NIX_INSTALL=single
+  fi
+fi
+
+# NOTE: nix.sh exports nothing at all unless BOTH $HOME and $USER are set — it
+# guards on them. A `docker exec`, a cron job or a systemd unit started without
+# the environment supplies neither, so sourcing the profile quietly does nothing
+# and the next command dies with "command not found: nix", pointing nowhere near
+# the cause. Caught in a bare container while testing the single-user path.
+export USER="${USER:-$(id -un)}"
+
+# Adopt an existing installation before deciding to create one.
+# NOTE: a non-interactive shell reads neither /etc/profile nor ~/.profile, so on
+# a machine where nix is installed `command -v nix` answers "absent" and the
+# block below runs the installer a second time. With a daemon that is not a
+# harmless no-op: the installer finds its own leftovers (/etc/bash.bashrc.backup
+# -before-nix and friends), refuses, and takes the whole run down with it —
+# after the daemon, the store and the nixbld users are all already in place.
+for nix_profile in \
+  /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh \
+  "$HOME/.nix-profile/etc/profile.d/nix.sh"; do
+  [[ -e "$nix_profile" ]] && . "$nix_profile"
+done
+
 # NOTE: --no-channel-add — packages come from flake.lock, and the default
 # channel would pull ~400MB of unpinned tree.
 if ! command -v nix &> /dev/null; then
-  print_section "Installing Nix"
-  curl -L https://nixos.org/nix/install | sh -s -- --no-channel-add
-  . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+  print_section "Installing Nix (${NIX_INSTALL}-user)"
+  NIX_INSTALLER=/tmp/nix-install.sh
+  curl -fsSL https://nixos.org/nix/install -o "$NIX_INSTALLER"
+  if [[ "$NIX_INSTALL" == "multi" ]]; then
+    # --yes: the daemon installer is interactive by default and there is no tty.
+    sh "$NIX_INSTALLER" --daemon --yes --no-channel-add
+    . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+  else
+    sh "$NIX_INSTALLER" --no-daemon --no-channel-add
+    . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+  fi
+  rm -f "$NIX_INSTALLER"
 fi
 
 # Flakes are needed by home-manager; vanilla nix does not enable them.
 mkdir -p "$HOME/.config/nix"
 if ! grep -q "experimental-features" "$HOME/.config/nix/nix.conf" 2>/dev/null; then
   echo "experimental-features = nix-command flakes" >> "$HOME/.config/nix/nix.conf"
+fi
+
+# With a daemon the CLIENT config above is only half of it: the daemon carries
+# its own settings and its own idea of who is allowed to override them.
+# NOTE: trusted-users is what lets this user pass substituters and similar
+# settings through to a build at all. Without it the daemon ignores them in
+# silence, and the only symptom is a rebuild where a cache hit was expected.
+if [[ -S /nix/var/nix/daemon-socket/socket ]]; then
+  NIX_CONF=/etc/nix/nix.conf
+  nix_conf_changed=""
+  grep -q "experimental-features" "$NIX_CONF" 2>/dev/null \
+    || { echo "experimental-features = nix-command flakes" | sudo tee -a "$NIX_CONF" >/dev/null; nix_conf_changed=1; }
+  grep -q "^trusted-users" "$NIX_CONF" 2>/dev/null \
+    || { echo "trusted-users = root $(whoami)" | sudo tee -a "$NIX_CONF" >/dev/null; nix_conf_changed=1; }
+  [[ -n "$nix_conf_changed" ]] && sudo systemctl restart nix-daemon
 fi
 
 # Bridge symlinks: the home modules reference ~/dotfiles, the configs
@@ -170,7 +238,14 @@ echo "$PROFILE" > "$HOME/.dotfiles-profile"
 # System level (sudo): outside home-manager's reach. Already done in the
 # prebuilt image — these steps are idempotent and return instantly.
 print_section "Setting default shell to zsh"
-ZSH_PATH="$(command -v zsh)"
+# NOTE: the SYSTEM zsh wins for the login shell, even once the profile has one
+# of its own. /etc/passwd would otherwise point inside ~/.nix-profile, and a
+# profile that is broken or simply not there yet leaves no way to log in.
+if [[ -x /usr/bin/zsh ]]; then
+  ZSH_PATH=/usr/bin/zsh
+else
+  ZSH_PATH="$(command -v zsh)"
+fi
 # NOTE: compare against the ACTUAL shell from passwd, not $SHELL — in a session
 # already running zsh, $SHELL says zsh while passwd still says bash, and the
 # block was skipped.

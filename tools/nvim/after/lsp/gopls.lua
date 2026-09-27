@@ -19,8 +19,8 @@ return {
         -- assigned and never read: the counterpart to the compiler's
         -- unused-variable error, which does not cover struct fields
         unusedwrite = true,
-        -- interface{} where the generic `any` is meant (Go 1.18+)
-        useany = true,
+        -- NOTE: no useany — gopls v0.23 has no such analyzer and ignores the key;
+        -- interface{} -> any is rewritten by the default-on modernize analyzer.
       },
 
       -- Fills a completed function call with its parameters as snippet stops.
@@ -41,11 +41,13 @@ return {
       -- (lsp.lua, LspAttach). `test` puts a run action above each test func;
       -- `tidy` and `upgrade_dependency` act on go.mod from the editor.
       -- run_govulncheck stays off: it hits the network on every lens refresh.
+      -- NOTE: it has to be said explicitly — gopls v0.23 enables it by default.
       codelenses = {
         generate = true,
         test = true,
         tidy = true,
         upgrade_dependency = true,
+        run_govulncheck = false,
       },
     },
   },

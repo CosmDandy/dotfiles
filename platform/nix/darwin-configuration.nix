@@ -49,6 +49,18 @@ let
     builtins.readFile ../../automation/launchd/scripts/ssh-sign-key.sh
   );
 
+  # Claude Code updates only from updm, never in the background. TCC records the
+  # binary by its absolute path under ~/.local/share/claude/versions/<N>, so every
+  # new version re-asks for Desktop, Documents and the rest — with the latest
+  # channel that was a dialog almost daily.
+  # NOTE: managed settings, not tools/claude/settings.json: that file is shared
+  # with the containers, where there is no TCC and nothing else would update
+  # claude. It is also not a shell export: meeting-summary runs `claude -p` from
+  # launchd every 15 minutes, past zsh, and would pull every release itself.
+  claudeManagedSettings = pkgs.writeText "claude-managed-settings.json" (
+    builtins.toJSON { env.DISABLE_AUTOUPDATER = "1"; }
+  );
+
   # ProgramArguments для агента, который стартует ПРИ ЛОГИНЕ.
   #
   # Прямая ссылка на store-путь для такого агента не работает: /nix лежит на
@@ -101,11 +113,11 @@ in
       "leader-key"
       # Browsers
       "arc"
-      "netnewswire"
+      # "netnewswire"
       # Development
       "ghostty"
       # "cursor"
-      "visual-studio-code"
+      # "visual-studio-code"
       "devpod"
       "postico"
       "utm"
@@ -115,7 +127,7 @@ in
       # "lm-studio"
       # Productivity
       "obsidian"
-      "timing"
+      # "timing"
       "raycast"
       # Communication
       "telegram"
@@ -128,7 +140,10 @@ in
       "nikitabobko/tap/aerospace"
       "spokenly"
       # Utilities
-      "logi-options+"
+      # NOTE: logi-options+ lives in platform/macos/install-extra.sh instead, and must
+      # NOT come back here. Its installer sleeps forever without a GUI session, and
+      # `brew bundle` runs inside activation with none — it hung the whole switch twice
+      # (2026-09-11), on install and on uninstall alike.
       "tailscale-app"
       "yandextelemost"
       "horos"
@@ -160,6 +175,12 @@ in
     # screensaver.askForPassword = a locked Mac.
     pmset -c sleep 0 displaysleep 8
     pmset -b sleep 1 displaysleep 2 lowpowermode 1
+
+    # NOTE: a copy, not a symlink into the store — /nix mounts seconds after login
+    # items start, and a claude launched in that window would read a dangling link
+    # and quietly fall back to auto-updating.
+    install -d -m 0755 "/Library/Application Support/ClaudeCode"
+    install -m 0644 ${claudeManagedSettings} "/Library/Application Support/ClaudeCode/managed-settings.json"
   '';
 
   # Unattended agents must survive a kernel panic. restartAfterPowerFailure is
@@ -168,17 +189,18 @@ in
 
   environment.systemPackages = with pkgs; [
     nodejs_24 # explicit major: hooks.nix pins the same one
+    # NOTE: mason's own runtimes, not languages written on this machine. node
+    # installs most of the LSP servers, python3 backs debugpy and mypy (and
+    # basedpyright is useless without an interpreter), go builds
+    # jsonnet-language-server. Drop any of them and mason fails that package on
+    # every install — the failure is a warning, not an error, so the server is
+    # simply missing until someone opens the log.
+    # NOTE: go WITHOUT its toolchain on purpose. gopls, gotools, gofumpt, delve
+    # and golangci-lint only matter for writing Go here, which now happens in
+    # Linux. Removing go itself instead would mean dropping
+    # jsonnet-language-server from the mason list in tools/nvim.
     python3
     go
-    # Go toolchain next to the compiler. The nvim config is shared with Linux,
-    # so without these a .go file opens here with no LSP, no formatting and no
-    # debugger. Duplicating home/default.nix is unavoidable: the mac imports
-    # only home/darwin.nix (files + hooks), never the shared default.nix.
-    gopls
-    gotools
-    gofumpt
-    delve
-    golangci-lint
     # Go hooks from this flake; tools/claude/cli/wrapper.sh finds claude-cli on
     # PATH through this (see home/default.nix for the Linux side).
     claudeTools.guard
@@ -191,7 +213,6 @@ in
     fzf # interactive pickers: dpkey, kubectx/kubens
     ipmitool # BMC access: power, SOL console, sensors
     arp-scan # answers even from hosts with every port closed; needs root and own L2 segment
-    nmap # the other half: arp-scan says who is there, nmap what is open
     unzip
     curl
     jq
@@ -217,10 +238,6 @@ in
     delta # diff renderer for lazygit
     lazydocker
     lima # declarative Linux VMs (PXE bench)
-    iperf3 # throughput measurements (PXE bench, future 10G)
-    mtr # first tool for "the internet works every other time"
-    ansible
-    ansible-lint # NOTE: the PostToolUse hook calls it through the shell PATH, where mason's copy is invisible
     gdu
     gitleaks
     restic # automation/backup/backup.sh
@@ -230,9 +247,13 @@ in
     pinentry_mac
     sops
     age
-    zizmor # static analysis of GitHub Actions workflows (pre-commit + CI)
+    # NOTE: these three are called by tools/claude/hooks/posttooluse-lint.sh
+    # through the shell PATH, where mason's copies are invisible. The helper
+    # returns 0 when a binary is missing, so removing them does not break
+    # anything visibly — it silently stops linting every file edited here.
     yamllint
     shellcheck
+    ansible-lint
     nil # LSP for this very file
     nixfmt # official formatter (RFC 166), called by rules and CI
     statix # anti-patterns

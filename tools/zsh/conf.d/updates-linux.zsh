@@ -9,6 +9,15 @@ _upd_gc_linux() { home-manager expire-generations "-7 days" && nix-collect-garba
 # so this pulls and switches rather than running flake update inside the container.
 updl() {
   emulate -L zsh
+  # NOTE: on NixOS home-manager is a MODULE, and a standalone `home-manager switch`
+  # would build a second, parallel generation in ~/.nix-profile. That is not merely
+  # redundant: profilePath in platform/nix/home/hooks.nix lists ~/.nix-profile/bin
+  # FIRST, so the stale standalone profile would start shadowing the one the module
+  # manages — in every activation hook. Refuse instead.
+  if [[ -e /etc/NIXOS ]]; then
+    print -P "%F{yellow}на NixOS обновляется система целиком:%f sudo nixos-rebuild switch --flake ~/dotfiles/platform/nix#\$(hostname)"
+    return 1
+  fi
   local -i _upd_i=0
   local profile="$(cat ~/.dotfiles-profile 2> /dev/null || echo devops)"
   local target="$HOME/dotfiles/platform/nix#$(whoami)-${profile}-$(uname -m)-linux"

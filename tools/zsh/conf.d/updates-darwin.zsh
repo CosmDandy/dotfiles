@@ -129,6 +129,11 @@ updm() {
   _upd_step "каски (brew upgrade)"  _upd_brew_casks || return
   _upd_step "App Store (mas)"       _upd_mas || return
   # the custom installer places MCP tools once and never updates them
+  # NOTE: the only place claude updates on the mac — background updates are off in
+  # managed settings (darwin-configuration.nix), so the new-version TCC dialogs
+  # arrive here, when they are expected. DISABLE_AUTOUPDATER leaves `claude update`
+  # working; DISABLE_UPDATES would not.
+  _upd_step "Claude Code"           claude update || return
   _upd_step "MCP-инструменты"       _upd_mcp_tools || return
   _upd_step "zinit"                 _upd_zinit || return
   _upd_step "GC поколений"          _upd_gc_darwin || return

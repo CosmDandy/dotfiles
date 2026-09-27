@@ -20,6 +20,22 @@ let
     "installPackages"
   ];
 
+  # Where home.packages ACTUALLY end up, which is not one place:
+  #   ~/.nix-profile/bin           — standalone home-manager (DevPod, containers)
+  #   /etc/profiles/per-user/<u>   — home-manager as a NixOS/nix-darwin module with
+  #                                  useUserPackages; ~/.nix-profile stays EMPTY there
+  #   /run/current-system/sw/bin   — the system profile: `go` on the mac, and
+  #                                  perl/shasum on NixOS, which has no /usr/bin at all
+  # NOTE: this list is what the NixOS stand turned up. With only ~/.nix-profile/bin,
+  # mason found neither python3 nor go and silently skipped seven packages
+  # (basedpyright, debugpy, mypy, yamllint, ansible-lint, jsonnet-language-server).
+  # A path that does not exist on a given host costs nothing.
+  profilePath = lib.concatStringsSep ":" [
+    "${config.home.homeDirectory}/.nix-profile/bin"
+    "/etc/profiles/per-user/${config.home.username}/bin"
+    "/run/current-system/sw/bin"
+  ];
+
   # NOTE: a file, not a shell variable — DAG entries are not guaranteed to share
   # one shell, and the file survives the activation for reading afterwards.
   w = import ./warn.nix { inherit config; };
@@ -42,10 +58,13 @@ in
     # NOTE: `:/usr/bin:/bin` at the tail because the activation PATH carries no
     # system paths at all, and the installer calls shasum (a perl script in
     # /usr/bin).
+    # NOTE: profilePath is here for shasum too — NixOS has no /usr/bin, so perl and
+    # shasum are reachable only through /run/current-system/sw/bin, and without it the
+    # installer died and the step reported a bogus "offline?".
     installClaudeCode = after ''
       if [ ! -x "$HOME/.local/bin/claude" ] && ! command -v claude >/dev/null 2>&1; then
         run ${pkgs.curl}/bin/curl -fsSL https://claude.ai/install.sh -o /tmp/claude-install.sh \
-          && PATH="${
+          && PATH="${profilePath}:${
             lib.makeBinPath [
               pkgs.curl
               pkgs.coreutils
@@ -71,6 +90,10 @@ in
               pkgs.git
               pkgs.curl
               pkgs.coreutils
+              # NOTE: the activation PATH has neither /usr/bin nor
+              # ~/.nix-profile/bin, so without this the installer printed
+              # "zsh: command not found" twice and skipped the annexes.
+              pkgs.zsh
             ]
           }:$PATH" NO_INPUT=1 ZSHRC=/dev/null \
              run ${pkgs.bash}/bin/bash /tmp/zinit-install.sh \
@@ -98,6 +121,17 @@ in
                  echo "warn: $m"; echo "$m" >> "${warnFile}"; }
         fi
       done
+      # GitLab CI gains keywords every release, so unlike the CRDs it is refreshed once
+      # it is a month old; the old copy stays if the download fails.
+      ci="$SCHEMA_DIR/gitlab-ci.json"
+      if [ -z "$(find "$ci" -mtime -30 2>/dev/null)" ]; then
+        run mkdir -p "$SCHEMA_DIR"
+        run ${pkgs.curl}/bin/curl -fsSL \
+          "https://gitlab.com/gitlab-org/gitlab-foss/-/raw/master/app/assets/javascripts/editor/schema/ci.json" \
+          -o "$ci.tmp" && run mv "$ci.tmp" "$ci" \
+          || { rm -f "$ci.tmp"; m="schema gitlab-ci.json not refreshed (yamlls uses the old copy or the URL)"; \
+               echo "warn: $m"; echo "$m" >> "${warnFile}"; }
+      fi
     '';
 
     # NOTE: the init.lua guard is what skips this during an image build before
@@ -112,15 +146,19 @@ in
     # ~/.nix-profile.
     syncNvimPlugins = after ''
       if [ -e "$HOME/.config/nvim/init.lua" ]; then (
-        PATH="$HOME/.nix-profile/bin:${
-          lib.makeBinPath [
-            pkgs.git
-            pkgs.neovim
-            pkgs.curl
-            pkgs.gnutar
-            pkgs.gzip
-            pkgs.tree-sitter
-          ]
+        PATH="${profilePath}:${
+          lib.makeBinPath (
+            [
+              pkgs.git
+              pkgs.neovim
+              pkgs.curl
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.tree-sitter
+            ]
+            # `cc` for the parser build; see the gcc note in default.nix
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.gcc ]
+          )
         }:$PATH:/usr/bin:/bin"
         export PATH
 
@@ -140,10 +178,9 @@ in
     '';
 
     # Mason packages (LSP servers, linters, formatters from ensure_installed).
-    # NOTE: a separate step after Lazy sync, with an explicit `Lazy! load` and
-    # the Sync variant — mason-tool-installer is a dependency of nvim-lspconfig,
-    # which loads on BufReadPre, an event that never fires headless; and the
-    # async command would let nvim exit before the install finishes.
+    # NOTE: a separate step after Lazy sync, with the Sync variant — the async
+    # command would let nvim exit before the install finishes. The command
+    # itself lazy-loads mason-tool-installer (its own spec in lsp.lua).
     # NOTE: no guard on the mason directory either. The command is idempotent
     # and costs 0s when complete, while "skip if something is installed" would
     # break the multi-stage image: the devops stage inherits a non-empty mason/
@@ -167,18 +204,28 @@ in
         # declared package never wins — it only created the illusion that the
         # version was pinned while venvs were actually built against the system
         # python.
-        PATH="$HOME/.nix-profile/bin:/run/current-system/sw/bin:${
-          lib.makeBinPath [
-            pkgs.git
-            pkgs.neovim
-            pkgs.curl
-            pkgs.gnutar
-            pkgs.gzip
-            pkgs.unzip
-            pkgs.nodejs_24
-            pkgs.luarocks
-            pkgs.uv
-          ]
+        # NOTE: wget explicitly. Some mason packages fetch their release archive with
+        # wget and do NOT fall back to curl; on the NixOS stand that failed with a
+        # bare ENOENT, because there is no /usr/bin to borrow one from. It did not
+        # make terraform-ls install — that one 404s upstream — but it is what turned
+        # an invisible PATH problem into the real error.
+        PATH="${profilePath}:${
+          lib.makeBinPath (
+            [
+              pkgs.git
+              pkgs.neovim
+              pkgs.curl
+              pkgs.wget
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.unzip
+              pkgs.nodejs_24
+              pkgs.luarocks
+              pkgs.uv
+            ]
+            # luacheck builds luafilesystem, a C module
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.gcc ]
+          )
         }:$PATH:/usr/bin:/bin"
         export PATH
 
@@ -225,7 +272,7 @@ in
           fi
         fi
 
-        run nvim --headless "+Lazy! load nvim-lspconfig" "+MasonToolsInstallSync" +qa \
+        run nvim --headless "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
         if [ -f "$MASON_LOG" ]; then
           # NOTE: the log check is mandatory — MasonToolsInstallSync returns 0

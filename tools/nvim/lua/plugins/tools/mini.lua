@@ -2,92 +2,101 @@
 return {
   'echasnovski/mini.nvim',
   config = function()
-    -- Around/inside textobjects. The mini.ai defaults already cover a (argument),
-    -- t (tag), q (quotes) and b (brackets).
-    local ai = require 'mini.ai'
-    ai.setup {
-      n_lines = 500,
-      custom_textobjects = {
-        -- f falls back to function_call in files without a treesitter parser
-        f = {
-          ai.gen_spec.treesitter { a = '@function.outer', i = '@function.inner' },
-          ai.gen_spec.function_call(),
-        },
-        c = ai.gen_spec.treesitter { a = '@class.outer', i = '@class.inner' },
-        o = ai.gen_spec.treesitter {
-          a = { '@conditional.outer', '@loop.outer', '@block.outer' },
-          i = { '@conditional.inner', '@loop.inner', '@block.inner' },
-        },
-        -- the whole buffer: vig / dig / yig
-        g = function()
-          local last = vim.fn.line '$'
-          return {
-            from = { line = 1, col = 1 },
-            to = { line = last, col = math.max(vim.fn.getline(last):len(), 1) },
-          }
-        end,
-        -- a number: cin / din / vin
-        n = { '%f[%d]%d+' },
-      },
-    }
+    -- NOTE: only the statusline is needed for the first screen. The editing modules
+    -- are set up on VeryLazy, right after it — together they were most of mini's
+    -- ~10ms on every start (measured), and nothing can use them before a keypress.
+    vim.api.nvim_create_autocmd('User', {
+      pattern = 'VeryLazy',
+      once = true,
+      callback = function()
+        -- Around/inside textobjects. The mini.ai defaults already cover a (argument),
+        -- t (tag), q (quotes) and b (brackets).
+        local ai = require 'mini.ai'
+        ai.setup {
+          n_lines = 500,
+          custom_textobjects = {
+            -- f falls back to function_call in files without a treesitter parser
+            f = {
+              ai.gen_spec.treesitter { a = '@function.outer', i = '@function.inner' },
+              ai.gen_spec.function_call(),
+            },
+            c = ai.gen_spec.treesitter { a = '@class.outer', i = '@class.inner' },
+            o = ai.gen_spec.treesitter {
+              a = { '@conditional.outer', '@loop.outer', '@block.outer' },
+              i = { '@conditional.inner', '@loop.inner', '@block.inner' },
+            },
+            -- the whole buffer: vig / dig / yig
+            g = function()
+              local last = vim.fn.line '$'
+              return {
+                from = { line = 1, col = 1 },
+                to = { line = last, col = math.max(vim.fn.getline(last):len(), 1) },
+              }
+            end,
+            -- a number: cin / din / vin
+            n = { '%f[%d]%d+' },
+          },
+        }
 
-    -- NOTE: the gz prefix instead of the default s — s belongs to flash, and typing
-    -- s followed by a/d/r fired surround instead of a jump.
-    require('mini.surround').setup {
-      mappings = {
-        add = 'gza',
-        delete = 'gzd',
-        find = 'gzf',
-        find_left = 'gzF',
-        highlight = 'gzh',
-        replace = 'gzr',
-        update_n_lines = 'gzn',
-      },
-      n_lines = 100, -- multi-line YAML blocks
-      custom_surroundings = {
-        j = { output = { left = '{{ ', right = ' }}' } }, -- Helm/Jinja output
-        J = { output = { left = '{% ', right = ' %}' } }, -- Jinja block
-        ['$'] = { output = { left = '${', right = '}' } }, -- Terraform interpolation
-      },
-    }
+        -- NOTE: the gz prefix instead of the default s — s belongs to flash, and typing
+        -- s followed by a/d/r fired surround instead of a jump.
+        require('mini.surround').setup {
+          mappings = {
+            add = 'gza',
+            delete = 'gzd',
+            find = 'gzf',
+            find_left = 'gzF',
+            highlight = 'gzh',
+            replace = 'gzr',
+            update_n_lines = 'gzn',
+          },
+          n_lines = 100, -- multi-line YAML blocks
+          custom_surroundings = {
+            j = { output = { left = '{{ ', right = ' }}' } }, -- Helm/Jinja output
+            J = { output = { left = '{% ', right = ' %}' } }, -- Jinja block
+            ['$'] = { output = { left = '${', right = '}' } }, -- Terraform interpolation
+          },
+        }
 
-    -- Replaces nvim-autopairs; brackets after a completion are added by blink.cmp itself.
-    require('mini.pairs').setup()
-    -- pairs make no sense in the snacks picker input
-    vim.api.nvim_create_autocmd('FileType', {
-      pattern = 'snacks_picker_input',
-      group = vim.api.nvim_create_augroup('minipairs-disable', { clear = true }),
-      callback = function(args)
-        vim.b[args.buf].minipairs_disable = true
+        -- Replaces nvim-autopairs; brackets after a completion are added by blink.cmp itself.
+        require('mini.pairs').setup()
+        -- pairs make no sense in the snacks picker input
+        vim.api.nvim_create_autocmd('FileType', {
+          pattern = 'snacks_picker_input',
+          group = vim.api.nvim_create_augroup('minipairs-disable', { clear = true }),
+          callback = function(args)
+            vim.b[args.buf].minipairs_disable = true
+          end,
+        })
+
+        -- NOTE: gR/gX because gr is taken by LSP references.
+        require('mini.operators').setup {
+          replace = { prefix = 'gR' },
+          exchange = { prefix = 'gX' },
+        }
+
+        require('mini.bracketed').setup()
+
+        -- ga{motion} + a separator aligns into columns, gA does the same with a preview —
+        -- trailing comments and value tables line up.
+        -- NOTE: this shadows the built-in ga (character code); :ascii and g8 still do that.
+        require('mini.align').setup()
+
+        -- NOTE: cursor animation only. scroll is handled by snacks.scroll, and
+        -- open/close/resize fight with snacks' floating windows (picker, input, notifier)
+        -- and flicker every time one opens.
+        local animate = require 'mini.animate'
+        animate.setup {
+          cursor = {
+            timing = animate.gen_timing.linear { duration = 80, unit = 'total' },
+          },
+          scroll = { enable = false },
+          resize = { enable = false },
+          open = { enable = false },
+          close = { enable = false },
+        }
       end,
     })
-
-    -- NOTE: gR/gX because gr is taken by LSP references.
-    require('mini.operators').setup {
-      replace = { prefix = 'gR' },
-      exchange = { prefix = 'gX' },
-    }
-
-    require('mini.bracketed').setup()
-
-    -- ga{motion} + a separator aligns into columns, gA does the same with a preview —
-    -- trailing comments and value tables line up.
-    -- NOTE: this shadows the built-in ga (character code); :ascii and g8 still do that.
-    require('mini.align').setup()
-
-    -- NOTE: cursor animation only. scroll is handled by snacks.scroll, and
-    -- open/close/resize fight with snacks' floating windows (picker, input, notifier)
-    -- and flicker every time one opens.
-    local animate = require 'mini.animate'
-    animate.setup {
-      cursor = {
-        timing = animate.gen_timing.linear { duration = 80, unit = 'total' },
-      },
-      scroll = { enable = false },
-      resize = { enable = false },
-      open = { enable = false },
-      close = { enable = false },
-    }
 
     local statusline = require 'mini.statusline'
 
