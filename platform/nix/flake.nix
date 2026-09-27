@@ -62,11 +62,19 @@
       # having to run `go build` by hand.
       mkGuard =
         system:
-        (import nixpkgs { inherit system; }).buildGoModule {
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        pkgs.buildGoModule {
           pname = "claude-guard";
           version = "0.1.0";
           src = ../../tools/claude/guard;
           vendorHash = "sha256-sULOJKCnZ9nS/EVH8Q4MhH7U9zdrcruxCKI6HqP/1a4=";
+          # go test's checkPhase runs the package's own tests, and a few of them
+          # exercise pushNeedsConfirm's branch resolution against a real temp git
+          # repo (currentBranch shells out to `git symbolic-ref`) — not available
+          # in the build sandbox by default.
+          nativeCheckInputs = [ pkgs.git ];
           meta.mainProgram = "guard";
         };
       # NOTE: cpuCores/memoryGiB are DECLARED, not detected — eval must be reproducible
