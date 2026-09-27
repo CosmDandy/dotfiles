@@ -13,6 +13,8 @@ stdout. Rows are JSON so a cron on the devpod can append them to a weekly file.
 Metric -> the CLAUDE.md line it checks:
   report_lines             any report — 20 lines; past that it is a replay
   report_blocks            ✔ ✘ ! ? » labels present in the final report
+  interstitial_texts       text followed by more tool calls before the next
+                           human turn — status chatter, not the report
   chat_ru_share            Russian — everything addressed to me
   commits, commits_en      English — commits
   code_fences              code in chat only when the shape is new to this repo
@@ -101,6 +103,7 @@ def analyze(path):
         "commits": 0,
         "commits_en": 0,
         "code_fences": 0,
+        "interstitial_texts": 0,
         "ask_user_question": 0,
         "questions_before_work": 0,
         "heredoc_writes": 0,
@@ -123,6 +126,7 @@ def analyze(path):
     per_msg = {}
     bash_cmds = Counter()
     last_text = ""
+    pending_text = False  # a text block not yet followed by a human turn
     seen_tool = False
     turn_ms = 0
 
@@ -155,6 +159,7 @@ def analyze(path):
                         ("<", "This session is being continued")
                     ):
                         m["human_turns"] += 1
+                        pending_text = False
                         if not m["started"]:
                             m["started"] = rec.get("timestamp", "")
                 denial = rec.get("toolDenialKind")
@@ -188,6 +193,7 @@ def analyze(path):
                     if not text.strip():
                         continue
                     last_text = text
+                    pending_text = True
                     if len(text) >= MIN_TEXT:
                         texts_ru.append(is_russian(text))
                     m["code_fences"] += len(FENCE.findall(text)) // 2
@@ -195,6 +201,9 @@ def analyze(path):
                         m["questions_before_work"] += 1
                 elif t == "tool_use":
                     calls += 1
+                    if pending_text:
+                        m["interstitial_texts"] += 1
+                        pending_text = False
                     seen_tool = True
                     name = b.get("name", "")
                     inp = b.get("input") or {}
@@ -248,7 +257,8 @@ def analyze(path):
 
 COLUMNS = (
     "sid model human_turns tool_calls report_lines report_blocks chat_ru_share "
-    "commits_en commits code_fences ask_user_question questions_before_work "
+    "commits_en commits code_fences interstitial_texts ask_user_question "
+    "questions_before_work "
     "heredoc_writes read_full hook_denials errors repeat_commands "
     "single_call_share ctx_peak_k out_k turn_min compactions final_signal"
 ).split()

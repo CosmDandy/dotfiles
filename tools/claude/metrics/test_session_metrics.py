@@ -139,6 +139,11 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(m["chat_ru_share"], 0.67)  # RU, EN, final report
         self.assertEqual(m["code_fences"], 1)
 
+    def test_interstitial_narration(self):
+        # RU text precedes a Read in the same turn; EN text precedes the final
+        # report with no tool call between — only the first is chatter
+        self.assertEqual(self.m["interstitial_texts"], 1)
+
     def test_report(self):
         m = self.m
         self.assertEqual(m["report_lines"], 3)
