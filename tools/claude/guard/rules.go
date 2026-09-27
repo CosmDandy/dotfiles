@@ -60,6 +60,7 @@ var (
 	mAnsible     = mentionsPattern(`ansible-playbook`)
 	mCurl        = mentionsPattern(`curl`)
 	mDocker      = mentionsPattern(`docker`)
+	mPush        = mentionsPattern(`push`)
 )
 
 func (c *Ctx) mentions(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
@@ -187,22 +188,6 @@ func (c *Ctx) cdIntoScratch() bool {
 var reTrailQuoteSpace = regexp.MustCompile(`["']?[[:space:]]*$`)
 
 // ---- cd/pushd anywhere (push-directory ambiguity) --------------------------
-
-var reCdOrPushdHead = segHeadRe(`(cd|pushd)([[:space:]]|$)`)
-
-// anyCdOrPushd reports whether any segment is a cd/pushd invocation,
-// anywhere in the command — used only by pushNeedsConfirm: a `-C`-less push
-// after a cd/pushd elsewhere in the same command runs in whatever directory
-// that left the shell in, not the hook's cwd, and resolving the literal
-// target is not worth the risk when asking is simpler and safe.
-func (c *Ctx) anyCdOrPushd() bool {
-	for _, seg := range c.segs {
-		if reCdOrPushdHead.MatchString(seg.Text) {
-			return true
-		}
-	}
-	return false
-}
 
 // ---- shell_writes_a_file ----------------------------------------------------
 
@@ -450,17 +435,30 @@ func (c *Ctx) curlWritesAFile() bool {
 // ---- git push --------------------------------------------------------------
 //
 // Pushing a feature branch is the normal end of an autonomous run, and a blanket
-// ask there waited 14–118 minutes for nobody in the audited sessions. What still
-// asks: a protected branch, --force, a remote delete, --all/--mirror, a glob
-// refspec, and a target it cannot tell.
+// ask there waited 14–118 minutes for nobody in the audited sessions. A blacklist
+// of dangerous shapes kept finding bypasses (quote-splicing, wrappers, `-c`/`-C`
+// tricks, GIT_DIR relocation, alias indirection...), so this is a WHITELIST
+// instead: silent requires the exact bare shape (Segment.Push.Exact, computed
+// structurally in parse.go), nothing anywhere else in the command that could
+// hide or relocate a push (Segment.PushDisqualifier / GitDirAmbiguous / a second
+// Segment.Push.Found), and a resolved target branch that is not protected.
+// Everything else asks — including a command that merely LOOKS like it might
+// contain a push (see mPush in evaluate's gate) but turns out, once resolved
+// structurally, to hold none at all: that case returns ("", false) just like a
+// clean silent push, since there was never a push to confirm in the first place.
 
+var reProtectedBranch = regexp.MustCompile(`^(refs/heads/)?(main|master|prod|production|release(/.*)?)$`)
+
+// reAssertForce/reAssertDelete/reAssertAllMirror back rule 5's own wording —
+// "already excluded by rule 1's exact shape, but assert it": tryExactPushShape
+// (parse.go) already refuses any flag beyond -u/--set-upstream and any refspec
+// starting with `+` or with an empty src (`:branch`), so these can only ever
+// fire on a parse.go bug, never on real input — a defensive second check, not
+// the primary gate.
 var (
-	reProtectedBranch = regexp.MustCompile(`^(refs/heads/)?(main|master|prod|production|release(/.*)?)$`)
-	// (^|space)-<flags containing f><space|$) catches bundled forms (-fu, -uf),
-	// not just a bare -f — the same shape rm's -[a-zA-Z]*[rR][a-zA-Z]* uses for -r.
-	rePushForce     = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+`)
-	rePushDelete    = regexp.MustCompile(`(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+`)
-	rePushAllMirror = regexp.MustCompile(`(^|[[:space:]])--(all|mirror)([[:space:]]|$)`)
+	reAssertForce   = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+`)
+	reAssertDelete  = regexp.MustCompile(`(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+`)
+	reAssertAllMirr = regexp.MustCompile(`(^|[[:space:]])--(all|mirror)([[:space:]]|$)`)
 )
 
 // currentBranch resolves the checked-out branch of dir, "" when it cannot.
@@ -472,106 +470,80 @@ func currentBranch(dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// pushNeedsConfirm mirrors the bash guard's push_needs_confirm: the reason to
-// ask, or "" and false for a silent feature-branch push.
+const cannotTellPushTarget = "git push — could not tell the target branch, confirm?"
+
+// pushNeedsConfirm implements the push whitelist end to end: the reason to
+// ask, or "" and false for a silent feature-branch push (which also covers
+// "mentions git and push but there is no push here at all", see above).
 func (c *Ctx) pushNeedsConfirm() (string, bool) {
+	// Rule 3: cd/pushd/popd/export/declare/typeset/local/env/alias/eval/exec,
+	// a GIT_DIR/GIT_WORK_TREE assignment, or a --git-dir/--work-tree flag,
+	// ANYWHERE in the command — checked before anything else, so an alias
+	// indirection or a relocated repo asks even when no segment on its own
+	// resolves to a push candidate (see Segment.Push's own commentary).
 	for _, seg := range c.segs {
-		// loc is the structurally-found end of the push SUBCOMMAND itself —
-		// reGitPush already resolves the git global-flag prefix (same as
-		// gitDashCFlag) before requiring "push\b". Anchoring `rest` here,
-		// rather than at the first bare " push " in the text, matters for a
-		// value like `git -C push push origin`: the first " push " belongs
-		// to -C's argument, not the subcommand.
-		loc := reGitPush.FindStringIndex(seg.Text)
-		if loc == nil {
+		if seg.PushDisqualifier || seg.GitDirAmbiguous {
+			return cannotTellPushTarget, true
+		}
+	}
+
+	// Rule 3's "a second git push", plus finding the one candidate (if any)
+	// rule 1 might allow silent.
+	found := 0
+	var shape PushShape
+	var shapeSeg Segment
+	for _, seg := range c.segs {
+		if !seg.Push.Found {
 			continue
 		}
-		// --git-dir/--work-tree or a GIT_DIR=/GIT_WORK_TREE= assignment
-		// relocates the repo this push targets in a way -C's own dir
-		// resolution below cannot see; ask rather than silently fall back
-		// to cwd, which would then be the wrong repo.
-		if seg.GitDirAmbiguous {
-			return "git push — could not tell the target branch, confirm?", true
+		found++
+		if found == 1 {
+			shape, shapeSeg = seg.Push, seg
 		}
-		if rePushForce.MatchString(seg.Text) {
-			return "git push --force rewrites history — confirm?", true
+	}
+	switch {
+	case found == 0:
+		return "", false // "git" and "push" both appear, but never as one push
+	case found > 1:
+		return cannotTellPushTarget, true
+	case !shape.Exact:
+		return cannotTellPushTarget, true
+	}
+
+	// Rule 5, asserted defensively (see the vars' own comment) — Exact
+	// should already make every one of these unreachable.
+	if reAssertForce.MatchString(shapeSeg.Text) {
+		return "git push --force rewrites history — confirm?", true
+	}
+	if reAssertDelete.MatchString(shapeSeg.Text) {
+		return "git push deleting a remote branch — confirm?", true
+	}
+	if reAssertAllMirr.MatchString(shapeSeg.Text) {
+		return "git push --all/--mirror pushes every branch — confirm?", true
+	}
+
+	// Rule 4: resolve the target branch positively.
+	dir := c.cwd
+	if shape.HasDir {
+		dir = shape.Dir
+	}
+	dst := ""
+	if shape.HasRefspec {
+		dst = shape.Refspec
+		if i := strings.IndexByte(dst, ':'); i >= 0 {
+			dst = dst[i+1:]
 		}
-		if rePushDelete.MatchString(seg.Text) {
-			return "git push deleting a remote branch — confirm?", true
-		}
-		if rePushAllMirror.MatchString(seg.Text) {
-			return "git push --all/--mirror pushes every branch — confirm?", true
-		}
-		// -C is resolved from the parsed argument words (seg.GitCDir), not by
-		// regex over seg.Text: the text can contain an unrelated "-C" living
-		// inside a heredoc body nested in some other argument, and a text
-		// search cannot tell that occurrence from a real global flag.
-		dir := c.cwd
-		if seg.HasGitCDir {
-			dir = seg.GitCDir
-		} else if c.anyCdOrPushd() {
-			// A cd/pushd elsewhere in the command left the shell somewhere
-			// other than cwd by the time this push runs; resolving the
-			// literal target is not worth the risk.
-			return "git push — could not tell the target branch, confirm?", true
-		}
-		// A line continuation (`git push \` + newline + `  origin`) leaves a
-		// literal "\" token right after "push". Left in, strings.Fields
-		// below takes it for the remote and the real remote for a refspec,
-		// which sets hasRef and skips the current-branch check entirely —
-		// bash never sees this at all, since it reads $seg line by line and
-		// the continued line never reaches this far. Stripping the
-		// backslash-newline here keeps the real remote as remote and the
-		// real refspec (if any) as the ref, so the same checks apply either
-		// way.
-		rest := strings.ReplaceAll(seg.Text[loc[1]:], "\\\n", " ")
-		remote, hasRef := "", false
-		for _, tok := range strings.Fields(rest) {
-			tok = strings.Trim(tok, `"'`)
-			if strings.HasPrefix(tok, "-") || strings.ContainsAny(tok, "<>") {
-				continue
-			}
-			if remote == "" {
-				remote = tok
-				if strings.ContainsAny(remote, "$`") {
-					return "git push — could not tell the target branch, confirm?", true
-				}
-				continue
-			}
-			hasRef = true
-			if strings.Contains(tok, "*") {
-				return "git push with a glob refspec — confirm?", true
-			}
-			// A refspec built from a variable/substitution ($b, ${T:-main})
-			// is not a literal branch name the protected-branch regex can
-			// ever match — ask rather than silently trust text that is not
-			// what it looks like.
-			if strings.ContainsAny(tok, "$`") {
-				return "git push — could not tell the target branch, confirm?", true
-			}
-			dst := tok
-			if i := strings.Index(tok, ":"); i >= 0 {
-				dst = tok[i+1:]
-			}
-			if dst == "HEAD" || dst == "@" {
-				dst = currentBranch(dir)
-			}
-			if dst == "" {
-				return "git push — could not tell the target branch, confirm?", true
-			}
-			if reProtectedBranch.MatchString(dst) {
-				return "git push to a protected branch (" + dst + ") — confirm?", true
-			}
-		}
-		if !hasRef {
-			dst := currentBranch(dir)
-			if dst == "" {
-				return "git push — could not tell the current branch, confirm?", true
-			}
-			if reProtectedBranch.MatchString(dst) {
-				return "git push to a protected branch (" + dst + ") — confirm?", true
-			}
-		}
+		dst = strings.TrimPrefix(dst, "refs/heads/")
+		dst = strings.TrimPrefix(dst, "heads/")
+	}
+	if dst == "" || dst == "HEAD" || dst == "@" {
+		dst = currentBranch(dir)
+	}
+	if dst == "" {
+		return cannotTellPushTarget, true
+	}
+	if reProtectedBranch.MatchString(dst) {
+		return "git push to a protected branch (" + dst + ") — confirm?", true
 	}
 	return "", false
 }
@@ -673,14 +645,6 @@ var reGitBranchForceDelete = segHeadRe(gitpfx + `branch[[:space:]]+(-[a-zA-Z]*D|
 var reGitDiscardAll = segHeadRe(gitpfx + `(checkout([[:space:]]+--)?|restore)[[:space:]]+\.([[:space:]]|$)`)
 var reGitCommitHead = segHeadRe(gitpfx + `commit\b`)
 
-// envpfx tolerates a leading env-var assignment (`GIT_DIR=x git push`) —
-// without it reGitPush, anchored at the segment start, never matches a
-// literal "git" that has an assignment sitting in front of it, and the
-// whole push gate (and GitDirAmbiguous check inside pushNeedsConfirm) never
-// fires at all. Zero-or-more, so a plain `git push` still matches unchanged.
-const envpfx = `([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*`
-
-var reGitPush = segHeadRe(envpfx + gitpfx + `push\b`)
 var reGitAddHead = segHeadRe(gitpfx + `add\b`)
 var reGitAddAllContent = regexp.MustCompile(`(^|[[:space:]])(-A|--all|\.)([[:space:]]|$)`)
 var reGitConfigHead = segHeadRe(gitpfx + `config\b`)
@@ -843,7 +807,14 @@ func evaluate(c *Ctx) Decision {
 	if c.mentions(mChmod) && c.segWith(reChmodHead, reChmod777) {
 		return ask("chmod 777 — confirm?")
 	}
-	if c.mentions(mGit) && c.segHead(reGitPush) {
+	// The gate is deliberately broad — raw-text "git" and "push" anywhere,
+	// not "a segment structurally headed by git push" — so that a wrapper,
+	// a quote, a path, or an alias indirection still reaches the whitelist
+	// in pushNeedsConfirm rather than silently skipping it because no
+	// segment happens to start with the bare word "git". pushNeedsConfirm
+	// itself resolves the false-positive case (both words present, but
+	// never as one push) back to silence — see its own comment.
+	if c.mentions(mGit) && c.mentions(mPush) {
 		if reason, ok := c.pushNeedsConfirm(); ok {
 			return ask(reason)
 		}

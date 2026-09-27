@@ -37,6 +37,38 @@ type Segment struct {
 	// single argument word to read the directory back out of at the flag,
 	// and the env-var form is not even in Args — see CallExpr.Assigns).
 	GitDirAmbiguous bool
+	// PushDisqualifier is rule 3 of the push whitelist (pushNeedsConfirm in
+	// rules.go): true when this segment BY ITSELF is one of the shapes that
+	// disqualify the whole command from a silent push — cd/pushd/popd/
+	// export/declare/typeset/local/env/alias/eval/exec at command position,
+	// or a GIT_DIR/GIT_WORK_TREE assignment on ANY command, not just git.
+	// Found anywhere in the command (see collectSegments), not just in a
+	// push-shaped segment.
+	PushDisqualifier bool
+	// Push is this segment's own structural push finding — see PushShape
+	// and findPushShape. The zero value means no git-like token followed by
+	// a literal "push" token was found in this segment's argument list.
+	Push PushShape
+}
+
+// PushShape is one CallExpr's structural push finding, used only by
+// pushNeedsConfirm's whitelist (rules.go). Found means a git-like token
+// (bare, quoted, path-form, or preceded by a wrapper such as nice/env/
+// command/exec/xargs) is followed later in the same argument list by a
+// literal "push" token — this alone is enough to ask, never enough to stay
+// silent. Exact means the segment is NOTHING but the one shape rule 1 of
+// the whitelist allows silent: a bare `git` word, at most one `-C dir`,
+// `push`, at most one `-u`/`--set-upstream`, at most one remote, at most
+// one refspec, and nothing else — see tryExactPushShape.
+type PushShape struct {
+	Found      bool
+	Exact      bool
+	HasDir     bool
+	Dir        string
+	HasRemote  bool
+	Remote     string
+	HasRefspec bool
+	Refspec    string
 }
 
 // ParseResult is the outcome of splitting a command into segments, mirroring
@@ -170,6 +202,16 @@ var reFallbackGitCDir = regexp.MustCompile(`-C[[:space:]]*([^[:space:]]+)`)
 // caller produces.
 var reFallbackGitAmbiguous = regexp.MustCompile(`(^|[[:space:]])--(git-dir|work-tree)([[:space:]]|=)`)
 
+// reFallbackPushDisqualifier and reFallbackPushFound are the fallback-path
+// (text-only, quote-unaware) equivalents of the disqualifier-head check and
+// the lenient git-then-push scan collectSegments does structurally — there
+// is no AST on the fallback path, so a command that cannot be parsed at all
+// gets the same degraded, always-ask treatment bash falls back to: a git
+// push found here can never be Exact (see fallbackSegments below).
+var reFallbackPushDisqualifier = regexp.MustCompile(`^[[:space:]]*(cd|pushd|popd|export|declare|typeset|local|env|alias|eval|exec)([[:space:]]|$)|(^|[[:space:]])(GIT_DIR|GIT_WORK_TREE)=|(^|[[:space:]])--(git-dir|work-tree)([[:space:]]|=)`)
+var reFallbackMentionsGit = regexp.MustCompile(`(^|[^[:alnum:]_])git([^[:alnum:]_]|$)`)
+var reFallbackMentionsPush = regexp.MustCompile(`(^|[^[:alnum:]_])push([^[:alnum:]_]|$)`)
+
 // fallbackGitHead reports whether t's first word (by basename) is "git" —
 // the fallback-path equivalent of isGitInvocation, which has no AST to walk.
 func fallbackGitHead(t string) bool {
@@ -201,6 +243,10 @@ func fallbackSegments(cmd string, depth int) []Segment {
 				seg.GitCDir, seg.HasGitCDir = m[1], true
 			}
 			seg.GitDirAmbiguous = reFallbackGitAmbiguous.MatchString(t)
+		}
+		seg.PushDisqualifier = reFallbackPushDisqualifier.MatchString(t)
+		if reFallbackMentionsGit.MatchString(t) && reFallbackMentionsPush.MatchString(t) {
+			seg.Push = PushShape{Found: true} // never Exact — no AST to verify the shape
 		}
 		segs[i] = seg
 	}
@@ -282,6 +328,19 @@ func collectSegments(src []byte, root syntax.Node, depth int) []Segment {
 			if skipHdoc[v] {
 				return false
 			}
+		case *syntax.DeclClause:
+			// export/declare/typeset/local are DeclClause nodes, not
+			// CallExpr — the Stmt case below never sees them at all — but
+			// rule 3 of the push whitelist (pushNeedsConfirm in rules.go)
+			// must still be able to find them anywhere in the command
+			// (`export GIT_DIR=...; git push`, `declare -x GIT_DIR=...`).
+			// A pseudo-segment carrying only PushDisqualifier is enough;
+			// nothing else in this guard needs to look at DeclClause text.
+			if v.Variant != nil && pushDisqualifierDeclVariants[v.Variant.Value] {
+				if text := offsetSlice(src, v.Pos(), v.End()); text != "" {
+					out = append(out, Segment{Text: text, PushDisqualifier: true})
+				}
+			}
 		case *syntax.Stmt:
 			if cmd, ok := v.Cmd.(*syntax.CallExpr); ok {
 				end := cmd.End()
@@ -297,6 +356,16 @@ func collectSegments(src []byte, root syntax.Node, depth int) []Segment {
 						seg.GitCDir, seg.HasGitCDir, ambiguousFlag = gitDashCFlag(src, cmd.Args)
 						seg.GitDirAmbiguous = ambiguousFlag || assignsGitDirEnv(cmd.Assigns)
 					}
+					// PushDisqualifier and Push apply to EVERY CallExpr, not
+					// just a git-headed one — see pushDisqualifyingHead and
+					// findPushShape's own wrapper/path/quote detection.
+					if len(cmd.Args) > 0 && pushDisqualifyingHead[basename(stripOuterQuotes(rawWordText(src, cmd.Args[0])))] {
+						seg.PushDisqualifier = true
+					}
+					if assignsGitDirEnv(cmd.Assigns) {
+						seg.PushDisqualifier = true
+					}
+					seg.Push = findPushShape(src, cmd)
 					out = append(out, seg)
 				}
 				expandShellC(src, cmd, &out, depth)
@@ -407,6 +476,215 @@ func assignsGitDirEnv(assigns []*syntax.Assign) bool {
 		}
 	}
 	return false
+}
+
+// pushDisqualifierDeclVariants and pushDisqualifyingHead are rule 3 of the
+// push whitelist (pushNeedsConfirm in rules.go): cd, pushd, popd, export,
+// declare, typeset, local, env, alias, eval, exec ANYWHERE in the command
+// disqualify a silent push, because none of them can be resolved
+// structurally the way -C's own argument word can — the shell could be
+// somewhere else (cd/pushd), running as something else (alias/eval/exec),
+// or the git invocation itself relocated (env, or an env-var assignment).
+// export/declare/typeset/local are DeclClause nodes; the rest are ordinary
+// CallExpr heads.
+var pushDisqualifierDeclVariants = map[string]bool{
+	"export": true, "declare": true, "typeset": true, "local": true,
+}
+var pushDisqualifyingHead = map[string]bool{
+	"cd": true, "pushd": true, "popd": true, "env": true,
+	"alias": true, "eval": true, "exec": true,
+}
+
+// reDirCharset/reTokenCharset are rule 2 of the push whitelist: every dir/
+// remote/refspec token must consist only of these characters — no quote
+// char survives to this point (see cleanToken), and no backslash, `$`,
+// backtick, brace, glob or bare colon does either (a refspec's single colon
+// is validated separately by isValidRefspec, never by this charset alone).
+var (
+	reDirCharset   = regexp.MustCompile(`^[A-Za-z0-9._/@~-]+$`)
+	reTokenCharset = regexp.MustCompile(`^[A-Za-z0-9._/@-]+$`)
+)
+
+// bareLiteral returns a word's literal value only when it is EXACTLY that
+// value as written — a single Lit part whose raw source text matches its
+// own decoded value verbatim. Used for the shape's own keywords (git, -C,
+// push, -u, --set-upstream): rule 1 requires the bare word, so `'git'`,
+// `"push"`, or any other quoting must fail this, not just fail a charset
+// check the way a value token does.
+func bareLiteral(src []byte, w *syntax.Word) (string, bool) {
+	if len(w.Parts) != 1 {
+		return "", false
+	}
+	lit, ok := w.Parts[0].(*syntax.Lit)
+	if !ok {
+		return "", false
+	}
+	if lit.Value != rawWordText(src, w) {
+		return "", false
+	}
+	return lit.Value, true
+}
+
+// cleanToken returns a dir/remote/refspec word's value when the word is
+// unambiguous: a single Lit part written raw (`main`, `feat/x`), OR a
+// single SglQuoted/DblQuoted part wrapping ONLY a plain literal (`'main'`,
+// `"feat/x"`) — no `$”`/`$""`. It refuses anything spliced from more than
+// one part (`ma""in`, `"feat/x:"main`) and anything holding an expansion or
+// substitution (`$b`, `${T:-main}`, “ `echo main` “, `"$(...)"`) — exactly
+// the shapes the confirmed bypasses rely on to make the value a naive text
+// scan sees differ from the value git would actually receive. A single
+// whole-word quote pair is kept (not rejected) because it cannot hide such
+// a mismatch: its content is one plain literal, unambiguous either way.
+func cleanToken(src []byte, w *syntax.Word) (string, bool) {
+	if len(w.Parts) != 1 {
+		return "", false
+	}
+	switch p := w.Parts[0].(type) {
+	case *syntax.Lit:
+		if p.Value != rawWordText(src, w) {
+			return "", false
+		}
+		return p.Value, true
+	case *syntax.SglQuoted:
+		if p.Dollar {
+			return "", false
+		}
+		return p.Value, true
+	case *syntax.DblQuoted:
+		if p.Dollar {
+			return "", false
+		}
+		if len(p.Parts) == 0 {
+			return "", true
+		}
+		if len(p.Parts) == 1 {
+			if lit, ok := p.Parts[0].(*syntax.Lit); ok {
+				return lit.Value, true
+			}
+		}
+		return "", false
+	default:
+		return "", false
+	}
+}
+
+// isValidRefspec is rule 2's charset check plus rule 5's delete assertion:
+// at most one colon, splitting into a non-empty src and dst each matching
+// reTokenCharset — an empty half (`:branch`, a remote-branch delete) is
+// rejected here so it is never Exact, even though rule 1's flag/shape
+// checks would also have caught the -d/--delete spelling of the same
+// intent.
+func isValidRefspec(s string) bool {
+	if strings.Count(s, ":") > 1 {
+		return false
+	}
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		src, dst := s[:i], s[i+1:]
+		return src != "" && dst != "" && reTokenCharset.MatchString(src) && reTokenCharset.MatchString(dst)
+	}
+	return reTokenCharset.MatchString(s)
+}
+
+// tryExactPushShape is rule 1 of the push whitelist: does args parse as
+// EXACTLY `git [-C dir] push [-u|--set-upstream] [remote] [refspec]`, bare
+// word for bare word, with nothing left over? Assigns must be empty too —
+// a VAR= prefix on the git call itself (`GIT_DIR=x git push`) is rule 1's
+// "no VAR= prefix", independent of rule 3's own GIT_DIR/GIT_WORK_TREE
+// disqualifier.
+func tryExactPushShape(src []byte, cmd *syntax.CallExpr) (PushShape, bool) {
+	args := cmd.Args
+	if len(cmd.Assigns) != 0 || len(args) < 2 {
+		return PushShape{}, false
+	}
+	if lit, ok := bareLiteral(src, args[0]); !ok || lit != "git" {
+		return PushShape{}, false
+	}
+	var shape PushShape
+	i := 1
+	if lit, ok := bareLiteral(src, args[i]); ok && lit == "-C" {
+		i++
+		if i >= len(args) {
+			return PushShape{}, false
+		}
+		dir, ok := cleanToken(src, args[i])
+		if !ok || dir == "" || !reDirCharset.MatchString(dir) {
+			return PushShape{}, false
+		}
+		shape.HasDir, shape.Dir = true, dir
+		i++
+	}
+	if i >= len(args) {
+		return PushShape{}, false
+	}
+	if lit, ok := bareLiteral(src, args[i]); !ok || lit != "push" {
+		return PushShape{}, false
+	}
+	i++
+	if i < len(args) {
+		if lit, ok := bareLiteral(src, args[i]); ok && (lit == "-u" || lit == "--set-upstream") {
+			i++
+		}
+	}
+	if i < len(args) {
+		val, ok := cleanToken(src, args[i])
+		if !ok || val == "" || strings.HasPrefix(val, "-") || !reTokenCharset.MatchString(val) {
+			return PushShape{}, false
+		}
+		shape.HasRemote, shape.Remote = true, val
+		i++
+	}
+	if i < len(args) {
+		val, ok := cleanToken(src, args[i])
+		if !ok || val == "" || strings.HasPrefix(val, "-") || !isValidRefspec(val) {
+			return PushShape{}, false
+		}
+		shape.HasRefspec, shape.Refspec = true, val
+		i++
+	}
+	if i != len(args) {
+		return PushShape{}, false
+	}
+	shape.Found, shape.Exact = true, true
+	return shape, true
+}
+
+// gitLikeToken and pushToken are the lenient half of the whitelist, used
+// only to detect that SOME git push is being attempted here, in shapes rule
+// 1 never allows silent: `nice git push`, `env FOO=x git push`,
+// `/usr/bin/git push`, `'git' push`, `git -c x push` — a wrapper, a path, a
+// quote, or a stray flag, respectively. Over-detecting here only ever leads
+// to asking (see findPushShape and pushNeedsConfirm), never to silence.
+func gitLikeToken(src []byte, w *syntax.Word) bool {
+	return basename(stripOuterQuotes(rawWordText(src, w))) == "git"
+}
+func pushToken(src []byte, w *syntax.Word) bool {
+	return stripOuterQuotes(rawWordText(src, w)) == "push"
+}
+
+// findPushShape is one CallExpr's full push finding: the exact shape if it
+// matches, else whether a git-like token is merely followed somewhere later
+// by a literal "push" token (Found only, never Exact).
+func findPushShape(src []byte, cmd *syntax.CallExpr) PushShape {
+	if shape, ok := tryExactPushShape(src, cmd); ok {
+		return shape
+	}
+	args := cmd.Args
+	gitIdx := -1
+	for i, w := range args {
+		if gitLikeToken(src, w) {
+			gitIdx = i
+			break
+		}
+	}
+	if gitIdx == -1 {
+		return PushShape{}
+	}
+	for j := gitIdx + 1; j < len(args); j++ {
+		if pushToken(src, args[j]) {
+			return PushShape{Found: true}
+		}
+	}
+	return PushShape{}
 }
 
 // expandShellC recognises `[/path/to/]shell [flags] -c BODY` (zsh, bash, sh,

@@ -280,7 +280,13 @@ section 'push: feature-ветка молча, защищённая ветка / 
 # An autonomous run ends with a push of its branch; the blanket ask waited hours for
 # nobody. The cases marked «(реальная)» are pushes from the audited sessions.
 chk pass 'git push -u origin feat/session-audit-hints'             'feature-ветка с -u'
-chk pass 'git push -q -u origin worktree-reviews-nightly-sync'     'worktree-ветка (реальная)'
+# CONTRADICTS THE WHITELIST (was `chk pass`, a real session transcript): rule 1's
+# shape is exactly `git [-C dir] push [-u|--set-upstream] [remote] [refspec]` —
+# "nothing else: no other flags" — and -q is another flag, so this now asks. A
+# blacklist tolerated -q by never mentioning it; the whitelist has to name every
+# flag it allows silent, and -q was never named. Flagged per task instructions
+# rather than silently widening the shape back open.
+chk ask  'git push -q -u origin worktree-reviews-nightly-sync'     'worktree-ветка (реальная) — -q не входит в белый список shape (было pass)'
 chk pass 'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка с редиректом (реальная)'
 chk pass 'git push origin "feat/x"'                                'ветка в кавычках'
 chk ask  'git push origin master'                                  'push в master'
@@ -604,6 +610,41 @@ else
 fi
 rm -f "$big"
 
+section 'push: перезапись гейта как WHITELIST — подтверждённые обходы теперь ask'
+# Раунды ревью находили обходы одного и того же вида: список опасных форм рос, а
+# решение оставалось BLACKLIST-ом (перечисли форму — запрети её). Гейт теперь
+# WHITELIST: молча — только когда ВСЕ пять правил выполнены (см. комментарий у
+# push_needs_confirm/pushNeedsConfirm); всё остальное — ask с одной и той же
+# причиной "could not tell the target". Каждая строка ниже — подтверждённый обход
+# из ревью (был silent, стал ask) либо обёртка/квотинг, который push_exact_shape
+# больше не признаёт «голым» git.
+chk ask  'git push origin ma""in'                                   'сплайс кавычек внутри refspec'
+chk ask  'git push origin m\ain'                                    'backslash внутри refspec'
+chk ask  'git push origin "feat/x:"main'                            'частичная кавычка перед двоеточием'
+chk ask  'git push origin {main,feat/x}'                            'brace-expansion как refspec'
+chk ask  'git push origin feat/x:heads/main'                        'heads/main без refs/ — тоже protected'
+chk ask  'git push origin HEAD:heads/main'                          'HEAD:heads/main — protected через heads/-префикс'
+chk ask  'git -c remote.origin.push=HEAD:main push'                 '-c remote.origin.push= перед push'
+chk ask  'git -c push.default=matching push'                        '-c push.default= перед push'
+chk ask  'git -C /feat -C ../mainrepo push'                         'второй -C'
+chk ask  'export GIT_DIR=/main/.git; git push'                      'export GIT_DIR= отдельной командой'
+chk ask  'GIT_DIR=/main/.git; export GIT_DIR; git push'             'присвоение, затем export по имени'
+chk ask  'declare -x GIT_DIR=/main/.git; git push'                  'declare -x GIT_DIR='
+chk ask  'env GIT_DIR=/main/.git git push'                          'env GIT_DIR= перед git push'
+chk ask  'command git push origin main'                             'command перед git'
+chk ask  'env -C /main git push'                                    'env -C перед git push'
+chk ask  'nice git push origin main'                                'nice перед git push'
+chk ask  'nohup git push origin main'                               'nohup перед git push'
+chk ask  'exec git push origin main'                                'exec перед git push'
+chk ask  'xargs git push origin main'                               'xargs перед git push'
+chk ask  'eval git push origin main'                                'eval перед git push'
+chk ask  '/usr/bin/git push origin main'                            'абсолютный путь до git'
+chk ask  "'git' push origin main"                                   "'git' в кавычках — не голое слово"
+chk ask  'alias g=git; g push origin main'                          'alias-индирекция'
+# Не должно ложно сработать: heads/ГДЕ-ТО-ЕЩЁ, не совпадающее с protected-regex,
+# остаётся молчаливым — heads/-префикс сам по себе не бланкет-ask.
+chk pass 'git push origin feat/x:heads/feat-y'                      'heads/feat-y — не protected, молча'
+
 # --------------------------------------------------------------------------
 # ask/deny ordering. Both deny() and ask() exit 0, so an ask placed ABOVE a deny silently
 # cancels it. That happened once: the interpreter block sat above the gitleaks check, and an
@@ -810,6 +851,10 @@ dchk ask "$FEAT2" 'git push origin "$(git rev-parse --abbrev-ref origin/HEAD | c
 dchk pass "$FEAT2" 'git push -u origin feat/x' 'feature-ветка с -u — молча, как и раньше'
 dchk pass "$FEAT2" 'git push'                  'bare push с feature-ветки — молча, как и раньше'
 dchk pass "$MAIN2" "git -C $FEAT2 push"        'git -C на feature-репозиторий — молча, как и раньше'
+dchk pass "$FEAT2" 'git push origin feat/x:feat/x' 'refspec src:dst совпадают, не защищено'
+dchk pass "$FEAT2" 'git push origin HEAD'          'HEAD как refspec на feature-ветке'
+# cwd на main, но refspec явно целится в feat/x — резолвить нужно ЦЕЛЬ, не текущую ветку.
+dchk pass "$MAIN2" 'git push -u origin feat/x'     '-u origin feat/x с cwd на main — refspec решает, не текущая ветка'
 rm -rf "$MAIN2" "$FEAT2"
 
 printf '\nпройдено: %d, провалено: %d, пропущено: %d\n' "$pass" "$fail" "$skip"

@@ -454,26 +454,18 @@ mentions chmod && seg_with 'chmod\b' '\b777\b'    && ask "chmod 777 — confirm?
 # NOTE: `Bash(git push:*)` catches only the bare prefix, so with `git -C` in
 # allow a push from another directory would go out silently.
 # Pushing a feature branch is the normal end of an autonomous run, and a blanket
-# ask there waited 14–118 minutes for nobody in the audited sessions. What still
-# asks: a protected branch, --force, a remote delete, --all/--mirror, a glob
-# refspec, and a target it cannot tell.
+# ask there waited 14–118 minutes for nobody in the audited sessions. A blacklist
+# of dangerous shapes kept finding bypasses (quote-splicing, wrappers, `-c`/a
+# second `-C`, GIT_DIR relocation, alias indirection...), so this is a WHITELIST
+# instead: silent requires the exact bare shape (push_exact_shape, below),
+# nothing anywhere else in the command that could hide or relocate a push
+# (push_globally_disqualified), and exactly one such shape (a second one is
+# unknowable — which push actually runs last is not this guard's business to
+# guess), resolving to a target branch that is not protected.
 PROTECTED_BRANCH_RE='^(refs/heads/)?(main|master|prod|production|release(/.*)?)$'
 current_branch() { git -C "$1" symbolic-ref --short HEAD 2>/dev/null; }
-# `GIT_DIR=x git push` puts the assignment BEFORE the literal "git", which
-# GITPFX (anchored right at the segment start) never matches on its own —
-# without this the whole push gate silently never fired for that shape at
-# all. Zero-or-more, so a plain `git push` still matches with nothing consumed.
-ENVPFX='([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
-# A cd/pushd ANYWHERE in the command changes the directory a `-C`-less push
-# actually runs in; simplest-and-safe is asking rather than trying to resolve
-# the literal target (see push_needs_confirm's own use, below).
-ANY_CD_PUSHD=''
-any_cd_or_pushd() {
-  if [[ -z $ANY_CD_PUSHD ]]; then
-    if segs | grep -Eq '^[[:space:]]*(cd|pushd)([[:space:]]|$)'; then ANY_CD_PUSHD=yes; else ANY_CD_PUSHD=no; fi
-  fi
-  [[ $ANY_CD_PUSHD == yes ]]
-}
+CANNOT_TELL_PUSH='git push — could not tell the target branch, confirm?'
+
 # Backslash-newline continuation (`git push \` + NL + `  --force ...`) is one
 # logical line to the shell, but SPLIT_AWK/segs() process $cmd one PHYSICAL
 # line (awk record) at a time, so it comes out as two segments — and every
@@ -489,71 +481,260 @@ push_segs() {
   fi
   printf '%s\n' "$PUSH_SEGS"
 }
-# push_needs_confirm: prints the reason and returns 0 when the push must be confirmed.
-push_needs_confirm() {
-  local seg dir rest remote has_ref dst tok
-  while IFS= read -r seg; do
-    # GIT_DIR=/GIT_WORK_TREE= (env-var form) or --git-dir/--work-tree (flag
-    # form, already tolerated by GITPFX) relocate the repo the push targets
-    # in a way this guard cannot resolve structurally — ask rather than
-    # silently fall back to -C/cwd, which would then be the wrong repo.
-    grep -qE -- '(^|[[:space:]])(GIT_DIR|GIT_WORK_TREE)=|(^|[[:space:]])--(git-dir|work-tree)([[:space:]]|=)' <<<"$seg" \
-      && { echo "git push — could not tell the target branch, confirm?"; return 0; }
-    # NOTE: -[a-zA-Z]*f[a-zA-Z]* (not a bare -f) catches bundled forms like
-    # -fu/-uf — the same shape rm's recursive-flag detection uses for -r.
-    grep -qE -- '(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+' <<<"$seg" \
-      && { echo "git push --force rewrites history — confirm?"; return 0; }
-    grep -qE -- '(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+' <<<"$seg" \
-      && { echo "git push deleting a remote branch — confirm?"; return 0; }
-    grep -qE -- '(^|[[:space:]])--(all|mirror)([[:space:]]|$)' <<<"$seg" \
-      && { echo "git push --all/--mirror pushes every branch — confirm?"; return 0; }
-    # The segmenter itself splits on a bare `(` or backtick, even inside
-    # $(...)/`...` and even inside double quotes (see SPLIT_AWK) — so a
-    # refspec/remote built from a command substitution is cut clean off this
-    # segment rather than merely absent. An unquoted `(`, backtick or `$`
-    # sitting immediately after this segment's own text in push_cmd (the
-    # command this segment was actually cut from) is that cut: the real
-    # target is unknowable, not just missing.
-    case "$push_cmd" in
-      *"$seg"'`'*|*"$seg"'('*|*"$seg"'$'*)
-        echo "git push — could not tell the target branch, confirm?"; return 0 ;;
-    esac
-    dir=$(grep -Eo -- '-C[[:space:]]*[^[:space:]]+' <<<"$seg" | head -1 | sed -E 's/^-C[[:space:]]*//')
-    if [[ -z $dir ]] && any_cd_or_pushd; then
-      echo "git push — could not tell the target branch, confirm?"; return 0
+
+# ---- push whitelist: token-level helpers -----------------------------------
+#
+# DIRC/TOKC are rule 2's charset: every dir/remote/refspec token must consist
+# only of these characters — no quote char survives to this point (see
+# clean_token), and no backslash, $, backtick, brace, glob or bare colon does
+# either (a refspec's one colon is validated separately by valid_refspec).
+DIRC='^[A-Za-z0-9._/@~-]+$'
+TOKC='^[A-Za-z0-9._/@-]+$'
+
+# clean_token: prints a dir/remote/refspec token's value on stdout and
+# returns 0 when the token is unambiguous — a plain bareword (main, feat/x),
+# or fully wrapped in ONE matching pair of quotes with no OTHER quote char
+# and no $/backtick inside ('main', "feat/x"). Returns 1 for anything else:
+# a bareword/quote splice (ma""in, "feat/x:"main — the token itself never
+# starts AND ends with the same quote char, since the splice point is in the
+# middle), or a $/backtick anywhere (an expansion or substitution, which is
+# not the literal value git would receive). This is the same "no splicing,
+# no expansion" rule the Go port's cleanToken enforces structurally via the
+# AST; here it is enforced by shape, since there is no AST to ask.
+clean_token() {
+  local t=$1 inner
+  case "$t" in
+    *'$'*|*'`'*) return 1 ;;
+  esac
+  if [[ ${#t} -ge 2 && ${t:0:1} == '"' && ${t: -1} == '"' ]]; then
+    inner=${t:1:${#t}-2}
+    [[ $inner == *'"'* ]] && return 1
+    printf '%s' "$inner"; return 0
+  fi
+  if [[ ${#t} -ge 2 && ${t:0:1} == "'" && ${t: -1} == "'" ]]; then
+    inner=${t:1:${#t}-2}
+    [[ $inner == *"'"* ]] && return 1
+    printf '%s' "$inner"; return 0
+  fi
+  case "$t" in
+    *'"'*|*"'"*) return 1 ;;
+  esac
+  printf '%s' "$t"; return 0
+}
+
+# valid_refspec: rule 2's charset plus rule 5's delete assertion — at most
+# one colon, splitting into a non-empty src and dst each matching TOKC. An
+# empty half (:branch, a remote-branch delete) is rejected here too, even
+# though push_exact_shape's own flag check would also have caught the
+# -d/--delete spelling of the same intent.
+valid_refspec() {
+  local s=$1 src dst
+  case "$s" in
+    *:*:*) return 1 ;;
+    *:*)
+      src=${s%%:*}; dst=${s#*:}
+      [[ -n $src && -n $dst ]] || return 1
+      [[ $src =~ $TOKC && $dst =~ $TOKC ]] ;;
+    *) [[ $s =~ $TOKC ]] ;;
+  esac
+}
+
+# strip_one_quote_layer: the lenient (detection-only) counterpart of
+# clean_token, used by looks_like_push below to see through a whole-word
+# quote or a `'git'`-style wrap without validating anything — over-detecting
+# here only ever leads to asking, never to silence.
+strip_one_quote_layer() {
+  local t=$1
+  if [[ ${#t} -ge 2 ]]; then
+    if [[ ( ${t:0:1} == '"' && ${t: -1} == '"' ) || ( ${t:0:1} == "'" && ${t: -1} == "'" ) ]]; then
+      printf '%s' "${t:1:${#t}-2}"; return
     fi
-    rest=$(sed -E 's/^.*[[:space:]]push([[:space:]]|$)//' <<<"$seg")
-    remote=''; has_ref=0
-    # shellcheck disable=SC2086
-    set -- $rest
-    for tok in "$@"; do
-      tok=${tok#[\"\']}; tok=${tok%[\"\']}
-      [[ $tok == -* || $tok == *[\<\>]* ]] && continue
-      if [[ -z $remote ]]; then
-        remote=$tok
-        [[ $remote == *['$`']* ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
-        continue
-      fi
-      has_ref=1
-      [[ $tok == *'*'* ]] && { echo "git push with a glob refspec — confirm?"; return 0; }
-      # A refspec built from a variable/substitution ($b, ${T:-main}) is not a
-      # literal branch name the protected-branch regex can ever match — ask
-      # rather than silently trust text that is not what it looks like.
-      [[ $tok == *['$`']* ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
-      dst=${tok#*:}
-      [[ $dst == HEAD || $dst == @ ]] && dst=$(current_branch "${dir:-$CWD}")
-      [[ -z $dst ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
-      grep -qE "$PROTECTED_BRANCH_RE" <<<"$dst" && { echo "git push to a protected branch ($dst) — confirm?"; return 0; }
-    done
-    if [[ $has_ref -eq 0 ]]; then
-      dst=$(current_branch "${dir:-$CWD}")
-      [[ -z $dst ]] && { echo "git push — could not tell the current branch, confirm?"; return 0; }
-      grep -qE "$PROTECTED_BRANCH_RE" <<<"$dst" && { echo "git push to a protected branch ($dst) — confirm?"; return 0; }
+  fi
+  printf '%s' "$t"
+}
+
+# looks_like_push: true when seg's OWN argument words contain a git-like
+# token (bare, quoted, or path-form) followed later by a literal "push"
+# token — the lenient half of the whitelist. It deliberately over-detects
+# wrapped/quoted/relocated forms (nice git push, env FOO=x git push,
+# 'git' push, /usr/bin/git push, git -c x push) rather than let any of them
+# slip through unnoticed; push_needs_confirm below only ever turns a lenient
+# match into "ask", never into silence.
+looks_like_push() {
+  local seg=$1 tok found_git=0
+  # shellcheck disable=SC2086
+  set -- $seg
+  for tok in "$@"; do
+    tok=$(strip_one_quote_layer "$tok")
+    if [[ $found_git -eq 0 ]]; then
+      [[ ${tok##*/} == git ]] && found_git=1
+      continue
     fi
-  done < <(push_segs | grep -E -- "^[[:space:]]*${ENVPFX}${GITPFX}push\b")
+    [[ $tok == push ]] && return 0
+  done
   return 1
 }
-if mentions git && seg_head "${ENVPFX}${GITPFX}push\b"; then
+
+# push_exact_shape: does seg parse as EXACTLY
+# `git [-C dir] push [-u|--set-upstream] [remote] [refspec]`, bare word for
+# bare word, with nothing left over? On success prints
+# "HASDIR<TAB>DIR<TAB>HASREMOTE<TAB>REMOTE<TAB>HASREFSPEC<TAB>REFSPEC" and
+# returns 0; otherwise returns 1. Rule 1's "no VAR= prefix" and "bare git,
+# no wrapper/path/quote" both fall out of requiring $1 to be the literal
+# 3-character word "git" — a VAR= assignment, a wrapper, a path or a quoted
+# 'git' all make the first word something else.
+push_exact_shape() {
+  local body has_dir=0 dir='' has_remote=0 remote='' has_refspec=0 refspec=''
+  body=$(sed -E 's/^[[:space:]]*//' <<<"$1")
+  # shellcheck disable=SC2086
+  set -- $body
+  [[ $# -ge 2 && $1 == git ]] || return 1
+  shift
+  if [[ $1 == -C ]]; then
+    shift
+    [[ $# -ge 1 ]] || return 1
+    dir=$(clean_token "$1") || return 1
+    [[ -n $dir && $dir =~ $DIRC ]] || return 1
+    has_dir=1
+    shift
+  fi
+  [[ $# -ge 1 && $1 == push ]] || return 1
+  shift
+  if [[ $# -ge 1 && ( $1 == -u || $1 == --set-upstream ) ]]; then
+    shift
+  fi
+  if [[ $# -ge 1 ]]; then
+    [[ $1 == -* ]] && return 1
+    remote=$(clean_token "$1") || return 1
+    [[ -n $remote && $remote =~ $TOKC ]] || return 1
+    has_remote=1
+    shift
+  fi
+  if [[ $# -ge 1 ]]; then
+    [[ $1 == -* ]] && return 1
+    refspec=$(clean_token "$1") || return 1
+    valid_refspec "$refspec" || return 1
+    has_refspec=1
+    shift
+  fi
+  [[ $# -eq 0 ]] || return 1
+  # NOTE: the separator must NOT be tab/space/newline — bash's own `read`
+  # collapses consecutive IFS-whitespace delimiters instead of producing an
+  # empty field between them, which silently shifted has_refspec/refspec
+  # left by one whenever dir (or any other field) was empty.
+  printf '%s|%s|%s|%s|%s|%s\n' "$has_dir" "$dir" "$has_remote" "$remote" "$has_refspec" "$refspec"
+  return 0
+}
+
+# push_globally_disqualified: rule 3 — cd, pushd, popd, export, declare,
+# typeset, local, env, alias, eval, exec, a GIT_DIR/GIT_WORK_TREE
+# assignment, or a --git-dir/--work-tree flag, ANYWHERE in the command
+# (not just in a push-shaped segment). None of these can be resolved
+# structurally the way -C's own argument word can — the shell could be
+# somewhere else, running as something else, or the git invocation itself
+# relocated — so any of them disqualifies the whole command from a silent
+# push, independent of whether a segment elsewhere also looks exact.
+push_globally_disqualified() {
+  segs | grep -Eq '^[[:space:]]*(cd|pushd|popd|export|declare|typeset|local|env|alias|eval|exec)([[:space:]]|$)' && return 0
+  segs | grep -Eq -- '(^|[[:space:]])(GIT_DIR|GIT_WORK_TREE)=|(^|[[:space:]])--(git-dir|work-tree)([[:space:]]|=)' && return 0
+  return 1
+}
+
+# strip_trailing_redirects: repeatedly removes ONE trailing shell redirect
+# clause from a segment's text (>file, >>file, N>file, N>&M, N<file, or a
+# bare "N>" left dangling by the segmenter's own split on `&` — see
+# SPLIT_AWK, which cuts `2>&1` into "...2>" and "1" as separate segments).
+# A redirect is shell plumbing, never part of git's own argument list, and
+# unlike `;|&()`` the segmenter does not cut on a bare `>`/`<`, so one can
+# sit right on the end of an otherwise-exact push segment
+# (`git push origin main 2>&1`).
+strip_trailing_redirects() {
+  local s=$1 before
+  while true; do
+    before=$s
+    s=$(sed -E '
+      s/[[:space:]]+[0-9]*>>?&[0-9]*[[:space:]]*$//
+      s/[[:space:]]+[0-9]*>>?[[:space:]]*$//
+      s/[[:space:]]+[0-9]*>>?[[:space:]]+[^[:space:]]+[[:space:]]*$//
+      s/[[:space:]]+[0-9]*<[[:space:]]+[^[:space:]]+[[:space:]]*$//
+    ' <<<"$s")
+    [[ $s == "$before" ]] && break
+  done
+  printf '%s' "$s"
+}
+
+# push_needs_confirm: prints the reason and returns 0 when the push must be
+# confirmed; returns 1 (nothing printed) for a silent push — which also
+# covers "git and push both appear in the command, but never as one actual
+# push" (a commit message mentioning "push", `docker push`-style prose
+# elsewhere): no candidate segment means there is nothing to confirm.
+push_needs_confirm() {
+  push_globally_disqualified && { echo "$CANNOT_TELL_PUSH"; return 0; }
+
+  local raw_seg seg count=0 shape_seg='' shape_raw_seg=''
+  while IFS= read -r raw_seg; do
+    seg=$(strip_trailing_redirects "$raw_seg")
+    [[ -z "${seg// /}" ]] && continue
+    looks_like_push "$seg" || continue
+    count=$((count + 1))
+    [[ $count -eq 1 ]] && { shape_seg=$seg; shape_raw_seg=$raw_seg; }
+  done < <(push_segs)
+
+  [[ $count -eq 0 ]] && return 1
+  [[ $count -gt 1 ]] && { echo "$CANNOT_TELL_PUSH"; return 0; }
+
+  # The segmenter itself splits on a bare `(`, `$` or backtick, even inside
+  # $(...)/`...` (see SPLIT_AWK) — so a remote/refspec built from a command
+  # substitution is cut clean OFF this segment rather than merely absent,
+  # and what is left can look like a complete, exact push (`git push
+  # origin` with nothing after "origin" once `` `echo main` `` is sliced
+  # away as its own segment). An unquoted `(`, backtick or `$` sitting
+  # immediately after this segment's own raw text in push_cmd is that cut:
+  # the real target is unknowable, not just missing.
+  case "$push_cmd" in
+    *"$shape_raw_seg"'`'*|*"$shape_raw_seg"'('*|*"$shape_raw_seg"'$'*)
+      echo "$CANNOT_TELL_PUSH"; return 0 ;;
+  esac
+
+  local shape has_dir dir has_remote remote has_refspec refspec
+  shape=$(push_exact_shape "$shape_seg") || { echo "$CANNOT_TELL_PUSH"; return 0; }
+  IFS='|' read -r has_dir dir has_remote remote has_refspec refspec <<<"$shape"
+
+  # Rule 5, asserted defensively — push_exact_shape already refuses any flag
+  # beyond -u/--set-upstream and any refspec starting with `+` or with an
+  # empty src (:branch), so these should be unreachable; a second check
+  # rather than the primary gate.
+  grep -qE -- '(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+' <<<"$shape_seg" \
+    && { echo "git push --force rewrites history — confirm?"; return 0; }
+  grep -qE -- '(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+' <<<"$shape_seg" \
+    && { echo "git push deleting a remote branch — confirm?"; return 0; }
+  grep -qE -- '(^|[[:space:]])--(all|mirror)([[:space:]]|$)' <<<"$shape_seg" \
+    && { echo "git push --all/--mirror pushes every branch — confirm?"; return 0; }
+
+  # Rule 4: resolve the target branch positively.
+  local resolve_dir=$CWD dst=''
+  [[ $has_dir -eq 1 ]] && resolve_dir=$dir
+  if [[ $has_refspec -eq 1 ]]; then
+    dst=$refspec
+    [[ $dst == *:* ]] && dst=${dst#*:}
+    dst=${dst#refs/heads/}
+    dst=${dst#heads/}
+  fi
+  if [[ -z $dst || $dst == HEAD || $dst == @ ]]; then
+    dst=$(current_branch "$resolve_dir")
+  fi
+  [[ -z $dst ]] && { echo "$CANNOT_TELL_PUSH"; return 0; }
+  grep -qE "$PROTECTED_BRANCH_RE" <<<"$dst" && { echo "git push to a protected branch ($dst) — confirm?"; return 0; }
+  return 1
+}
+# The gate is deliberately broad — raw-text "git" and "push" anywhere, not
+# "a segment structurally headed by git push" — so a wrapper, a quote, a
+# path, or an alias indirection still reaches the whitelist in
+# push_needs_confirm rather than silently skipping it because no segment
+# happens to start with the bare word "git". push_needs_confirm itself
+# resolves the false-positive case (both words present, but never as one
+# push) back to silence — see its own comment.
+if mentions git && mentions push; then
   push_reason=$(push_needs_confirm) && ask "$push_reason"
 fi
 
