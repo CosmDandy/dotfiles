@@ -144,18 +144,46 @@ func fallbackSplit(cmd string) []string {
 // group (quoted or a single bare word).
 var reFallbackShellC = regexp.MustCompile(`(^|[[:space:]])([^[:space:]]*/)?(zsh|bash|sh|dash|ksh)([[:space:]]+(-o[[:space:]]+[^[:space:]]+|--[a-z][a-z-]*|-[a-zA-Z]+))*[[:space:]]+-[a-zA-Z]*c[[:space:]]+("[^"]*"|'[^']*'|[^[:space:]]+)`)
 
+// reFallbackGitCDir extracts a `-C <dir>` occurrence from a fallback
+// segment's raw text, the same way the bash guard's push/commit rules do
+// (`grep -Eo -- '-C[[:space:]]*[^[:space:]]+' <<<"$seg" | head -1`): there is
+// no AST on the fallback path, so -C cannot be resolved structurally the way
+// gitDashCFlag does for a parsed segment, and a regex over the text is
+// exactly what bash itself falls back to.
+var reFallbackGitCDir = regexp.MustCompile(`-C[[:space:]]*([^[:space:]]+)`)
+
+// fallbackGitHead reports whether t's first word (by basename) is "git" —
+// the fallback-path equivalent of isGitInvocation, which has no AST to walk.
+func fallbackGitHead(t string) bool {
+	fields := strings.Fields(t)
+	return len(fields) > 0 && basename(fields[0]) == "git"
+}
+
 // fallbackSegments is fallbackSplit plus, for every `shell -c BODY` found
 // anywhere in the raw text, BODY's own fallback-split segments (recursively,
 // since BODY can itself contain another `shell -c ...`). Without this, the
 // fallback path — reached whenever mvdan/sh cannot parse the command at all —
 // would never look inside a -c body, unlike bash's shellc_bodies, which
 // always runs on raw text regardless of what else parses.
+//
+// Every git-headed segment also gets GitCDir/HasGitCDir filled in from its
+// own text via reFallbackGitCDir. Without this, a command mvdan/sh cannot
+// parse (a zsh glob qualifier like `*(N)`, an unbalanced quote) silently lost
+// its `git -C <dir>` entirely: pushNeedsConfirm and commitTargetDir fell back
+// to the hook's own cwd and ignored the real target directory, turning a
+// bash deny/ask into a Go allow.
 func fallbackSegments(cmd string, depth int) []Segment {
 	texts := fallbackSplit(cmd)
 	texts = append(texts, fallbackShellCBodies(cmd, depth)...)
 	segs := make([]Segment, len(texts))
 	for i, t := range texts {
-		segs[i] = Segment{Text: t}
+		seg := Segment{Text: t}
+		if fallbackGitHead(t) {
+			if m := reFallbackGitCDir.FindStringSubmatch(t); m != nil {
+				seg.GitCDir, seg.HasGitCDir = m[1], true
+			}
+		}
+		segs[i] = seg
 	}
 	return segs
 }
@@ -172,6 +200,29 @@ func fallbackShellCBodies(cmd string, depth int) []string {
 		}
 		out = append(out, fallbackSplit(body)...)
 		out = append(out, fallbackShellCBodies(body, depth+1)...)
+	}
+	return out
+}
+
+// heredocShellCSegments finds `[/path/]shell [flags] -c BODY` anywhere in a
+// heredoc body's raw text (never visited by the AST walk in collectSegments
+// — see its Redirect case) via the same reFallbackShellC regex the fallback
+// path uses, and recursively parses each BODY as its own script via
+// parseCommandDepth — the full-fidelity treatment expandShellC gives a
+// structurally-found body, rather than the fallback path's text-only split.
+// Bounded by maxShellCDepth like every other -c unwind.
+func heredocShellCSegments(body string, depth int) []Segment {
+	if depth >= maxShellCDepth {
+		return nil
+	}
+	var out []Segment
+	for _, m := range reFallbackShellC.FindAllStringSubmatch(body, -1) {
+		inner := stripOuterQuotes(m[len(m)-1])
+		if inner == "" {
+			continue
+		}
+		res := parseCommandDepth(inner, depth+1)
+		out = append(out, res.Segments...)
 	}
 	return out
 }
@@ -195,6 +246,18 @@ func collectSegments(src []byte, root syntax.Node, depth int) []Segment {
 				// bash guard's split-vs-has asymmetry. The tag (v.Word) is
 				// still walked normally, below.
 				skipHdoc[v.Hdoc] = true
+				// bash's shellc_bodies greps the RAW command text for a
+				// `shell -c BODY` occurrence unconditionally, heredoc bodies
+				// included — it has no notion of "data, not commands". The
+				// AST walk here does (skipHdoc above), so a `shell -c '...'`
+				// written inside a heredoc body (`ssh host <<EOF` /
+				// `bash -c "git reset --hard"` / `EOF`) would otherwise never
+				// be found on the successful-parse path, only on fallback.
+				// Run the same raw-text pass over the body text to close
+				// that gap.
+				if body := rawWordText(src, v.Hdoc); body != "" {
+					out = append(out, heredocShellCSegments(body, depth)...)
+				}
 			}
 		case *syntax.Word:
 			if skipHdoc[v] {

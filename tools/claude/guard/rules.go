@@ -443,7 +443,6 @@ var (
 	rePushForce     = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+`)
 	rePushDelete    = regexp.MustCompile(`(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+`)
 	rePushAllMirror = regexp.MustCompile(`(^|[[:space:]])--(all|mirror)([[:space:]]|$)`)
-	rePushAfter     = regexp.MustCompile(`[[:space:]]push([[:space:]]|$)`)
 )
 
 // currentBranch resolves the checked-out branch of dir, "" when it cannot.
@@ -459,7 +458,14 @@ func currentBranch(dir string) string {
 // ask, or "" and false for a silent feature-branch push.
 func (c *Ctx) pushNeedsConfirm() (string, bool) {
 	for _, seg := range c.segs {
-		if !reGitPush.MatchString(seg.Text) {
+		// loc is the structurally-found end of the push SUBCOMMAND itself —
+		// reGitPush already resolves the git global-flag prefix (same as
+		// gitDashCFlag) before requiring "push\b". Anchoring `rest` here,
+		// rather than at the first bare " push " in the text, matters for a
+		// value like `git -C push push origin`: the first " push " belongs
+		// to -C's argument, not the subcommand.
+		loc := reGitPush.FindStringIndex(seg.Text)
+		if loc == nil {
 			continue
 		}
 		if rePushForce.MatchString(seg.Text) {
@@ -479,10 +485,16 @@ func (c *Ctx) pushNeedsConfirm() (string, bool) {
 		if seg.HasGitCDir {
 			dir = seg.GitCDir
 		}
-		rest := ""
-		if loc := rePushAfter.FindStringIndex(seg.Text); loc != nil {
-			rest = seg.Text[loc[1]:]
-		}
+		// A line continuation (`git push \` + newline + `  origin`) leaves a
+		// literal "\" token right after "push". Left in, strings.Fields
+		// below takes it for the remote and the real remote for a refspec,
+		// which sets hasRef and skips the current-branch check entirely —
+		// bash never sees this at all, since it reads $seg line by line and
+		// the continued line never reaches this far. Stripping the
+		// backslash-newline here keeps the real remote as remote and the
+		// real refspec (if any) as the ref, so the same checks apply either
+		// way.
+		rest := strings.ReplaceAll(seg.Text[loc[1]:], "\\\n", " ")
 		remote, hasRef := "", false
 		for _, tok := range strings.Fields(rest) {
 			tok = strings.Trim(tok, `"'`)
