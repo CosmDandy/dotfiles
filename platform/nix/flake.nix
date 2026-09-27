@@ -50,10 +50,7 @@
           };
           extraSpecialArgs = {
             inherit profile;
-            claudeTools = {
-              guard = mkGuard system;
-              cli = mkCli system;
-            };
+            claudeTools = mkClaudeTools system;
           };
           modules = [
             ./home
@@ -109,6 +106,13 @@
           '';
           meta.mainProgram = "claude-cli";
         };
+      # Both Go hooks as one special arg for every user layer (Linux home,
+      # darwin, NixOS): home/default.nix and darwin-configuration.nix put them
+      # on PATH, which is where tools/claude/cli/wrapper.sh looks.
+      mkClaudeTools = system: {
+        guard = mkGuard system;
+        cli = mkCli system;
+      };
       # NOTE: cpuCores/memoryGiB are DECLARED, not detected — eval must be reproducible
       # and compute the same on any machine, so the current host's specs are invisible to
       # it (getEnv needs --impure). The daemon's max-jobs/cores are derived from them.
@@ -129,10 +133,7 @@
               cpuCores
               memoryGiB
               ;
-            claudeTools = {
-              guard = mkGuard system;
-              cli = mkCli system;
-            };
+            claudeTools = mkClaudeTools system;
           };
           modules = [
             ./darwin-configuration.nix
@@ -178,7 +179,10 @@
                 # see mkDarwin: activation must not die on a pre-existing file
                 backupFileExtension = "hm-backup";
                 overwriteBackup = true;
-                extraSpecialArgs = { inherit profile; };
+                extraSpecialArgs = {
+                  inherit profile;
+                  claudeTools = mkClaudeTools system;
+                };
                 users.${user}.imports = [ ./home ];
               };
             }
