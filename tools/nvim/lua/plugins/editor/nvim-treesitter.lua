@@ -160,17 +160,31 @@ return {
           if ft == '' then
             return
           end
-          local lang = vim.treesitter.language.get_lang(ft) or ft
-          -- highlighting only when the parser is available (pcall guards the first run)
-          if pcall(vim.treesitter.start, buf, lang) then
-            -- NOTE: vim.wo[0][0] is window-local-for-buffer, so these do not leak into
-            -- other windows showing another file.
-            vim.wo[0][0].foldmethod = 'expr'
-            vim.wo[0][0].foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-            vim.wo[0][0].foldlevel = 99
-            -- indentation from nvim-treesitter (marked experimental upstream)
-            vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
-          end
+          -- NOTE: the parser load + first parse/highlight is real CPU work (~20ms,
+          -- measured), not just a require, and FileType runs synchronously while the
+          -- buffer is being opened. vim.schedule moves it off the opening-buffers path
+          -- onto the next event-loop tick — imperceptible to the user, but it lets
+          -- nvim draw the buffer first instead of blocking on it.
+          local win = vim.api.nvim_get_current_win()
+          vim.schedule(function()
+            if not vim.api.nvim_buf_is_valid(buf) then
+              return
+            end
+            local lang = vim.treesitter.language.get_lang(ft) or ft
+            -- highlighting only when the parser is available (pcall guards the first run)
+            if pcall(vim.treesitter.start, buf, lang) then
+              -- window may have closed or moved on by the time this runs; vim.wo[win][n]
+              -- only accepts bufnr 0 (the window's current buffer), hence the check above
+              -- instead of passing buf directly
+              if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf then
+                vim.wo[win][0].foldmethod = 'expr'
+                vim.wo[win][0].foldexpr = 'v:lua.vim.treesitter.foldexpr()'
+                vim.wo[win][0].foldlevel = 99
+              end
+              -- indentation from nvim-treesitter (marked experimental upstream)
+              vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+            end
+          end)
         end,
       })
     end,
