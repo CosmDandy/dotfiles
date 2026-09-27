@@ -30,6 +30,13 @@ type Segment struct {
 	Text       string
 	GitCDir    string
 	HasGitCDir bool
+	// GitDirAmbiguous is true for a git-headed segment carrying a
+	// --git-dir/--work-tree flag or a GIT_DIR=/GIT_WORK_TREE= env-var
+	// assignment — either relocates the repo a push targets in a way
+	// pushNeedsConfirm cannot resolve structurally (unlike -C, there is no
+	// single argument word to read the directory back out of at the flag,
+	// and the env-var form is not even in Args — see CallExpr.Assigns).
+	GitDirAmbiguous bool
 }
 
 // ParseResult is the outcome of splitting a command into segments, mirroring
@@ -152,6 +159,17 @@ var reFallbackShellC = regexp.MustCompile(`(^|[[:space:]])([^[:space:]]*/)?(zsh|
 // exactly what bash itself falls back to.
 var reFallbackGitCDir = regexp.MustCompile(`-C[[:space:]]*([^[:space:]]+)`)
 
+// reFallbackGitAmbiguous is the fallback-path (text-only) equivalent of the
+// --git-dir/--work-tree half of gitDashCFlag's ambiguous return — there is
+// no AST to scan structurally here, so a regex over the raw segment text is
+// what the bash guard itself falls back to as well. It does not catch the
+// GIT_DIR=/GIT_WORK_TREE= env-assignment form (fallbackGitHead requires the
+// segment's own first field to be "git", which an env-prefixed invocation
+// never is); that form reaching the fallback path at all requires pairing it
+// with something else mvdan/sh cannot parse, which is not a shape any known
+// caller produces.
+var reFallbackGitAmbiguous = regexp.MustCompile(`(^|[[:space:]])--(git-dir|work-tree)([[:space:]]|=)`)
+
 // fallbackGitHead reports whether t's first word (by basename) is "git" —
 // the fallback-path equivalent of isGitInvocation, which has no AST to walk.
 func fallbackGitHead(t string) bool {
@@ -182,6 +200,7 @@ func fallbackSegments(cmd string, depth int) []Segment {
 			if m := reFallbackGitCDir.FindStringSubmatch(t); m != nil {
 				seg.GitCDir, seg.HasGitCDir = m[1], true
 			}
+			seg.GitDirAmbiguous = reFallbackGitAmbiguous.MatchString(t)
 		}
 		segs[i] = seg
 	}
@@ -274,7 +293,9 @@ func collectSegments(src []byte, root syntax.Node, depth int) []Segment {
 				if text := offsetSlice(src, v.Pos(), end); text != "" {
 					seg := Segment{Text: text}
 					if isGitInvocation(src, cmd) {
-						seg.GitCDir, seg.HasGitCDir = gitDashCFlag(src, cmd.Args)
+						var ambiguousFlag bool
+						seg.GitCDir, seg.HasGitCDir, ambiguousFlag = gitDashCFlag(src, cmd.Args)
+						seg.GitDirAmbiguous = ambiguousFlag || assignsGitDirEnv(cmd.Assigns)
 					}
 					out = append(out, seg)
 				}
@@ -325,7 +346,11 @@ func isGitInvocation(src []byte, cmd *syntax.CallExpr) bool {
 // --git-dir/--work-tree/--namespace/--exec-path (separate or =value), -p/-P,
 // and the handful of no-value long flags. Only the FIRST -C is kept, like
 // the bash guard's `head -1` over its own (also structurally first) match.
-func gitDashCFlag(src []byte, args []*syntax.Word) (dir string, ok bool) {
+// The bool result is true when the invocation carries --git-dir or
+// --work-tree (separate or =value) — see Segment.GitDirAmbiguous: neither
+// flag names a directory pushNeedsConfirm can read back the way -C's own
+// argument word does, so their presence alone is the signal.
+func gitDashCFlag(src []byte, args []*syntax.Word) (dir string, ok bool, ambiguous bool) {
 	i := 1
 	for i < len(args) {
 		lit := wordLiteral(src, args[i])
@@ -344,10 +369,15 @@ func gitDashCFlag(src []byte, args []*syntax.Word) (dir string, ok bool) {
 			i += 2
 		case strings.HasPrefix(lit, "-c") && len(lit) > 2:
 			i++
-		case lit == "--git-dir" || lit == "--work-tree" || lit == "--namespace" || lit == "--exec-path":
+		case lit == "--git-dir" || lit == "--work-tree":
+			ambiguous = true
 			i += 2
-		case strings.HasPrefix(lit, "--git-dir=") || strings.HasPrefix(lit, "--work-tree=") ||
-			strings.HasPrefix(lit, "--namespace=") || strings.HasPrefix(lit, "--exec-path="):
+		case strings.HasPrefix(lit, "--git-dir=") || strings.HasPrefix(lit, "--work-tree="):
+			ambiguous = true
+			i++
+		case lit == "--namespace" || lit == "--exec-path":
+			i += 2
+		case strings.HasPrefix(lit, "--namespace=") || strings.HasPrefix(lit, "--exec-path="):
 			i++
 		case lit == "-p" || lit == "-P":
 			i++
@@ -355,10 +385,28 @@ func gitDashCFlag(src []byte, args []*syntax.Word) (dir string, ok bool) {
 			lit == "--no-optional-locks" || lit == "--no-replace-objects" || lit == "--no-lazy-fetch":
 			i++
 		default:
-			return dir, ok
+			return dir, ok, ambiguous
 		}
 	}
-	return dir, ok
+	return dir, ok, ambiguous
+}
+
+// assignsGitDirEnv reports whether a git invocation is prefixed by a
+// GIT_DIR= or GIT_WORK_TREE= env-var assignment (`GIT_DIR=x git push`).
+// mvdan/sh keeps these on CallExpr.Assigns, entirely separate from Args —
+// cmd.Args[0] is still literally "git" either way, which is why
+// isGitInvocation already sees straight through this form; only the
+// directory resolution needs to know about it.
+func assignsGitDirEnv(assigns []*syntax.Assign) bool {
+	for _, a := range assigns {
+		if a.Name == nil {
+			continue
+		}
+		if a.Name.Value == "GIT_DIR" || a.Name.Value == "GIT_WORK_TREE" {
+			return true
+		}
+	}
+	return false
 }
 
 // expandShellC recognises `[/path/to/]shell [flags] -c BODY` (zsh, bash, sh,

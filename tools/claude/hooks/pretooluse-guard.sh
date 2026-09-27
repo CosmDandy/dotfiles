@@ -459,10 +459,46 @@ mentions chmod && seg_with 'chmod\b' '\b777\b'    && ask "chmod 777 — confirm?
 # refspec, and a target it cannot tell.
 PROTECTED_BRANCH_RE='^(refs/heads/)?(main|master|prod|production|release(/.*)?)$'
 current_branch() { git -C "$1" symbolic-ref --short HEAD 2>/dev/null; }
+# `GIT_DIR=x git push` puts the assignment BEFORE the literal "git", which
+# GITPFX (anchored right at the segment start) never matches on its own —
+# without this the whole push gate silently never fired for that shape at
+# all. Zero-or-more, so a plain `git push` still matches with nothing consumed.
+ENVPFX='([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
+# A cd/pushd ANYWHERE in the command changes the directory a `-C`-less push
+# actually runs in; simplest-and-safe is asking rather than trying to resolve
+# the literal target (see push_needs_confirm's own use, below).
+ANY_CD_PUSHD=''
+any_cd_or_pushd() {
+  if [[ -z $ANY_CD_PUSHD ]]; then
+    if segs | grep -Eq '^[[:space:]]*(cd|pushd)([[:space:]]|$)'; then ANY_CD_PUSHD=yes; else ANY_CD_PUSHD=no; fi
+  fi
+  [[ $ANY_CD_PUSHD == yes ]]
+}
+# Backslash-newline continuation (`git push \` + NL + `  --force ...`) is one
+# logical line to the shell, but SPLIT_AWK/segs() process $cmd one PHYSICAL
+# line (awk record) at a time, so it comes out as two segments — and every
+# check below, which looks at one segment at a time, never sees a flag or
+# refspec that landed on the continuation line. Joining `\<NL>` into a space
+# before re-segmenting fixes this for push specifically (mirroring the join
+# rules.go's pushNeedsConfirm does on its own, already-whole segment text).
+push_cmd=$(printf '%s' "$cmd" | sed -e ':a' -e '/\\$/{N;s/\\\n/ /;ba' -e '}')
+PUSH_SEGS=''
+push_segs() {
+  if [[ -z $PUSH_SEGS ]]; then
+    PUSH_SEGS=$( { printf '%s\n' "$push_cmd" | awk "$SPLIT_AWK"; shellc_bodies | awk "$SPLIT_AWK"; } )
+  fi
+  printf '%s\n' "$PUSH_SEGS"
+}
 # push_needs_confirm: prints the reason and returns 0 when the push must be confirmed.
 push_needs_confirm() {
   local seg dir rest remote has_ref dst tok
   while IFS= read -r seg; do
+    # GIT_DIR=/GIT_WORK_TREE= (env-var form) or --git-dir/--work-tree (flag
+    # form, already tolerated by GITPFX) relocate the repo the push targets
+    # in a way this guard cannot resolve structurally — ask rather than
+    # silently fall back to -C/cwd, which would then be the wrong repo.
+    grep -qE -- '(^|[[:space:]])(GIT_DIR|GIT_WORK_TREE)=|(^|[[:space:]])--(git-dir|work-tree)([[:space:]]|=)' <<<"$seg" \
+      && { echo "git push — could not tell the target branch, confirm?"; return 0; }
     # NOTE: -[a-zA-Z]*f[a-zA-Z]* (not a bare -f) catches bundled forms like
     # -fu/-uf — the same shape rm's recursive-flag detection uses for -r.
     grep -qE -- '(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+' <<<"$seg" \
@@ -471,7 +507,21 @@ push_needs_confirm() {
       && { echo "git push deleting a remote branch — confirm?"; return 0; }
     grep -qE -- '(^|[[:space:]])--(all|mirror)([[:space:]]|$)' <<<"$seg" \
       && { echo "git push --all/--mirror pushes every branch — confirm?"; return 0; }
+    # The segmenter itself splits on a bare `(` or backtick, even inside
+    # $(...)/`...` and even inside double quotes (see SPLIT_AWK) — so a
+    # refspec/remote built from a command substitution is cut clean off this
+    # segment rather than merely absent. An unquoted `(`, backtick or `$`
+    # sitting immediately after this segment's own text in push_cmd (the
+    # command this segment was actually cut from) is that cut: the real
+    # target is unknowable, not just missing.
+    case "$push_cmd" in
+      *"$seg"'`'*|*"$seg"'('*|*"$seg"'$'*)
+        echo "git push — could not tell the target branch, confirm?"; return 0 ;;
+    esac
     dir=$(grep -Eo -- '-C[[:space:]]*[^[:space:]]+' <<<"$seg" | head -1 | sed -E 's/^-C[[:space:]]*//')
+    if [[ -z $dir ]] && any_cd_or_pushd; then
+      echo "git push — could not tell the target branch, confirm?"; return 0
+    fi
     rest=$(sed -E 's/^.*[[:space:]]push([[:space:]]|$)//' <<<"$seg")
     remote=''; has_ref=0
     # shellcheck disable=SC2086
@@ -479,9 +529,17 @@ push_needs_confirm() {
     for tok in "$@"; do
       tok=${tok#[\"\']}; tok=${tok%[\"\']}
       [[ $tok == -* || $tok == *[\<\>]* ]] && continue
-      if [[ -z $remote ]]; then remote=$tok; continue; fi
+      if [[ -z $remote ]]; then
+        remote=$tok
+        [[ $remote == *['$`']* ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
+        continue
+      fi
       has_ref=1
       [[ $tok == *'*'* ]] && { echo "git push with a glob refspec — confirm?"; return 0; }
+      # A refspec built from a variable/substitution ($b, ${T:-main}) is not a
+      # literal branch name the protected-branch regex can ever match — ask
+      # rather than silently trust text that is not what it looks like.
+      [[ $tok == *['$`']* ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
       dst=${tok#*:}
       [[ $dst == HEAD || $dst == @ ]] && dst=$(current_branch "${dir:-$CWD}")
       [[ -z $dst ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
@@ -492,10 +550,10 @@ push_needs_confirm() {
       [[ -z $dst ]] && { echo "git push — could not tell the current branch, confirm?"; return 0; }
       grep -qE "$PROTECTED_BRANCH_RE" <<<"$dst" && { echo "git push to a protected branch ($dst) — confirm?"; return 0; }
     fi
-  done < <(segs | grep -E -- "^[[:space:]]*${GITPFX}push\b")
+  done < <(push_segs | grep -E -- "^[[:space:]]*${ENVPFX}${GITPFX}push\b")
   return 1
 }
-if mentions git && seg_head "${GITPFX}push\b"; then
+if mentions git && seg_head "${ENVPFX}${GITPFX}push\b"; then
   push_reason=$(push_needs_confirm) && ask "$push_reason"
 fi
 

@@ -753,5 +753,64 @@ dchk ask "$FB2" $'git push \\\n  origin' \
   'backslash-перевод строки перед origin — ask на main (ветку не проглотило)'
 rm -rf "$FB2"
 
+section 'push: финальное ревью — silent-релаксация не должна пропускать то, что main ловит'
+printf '\n%s\n' "$SECTION"
+# Ревью нашло три дыры в push_needs_confirm/pushNeedsConfirm, все репро проверены с
+# обеих сторон (main = ask, эта ветка bash/go = allow до фикса). cwd — чистый репозиторий
+# на feat/x; MAIN2 — отдельный репозиторий на main, куда реально уходит push в частях
+# репро, использующих его каталог.
+MAIN2=$(mktemp -d); git -C "$MAIN2" init -q -b main
+git -C "$MAIN2" config user.email test@example.invalid; git -C "$MAIN2" config user.name test
+git -C "$MAIN2" commit -q --allow-empty -m init
+FEAT2=$(mktemp -d); git -C "$FEAT2" init -q -b feat/x
+git -C "$FEAT2" config user.email test@example.invalid; git -C "$FEAT2" config user.name test
+git -C "$FEAT2" commit -q --allow-empty -m init
+
+# Finding 1: целевой каталог резолвился только из -C/cwd. cd/pushd в цепочке или
+# подшелле, --git-dir/--work-tree и GIT_DIR= меняют его так, что этот гейт не может
+# его прочитать структурно — must ask, а не тихо резолвить против cwd.
+dchk ask "$FEAT2" "cd $MAIN2 && git push" \
+  'cd в другой репозиторий перед push — cwd больше не тот каталог'
+dchk ask "$FEAT2" "(cd $MAIN2; git push -u origin HEAD)" \
+  'cd в подшелле перед push'
+dchk ask "$FEAT2" "git --git-dir=$MAIN2/.git --work-tree=$MAIN2 push" \
+  '--git-dir/--work-tree — каталог не определить так, как -C'
+dchk ask "$FEAT2" "GIT_DIR=$MAIN2/.git git push" \
+  'GIT_DIR= перед git push — сегмент даже не начинается с "git"'
+
+# Finding 2: --force/--delete/+refspec/protected-target на СТРОКЕ-ПРОДОЛЖЕНИИ должны
+# ask на feature-ветке по своей собственной причине (force/delete/protected), не только
+# случайно совпасть с ask через резолвинг текущей ветки, как в тесте на main выше.
+dchk ask "$FEAT2" $'git push \\\n--force origin feat/x' \
+  '--force на строке-продолжении — feature-ветка, ask всё равно нужен'
+dchk ask "$FEAT2" $'git push origin \\\n+feat/x' \
+  '+refspec на строке-продолжении'
+dchk ask "$FEAT2" $'git push origin \\\n--delete feat/y' \
+  '--delete на строке-продолжении'
+dchk ask "$FEAT2" $'git push origin \\\nmain' \
+  'protected-таргет на строке-продолжении'
+dchk ask "$FEAT2" $'git push origin \\\nfeat/x:main' \
+  'refspec dst=main на строке-продолжении'
+
+# Finding 3: remote/refspec-токен из переменной, parameter expansion или command
+# substitution — не литеральное имя ветки, protected-regex по нему никогда не
+# сработает; одинарные кавычки здесь обязательны, иначе тестовый скрипт сам
+# развернёт $b/${T:-main}/`echo main`/$(...) до того, как команда дойдёт до хука.
+dchk ask "$FEAT2" 'b=main; git push origin $b' \
+  'refspec из переменной ($b) — цель не литеральна'
+dchk ask "$FEAT2" 'git push origin HEAD:${T:-main}' \
+  'refspec с parameter expansion (${T:-main})'
+dchk ask "$FEAT2" 'git push origin `echo main`' \
+  'refspec из command substitution (backtick)'
+dchk ask "$FEAT2" 'git push origin "$(git rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)"' \
+  'refspec из $(...) в кавычках'
+
+# Держим то, что относилось к силентной релаксации в первую очередь: она не должна
+# развалиться под тяжестью всех этих ask-фиксов.
+dchk pass "$FEAT2" 'git push -u origin feat/x' 'feature-ветка с -u — молча, как и раньше'
+dchk pass "$FEAT2" 'git push'                  'bare push с feature-ветки — молча, как и раньше'
+dchk pass "$MAIN2" "git -C $FEAT2 push"        'git -C на feature-репозиторий — молча, как и раньше'
+rm -rf "$MAIN2" "$FEAT2"
+
 printf '\nпройдено: %d, провалено: %d, пропущено: %d\n' "$pass" "$fail" "$skip"
 [[ $fail -eq 0 ]]

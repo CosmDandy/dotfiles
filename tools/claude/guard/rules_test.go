@@ -310,3 +310,121 @@ func TestPushRestAnchorsOnStructuralSubcommandNotDashCArgument(t *testing.T) {
 		t.Errorf(`evalCmd("git -C push push origin") = %+v, want ask (rest must start after the real push subcommand)`, got)
 	}
 }
+
+// ---- Final review (post-relaxation): a push must be silent ONLY when the
+// target branch is positively known — anything the guard cannot resolve
+// asks, with "could not tell the target branch" as the reason. ----
+
+// Finding 1: the target repo used to be resolved only from -C or cwd. A
+// `cd`/`pushd` elsewhere in the same command changes the directory a
+// `-C`-less push actually runs in, and this guard cannot follow it — cwd is
+// a clean feature-branch repo, mainRepo is on main, and the push in both
+// cases actually runs against mainRepo.
+func TestPushCdOrPushdElsewhereAsksNotResolvesAgainstCwd(t *testing.T) {
+	mainRepo := setupPushTestRepo(t, "main")
+	featRepo := setupPushTestRepo(t, "feat/x")
+	cases := []string{
+		fmt.Sprintf("cd %s && git push", mainRepo),
+		fmt.Sprintf("(cd %s; git push -u origin HEAD)", mainRepo),
+	}
+	for _, cmd := range cases {
+		got := evalCmd(cmd, featRepo)
+		if got.Verdict != "ask" {
+			t.Errorf("evaluate(%q) with cwd=%s = %+v, want ask (cd/pushd elsewhere makes the target unresolvable)", cmd, featRepo, got)
+		}
+	}
+}
+
+// Finding 1: --git-dir/--work-tree relocate the repo the same way -C does,
+// but name no single argument word pushNeedsConfirm can read a directory
+// back out of the way GitCDir does for -C; the old code fell back to cwd
+// (a clean feature branch) and silently allowed a push that actually landed
+// on mainRepo's main.
+func TestPushGitDirWorkTreeFlagsAsk(t *testing.T) {
+	mainRepo := setupPushTestRepo(t, "main")
+	featRepo := setupPushTestRepo(t, "feat/x")
+	cmd := fmt.Sprintf("git --git-dir=%s/.git --work-tree=%s push", mainRepo, mainRepo)
+	got := evalCmd(cmd, featRepo)
+	if got.Verdict != "ask" {
+		t.Errorf("evaluate(%q) with cwd=%s = %+v, want ask (--git-dir/--work-tree unresolvable)", cmd, featRepo, got)
+	}
+}
+
+// Finding 1: GIT_DIR=/GIT_WORK_TREE= is an env-var assignment, not an
+// argument word — it lives on CallExpr.Assigns, not Args, and reGitPush
+// (anchored at the segment start) never even matched a segment starting
+// with the assignment instead of a literal "git", so the whole push gate
+// used to never fire for this shape at all.
+func TestPushGitDirEnvAssignAsk(t *testing.T) {
+	mainRepo := setupPushTestRepo(t, "main")
+	featRepo := setupPushTestRepo(t, "feat/x")
+	cmd := fmt.Sprintf("GIT_DIR=%s/.git git push", mainRepo)
+	got := evalCmd(cmd, featRepo)
+	if got.Verdict != "ask" {
+		t.Errorf("evaluate(%q) with cwd=%s = %+v, want ask (GIT_DIR= env assignment unresolvable)", cmd, featRepo, got)
+	}
+}
+
+// Finding 2: --force/--delete/a glob refspec/a protected target landing on
+// the CONTINUATION line of a `git push \` + newline still has to ask on a
+// feature branch, not just happen to ask because bash's per-line reader
+// resolves the (wrongly-swallowed) current branch and it happens to be
+// protected. Go already puts the whole statement in one segment; the fix is
+// stripping the "\\\n" token before strings.Fields so the real remote/ref
+// tokens are still recognised as such (see pushNeedsConfirm's own comment).
+func TestPushLineContinuationFlagsOnContinuationLineAsk(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	cases := []string{
+		"git push \\\n--force origin feat/x",
+		"git push origin \\\n+feat/x",
+		"git push origin \\\n--delete feat/y",
+		"git push origin \\\nmain",
+		"git push origin \\\nfeat/x:main",
+	}
+	for _, cmd := range cases {
+		got := evalCmd(cmd, dir)
+		if got.Verdict != "ask" {
+			t.Errorf("evalCmd(%q) on feat/x = %+v, want ask", cmd, got)
+		}
+	}
+}
+
+// Finding 3: a remote or refspec token built from a variable or a command
+// substitution is not the literal branch name it looks like, so the
+// protected-branch regex can never match it — silently trusting the raw
+// text let `$b`/`${T:-main}`/backtick/`$(...)` sail past the check entirely.
+func TestPushDynamicRemoteOrRefspecTokenAsk(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	cases := []string{
+		"b=main; git push origin $b",
+		"git push origin HEAD:${T:-main}",
+		"git push origin `echo main`",
+		`git push origin "$(git rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)"`,
+	}
+	for _, cmd := range cases {
+		got := evalCmd(cmd, dir)
+		if got.Verdict != "ask" {
+			t.Errorf("evalCmd(%q) on feat/x = %+v, want ask (dynamic remote/refspec token)", cmd, got)
+		}
+	}
+}
+
+// None of the above must make an ordinary, fully-resolvable feature-branch
+// push start asking — the whole point of the relaxation this review is
+// tightening, not undoing it.
+func TestPushOrdinaryFeatureBranchStillSilent(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	cases := []string{
+		"git push -u origin feat/x",
+		"git push",
+	}
+	for _, cmd := range cases {
+		got := evalCmd(cmd, dir)
+		if got.Verdict != "" {
+			t.Errorf("evalCmd(%q) on feat/x = %+v, want silent pass", cmd, got)
+		}
+	}
+	if got := evalCmd(fmt.Sprintf("git -C %s push", dir), "/some/other/cwd"); got.Verdict != "" {
+		t.Errorf("git -C <featrepo> push = %+v, want silent pass", got)
+	}
+}

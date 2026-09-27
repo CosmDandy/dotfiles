@@ -186,6 +186,24 @@ func (c *Ctx) cdIntoScratch() bool {
 
 var reTrailQuoteSpace = regexp.MustCompile(`["']?[[:space:]]*$`)
 
+// ---- cd/pushd anywhere (push-directory ambiguity) --------------------------
+
+var reCdOrPushdHead = segHeadRe(`(cd|pushd)([[:space:]]|$)`)
+
+// anyCdOrPushd reports whether any segment is a cd/pushd invocation,
+// anywhere in the command — used only by pushNeedsConfirm: a `-C`-less push
+// after a cd/pushd elsewhere in the same command runs in whatever directory
+// that left the shell in, not the hook's cwd, and resolving the literal
+// target is not worth the risk when asking is simpler and safe.
+func (c *Ctx) anyCdOrPushd() bool {
+	for _, seg := range c.segs {
+		if reCdOrPushdHead.MatchString(seg.Text) {
+			return true
+		}
+	}
+	return false
+}
+
 // ---- shell_writes_a_file ----------------------------------------------------
 
 var (
@@ -468,6 +486,13 @@ func (c *Ctx) pushNeedsConfirm() (string, bool) {
 		if loc == nil {
 			continue
 		}
+		// --git-dir/--work-tree or a GIT_DIR=/GIT_WORK_TREE= assignment
+		// relocates the repo this push targets in a way -C's own dir
+		// resolution below cannot see; ask rather than silently fall back
+		// to cwd, which would then be the wrong repo.
+		if seg.GitDirAmbiguous {
+			return "git push — could not tell the target branch, confirm?", true
+		}
 		if rePushForce.MatchString(seg.Text) {
 			return "git push --force rewrites history — confirm?", true
 		}
@@ -484,6 +509,11 @@ func (c *Ctx) pushNeedsConfirm() (string, bool) {
 		dir := c.cwd
 		if seg.HasGitCDir {
 			dir = seg.GitCDir
+		} else if c.anyCdOrPushd() {
+			// A cd/pushd elsewhere in the command left the shell somewhere
+			// other than cwd by the time this push runs; resolving the
+			// literal target is not worth the risk.
+			return "git push — could not tell the target branch, confirm?", true
 		}
 		// A line continuation (`git push \` + newline + `  origin`) leaves a
 		// literal "\" token right after "push". Left in, strings.Fields
@@ -503,11 +533,21 @@ func (c *Ctx) pushNeedsConfirm() (string, bool) {
 			}
 			if remote == "" {
 				remote = tok
+				if strings.ContainsAny(remote, "$`") {
+					return "git push — could not tell the target branch, confirm?", true
+				}
 				continue
 			}
 			hasRef = true
 			if strings.Contains(tok, "*") {
 				return "git push with a glob refspec — confirm?", true
+			}
+			// A refspec built from a variable/substitution ($b, ${T:-main})
+			// is not a literal branch name the protected-branch regex can
+			// ever match — ask rather than silently trust text that is not
+			// what it looks like.
+			if strings.ContainsAny(tok, "$`") {
+				return "git push — could not tell the target branch, confirm?", true
 			}
 			dst := tok
 			if i := strings.Index(tok, ":"); i >= 0 {
@@ -632,7 +672,15 @@ var reGitClean = segHeadRe(gitpfx + `clean\b`)
 var reGitBranchForceDelete = segHeadRe(gitpfx + `branch[[:space:]]+(-[a-zA-Z]*D|-[a-zA-Z]*(fd|df)|--delete[[:space:]]+--force|--force[[:space:]]+--delete)\b`)
 var reGitDiscardAll = segHeadRe(gitpfx + `(checkout([[:space:]]+--)?|restore)[[:space:]]+\.([[:space:]]|$)`)
 var reGitCommitHead = segHeadRe(gitpfx + `commit\b`)
-var reGitPush = segHeadRe(gitpfx + `push\b`)
+
+// envpfx tolerates a leading env-var assignment (`GIT_DIR=x git push`) —
+// without it reGitPush, anchored at the segment start, never matches a
+// literal "git" that has an assignment sitting in front of it, and the
+// whole push gate (and GitDirAmbiguous check inside pushNeedsConfirm) never
+// fires at all. Zero-or-more, so a plain `git push` still matches unchanged.
+const envpfx = `([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*`
+
+var reGitPush = segHeadRe(envpfx + gitpfx + `push\b`)
 var reGitAddHead = segHeadRe(gitpfx + `add\b`)
 var reGitAddAllContent = regexp.MustCompile(`(^|[[:space:]])(-A|--all|\.)([[:space:]]|$)`)
 var reGitConfigHead = segHeadRe(gitpfx + `config\b`)
