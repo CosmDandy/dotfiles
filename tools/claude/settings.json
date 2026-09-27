@@ -434,6 +434,17 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.dotfiles/tools/claude/hooks/stop-continue.sh"
+          }
+        ]
+      }
+    ],
     "StopFailure": [
       {
         "matcher": "",
