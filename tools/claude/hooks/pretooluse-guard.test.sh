@@ -287,6 +287,10 @@ chk ask  'git push origin +feat/x'                                 '+refspec'
 chk ask  'git push origin :old-branch'                             'удаление удалённой ветки через :'
 chk ask  'git push -d origin old-branch'                           'удаление через -d'
 chk ask  'git push --delete origin old-branch'                     'удаление через --delete'
+chk ask  'git push -fu origin feat/x'                              'слитый -fu (force+upstream)'
+chk ask  'git push --all origin'                                   '--all пушит все ветки'
+chk ask  'git push --mirror origin'                                '--mirror пушит всё'
+chk ask  "git push origin 'refs/heads/*:refs/heads/*'"             'glob refspec'
 # A bare `git push` resolves the current branch of the repo it runs in.
 PR="$(mktemp -d)"; git -C "$PR" init -q -b main; git -C "$PR" config user.email t@example.invalid; git -C "$PR" config user.name t
 git -C "$PR" commit -q --allow-empty -m init
@@ -294,6 +298,10 @@ N=$((N + 1)); pid=$(printf '%04d' "$N")
 got=$(jq -nc --arg c "git -C $PR push" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
 if [[ $got == ask ]]; then printf '%s\n  ok   ask   %s\n' "$SECTION" 'bare push на ветке main — ask'
 else printf '%s\n  FAIL ждали ask, получили %s: %s\n' "$SECTION" "${got:-pass}" 'bare push на ветке main'; fi > "$RES/$pid"
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push origin @" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ $got == ask ]]; then printf '%s\n  ok   ask   %s\n' "$SECTION" '@ трактуется как HEAD, на main — ask'
+else printf '%s\n  FAIL ждали ask, получили %s: %s\n' "$SECTION" "${got:-pass}" '@ трактуется как HEAD, на main'; fi > "$RES/$pid"
 git -C "$PR" checkout -q -b feat/x
 N=$((N + 1)); pid=$(printf '%04d' "$N")
 got=$(jq -nc --arg c "git -C $PR push -u origin HEAD" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
@@ -515,6 +523,30 @@ chk deny '/bin/sh -c "terraform destroy"'                          'шелл п�
 chk deny 'sh -c "echo hi" && bash -c "terraform destroy"'          'второй -c в той же строке'
 chk pass 'bash -lc "git status"'                                   'безобидное тело не поднимает гейт'
 
+section 'разбор: подстановка внутри export/local/declare/[[ ]]/(( ))/let/C-style for/${a[...]}'
+# A hand-enumerated type switch over Stmt.Cmd is exactly what missed these — each is a
+# distinct AST node the switch never listed, so a $(...) inside it never became a segment.
+chk deny 'export X=$(sudo ls)'                                     'export'
+chk deny 'local X=$(git reset --hard)'                             'local'
+chk deny '[[ -n $(git reset --hard) ]]'                            'test-clause [[ ]]'
+
+section 'разбор: shell -c за обёрткой (env/timeout/…), не только как первое слово'
+# expandShellC used to look only at Args[0]; a wrapper program ahead of the shell hid the
+# -c body from every rule that reads segments.
+chk deny "env bash -c 'git reset --hard'"                          'env bash -c'
+chk deny "timeout 5 sh -c 'terraform destroy'"                     'timeout sh -c'
+
+section 'разбор: shell -c виден даже когда фолбэк — не mvdan/sh-парс (zsh-синтаксис)'
+# The Bash tool runs zsh, so zsh-only syntax the real parser rejects is routine input; the
+# fallback split used to never look for `shell -c BODY` inside such text at all.
+chk deny 'echo ${(j:,:)a}; bash -c '\''sudo ls'\'''                'zsh (j:,:) — фолбэк, но -c виден'
+
+section 'has()/at(): совпадение не пересекает границу строки'
+# (?m) only changes what ^/$ mean; it does nothing to stop [^|] or [[:space:]] from eating a
+# literal \n, so an unrelated three-liner used to read as one exfiltration pipeline.
+chk pass $'set -euo pipefail\ntar czf - src | wc -c\ncurl -s https://example.com/health' \
+                                                                    'set / tar|wc / curl — три независимые строки'
+
 section 'префильтр GATED обязан быть суперсетом правил'
 # The exfiltration rule matches sink names as substrings while the prefilter used a
 # trailing word boundary. The mismatch made the ncat form invisible: a hard deny turned into
@@ -636,6 +668,13 @@ else
     }
     xchk deny "$C" "git -C $R commit -m wip"  'секрет в целевом репо найден через -C'
     xchk pass "$R" "git -C $C commit -m wip"  'чистый целевой репо не блокируется утечкой из cwd'
+    # A fake "-C" living in a heredoc-built commit message must not be mistaken for a real
+    # global flag: that sends `git -C <garbage> diff` to a path that does not exist, the
+    # scan fails, and the failure is (by design) treated as "nothing to block".
+    xchk deny "$R" 'git commit -m "$(cat <<'\''EOF'\''
+fix(guard): honour git -C paths
+EOF
+)"'                                        'фиктивный -C в тексте heredoc-сообщения коммита'
     rm -rf "$C"
   fi
   rm -rf "$R"

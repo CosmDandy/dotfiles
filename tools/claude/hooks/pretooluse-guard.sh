@@ -455,17 +455,22 @@ mentions chmod && seg_with 'chmod\b' '\b777\b'    && ask "chmod 777 — confirm?
 # allow a push from another directory would go out silently.
 # Pushing a feature branch is the normal end of an autonomous run, and a blanket
 # ask there waited 14–118 minutes for nobody in the audited sessions. What still
-# asks: a protected branch, --force, a remote delete, and a target it cannot tell.
+# asks: a protected branch, --force, a remote delete, --all/--mirror, a glob
+# refspec, and a target it cannot tell.
 PROTECTED_BRANCH_RE='^(refs/heads/)?(main|master|prod|production|release(/.*)?)$'
 current_branch() { git -C "$1" symbolic-ref --short HEAD 2>/dev/null; }
 # push_needs_confirm: prints the reason and returns 0 when the push must be confirmed.
 push_needs_confirm() {
   local seg dir rest remote has_ref dst tok
   while IFS= read -r seg; do
-    grep -qE -- '(^|[[:space:]])(-f|--force|--force-with-lease(=[^[:space:]]*)?)([[:space:]]|$)|[[:space:]]\+[^[:space:]]+' <<<"$seg" \
+    # NOTE: -[a-zA-Z]*f[a-zA-Z]* (not a bare -f) catches bundled forms like
+    # -fu/-uf — the same shape rm's recursive-flag detection uses for -r.
+    grep -qE -- '(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+' <<<"$seg" \
       && { echo "git push --force rewrites history — confirm?"; return 0; }
     grep -qE -- '(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+' <<<"$seg" \
       && { echo "git push deleting a remote branch — confirm?"; return 0; }
+    grep -qE -- '(^|[[:space:]])--(all|mirror)([[:space:]]|$)' <<<"$seg" \
+      && { echo "git push --all/--mirror pushes every branch — confirm?"; return 0; }
     dir=$(grep -Eo -- '-C[[:space:]]*[^[:space:]]+' <<<"$seg" | head -1 | sed -E 's/^-C[[:space:]]*//')
     rest=$(sed -E 's/^.*[[:space:]]push([[:space:]]|$)//' <<<"$seg")
     remote=''; has_ref=0
@@ -476,8 +481,9 @@ push_needs_confirm() {
       [[ $tok == -* || $tok == *[\<\>]* ]] && continue
       if [[ -z $remote ]]; then remote=$tok; continue; fi
       has_ref=1
+      [[ $tok == *'*'* ]] && { echo "git push with a glob refspec — confirm?"; return 0; }
       dst=${tok#*:}
-      [[ $dst == HEAD ]] && dst=$(current_branch "${dir:-$CWD}")
+      [[ $dst == HEAD || $dst == @ ]] && dst=$(current_branch "${dir:-$CWD}")
       [[ -z $dst ]] && { echo "git push — could not tell the target branch, confirm?"; return 0; }
       grep -qE "$PROTECTED_BRANCH_RE" <<<"$dst" && { echo "git push to a protected branch ($dst) — confirm?"; return 0; }
     done

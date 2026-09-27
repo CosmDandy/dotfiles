@@ -14,12 +14,24 @@ overhead on macOS, not by the guard's own logic).
 ## Layout
 
 - `main.go` — stdin JSON -> decision -> stdout JSON.
-- `parse.go` — splits a command into segments (`segs()`'s equivalent): one
-  per simple command at command position, including pipelines, `;`/`&&`/`||`/`&`
-  members, subshells, `$(...)`/backtick bodies, and — genuinely recursively,
-  unlike the bash version's single pass — the bodies of `shell -c '...'`
-  invocations. Falls back to a quote-unaware split (never a crash, never a
-  silent allow) when the input does not parse at all.
+- `parse.go` — splits a command into segments (`segs()`'s equivalent) by
+  walking the whole parsed tree with `syntax.Walk`, not a hand-enumerated
+  type switch (a hand-enumerated one is exactly what missed `export`/`local`/
+  `declare`, `[[ ]]`, `(( ))`, `let`, a C-style `for`, and a substitution
+  nested inside any of them). One segment per simple command at command
+  position, including pipelines, `;`/`&&`/`||`/`&` members, subshells,
+  `$(...)`/backtick bodies, and — genuinely recursively, unlike the bash
+  version's single `grep -Eo` pass, and at any argument position, not just
+  the first (`env`, `timeout`, `nohup`, `nice`, `xargs`, `find -exec`, `exec`,
+  `command`, `ssh` all hide a shell behind them) — the bodies of
+  `shell -c '...'` invocations. Falls back to a quote-unaware split when the
+  input does not parse at all (unbalanced quotes, or zsh-only syntax the
+  Bash tool runs directly and mvdan/sh, a bash/POSIX parser, rejects); the
+  fallback also extracts `shell -c '...'` bodies via the same regex bash's
+  own `shellc_bodies` uses, so a `-c` payload is never missed just because
+  the surrounding line does not parse. This reduces, but does not by itself
+  prove, the risk of a silent allow — see the port's own PROGRESS notes for
+  what is (and is not) covered.
 - `rules.go` — the rule table and its helper functions, ported 1:1 from the
   bash script.
 
@@ -43,7 +55,7 @@ cd tools/claude/guard
 go test ./...
 ```
 
-The bash behaviour suite (258 cases) runs against either implementation via
+The bash behaviour suite (290 cases) runs against either implementation via
 the `GUARD_HOOK` environment variable:
 
 ```sh

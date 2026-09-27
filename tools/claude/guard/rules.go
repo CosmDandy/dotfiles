@@ -14,7 +14,7 @@ import (
 type Ctx struct {
 	cmd  string
 	cwd  string
-	segs []string
+	segs []Segment
 
 	cdScratchDone bool
 	cdScratchVal  bool
@@ -64,24 +64,39 @@ var (
 
 func (c *Ctx) mentions(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
 
-// has() and at() go through grep in the bash guard, which treats the input
-// as a sequence of lines with ^/$ anchored per line — hence (?m) here, even
-// though most of these patterns never use an anchor.
-func hasPattern(pat string) *regexp.Regexp { return regexp.MustCompile(`(?m)` + pat) }
+// has() and at() go through grep in the bash guard, which never lets a match
+// span two lines — it hands its regex engine one line at a time, full stop,
+// not just a per-line ^/$. A Go (?m) flag only changes what ^/$ mean; it
+// does nothing to stop a class like [^|] or [[:space:]] from consuming a
+// literal \n and letting a match run from one line into the next (that
+// false "environment-variable exfiltration" on an unrelated `set -e` /
+// `curl` three-liner was exactly this). So both run their pattern against
+// each line of cmd independently, exactly like grep, and no (?m) is needed:
+// a single line's own ^/$ already mean its start/end by default.
+func hasPattern(pat string) *regexp.Regexp { return regexp.MustCompile(pat) }
 
-func (c *Ctx) has(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
+func matchesAnyLine(re *regexp.Regexp, text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if re.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Ctx) has(re *regexp.Regexp) bool { return matchesAnyLine(re, c.cmd) }
 
 const cp = `(^|[;&|]|&&|\|\|)[[:space:]]*`
 
-func atPattern(pat string) *regexp.Regexp { return regexp.MustCompile(`(?m)` + cp + pat) }
+func atPattern(pat string) *regexp.Regexp { return regexp.MustCompile(cp + pat) }
 
-func (c *Ctx) at(re *regexp.Regexp) bool { return re.MatchString(c.cmd) }
+func (c *Ctx) at(re *regexp.Regexp) bool { return matchesAnyLine(re, c.cmd) }
 
 // ---- seg_head/seg_with/seg_without ----------------------------------------
 
 func (c *Ctx) segHead(re *regexp.Regexp) bool {
 	for _, s := range c.segs {
-		if re.MatchString(s) {
+		if re.MatchString(s.Text) {
 			return true
 		}
 	}
@@ -91,7 +106,7 @@ func (c *Ctx) segHead(re *regexp.Regexp) bool {
 // segWith: some segment matches head AND that same segment matches content.
 func (c *Ctx) segWith(head, content *regexp.Regexp) bool {
 	for _, s := range c.segs {
-		if head.MatchString(s) && content.MatchString(s) {
+		if head.MatchString(s.Text) && content.MatchString(s.Text) {
 			return true
 		}
 	}
@@ -101,7 +116,7 @@ func (c *Ctx) segWith(head, content *regexp.Regexp) bool {
 // segWithout: some segment matches head but does NOT match content.
 func (c *Ctx) segWithout(head, content *regexp.Regexp) bool {
 	for _, s := range c.segs {
-		if head.MatchString(s) && !content.MatchString(s) {
+		if head.MatchString(s.Text) && !content.MatchString(s.Text) {
 			return true
 		}
 	}
@@ -153,10 +168,10 @@ func (c *Ctx) cdIntoScratch() bool {
 	}
 	c.cdScratchDone = true
 	for _, seg := range c.segs {
-		if !reCdHead.MatchString(seg) {
+		if !reCdHead.MatchString(seg.Text) {
 			continue
 		}
-		rest := reCdHead.ReplaceAllString(seg, "")
+		rest := reCdHead.ReplaceAllString(seg.Text, "")
 		if len(rest) > 0 && (rest[0] == '\'' || rest[0] == '"') {
 			rest = rest[1:]
 		}
@@ -186,12 +201,12 @@ var (
 
 func (c *Ctx) shellWritesAFile() bool {
 	for _, seg := range c.segs {
-		isCatTee := reCatTeeHead.MatchString(seg) && strings.Contains(seg, "<<")
-		isEchoPrintf := reEchoPrintfHead.MatchString(seg)
+		isCatTee := reCatTeeHead.MatchString(seg.Text) && strings.Contains(seg.Text, "<<")
+		isEchoPrintf := reEchoPrintfHead.MatchString(seg.Text)
 		if !isCatTee && !isEchoPrintf {
 			continue
 		}
-		s := seg
+		s := seg.Text
 		s = reQuotedRedirDbl.ReplaceAllString(s, "$1$2")
 		s = reQuotedRedirSgl.ReplaceAllString(s, "$1$2")
 		s = reDblQuotedSpan.ReplaceAllString(s, "")
@@ -227,10 +242,10 @@ func stripQuotedSpans(s string) string {
 
 func (c *Ctx) sedIOnOneFile() bool {
 	for _, seg := range c.segs {
-		if !reSedHead.MatchString(seg) || !reSedInPlace.MatchString(seg) {
+		if !reSedHead.MatchString(seg.Text) || !reSedInPlace.MatchString(seg.Text) {
 			continue
 		}
-		rest := stripQuotedSpans(seg)
+		rest := stripQuotedSpans(seg.Text)
 		rest = reFlagToken.ReplaceAllString(rest, "")
 		rest = reSedWordHead.ReplaceAllString(rest, "")
 		fields := strings.Fields(rest)
@@ -283,10 +298,10 @@ func (c *Ctx) onlyReadsRepoFiles() bool {
 	}
 	any := false
 	for _, seg := range c.segs {
-		if strings.TrimSpace(seg) == "" {
+		if strings.TrimSpace(seg.Text) == "" {
 			continue
 		}
-		s := reTrailFDNoTarget.ReplaceAllString(seg, "")
+		s := reTrailFDNoTarget.ReplaceAllString(seg.Text, "")
 		s = reDevNullRedir.ReplaceAllString(s, "")
 		if strings.Contains(s, "<<") || strings.Contains(s, ">") {
 			return false
@@ -356,10 +371,10 @@ var (
 
 func (c *Ctx) rmHasUnsafeTarget() bool {
 	for _, seg := range c.segs {
-		if !reRmHead.MatchString(seg) || !reRmRecursive.MatchString(seg) {
+		if !reRmHead.MatchString(seg.Text) || !reRmRecursive.MatchString(seg.Text) {
 			continue
 		}
-		for _, tok := range reNonFlagToken.FindAllString(seg, -1) {
+		for _, tok := range reNonFlagToken.FindAllString(seg.Text, -1) {
 			t := tok
 			if len(t) > 0 && isSpaceByte(t[0]) {
 				t = t[1:]
@@ -397,10 +412,10 @@ var (
 
 func (c *Ctx) curlWritesAFile() bool {
 	for _, seg := range c.segs {
-		if !reCurlBareHead.MatchString(seg) {
+		if !reCurlBareHead.MatchString(seg.Text) {
 			continue
 		}
-		for _, m := range reCurlOutputFlag.FindAllString(seg, -1) {
+		for _, m := range reCurlOutputFlag.FindAllString(seg.Text, -1) {
 			v := reCurlOutputPrefix.ReplaceAllString(m, "")
 			if len(v) > 0 && (v[0] == '"' || v[0] == '\'') {
 				v = v[1:]
@@ -418,14 +433,17 @@ func (c *Ctx) curlWritesAFile() bool {
 //
 // Pushing a feature branch is the normal end of an autonomous run, and a blanket
 // ask there waited 14–118 minutes for nobody in the audited sessions. What still
-// asks: a protected branch, --force, a remote delete, and a target it cannot tell.
+// asks: a protected branch, --force, a remote delete, --all/--mirror, a glob
+// refspec, and a target it cannot tell.
 
 var (
 	reProtectedBranch = regexp.MustCompile(`^(refs/heads/)?(main|master|prod|production|release(/.*)?)$`)
-	rePushForce       = regexp.MustCompile(`(^|[[:space:]])(-f|--force|--force-with-lease(=[^[:space:]]*)?)([[:space:]]|$)|[[:space:]]\+[^[:space:]]+`)
-	rePushDelete      = regexp.MustCompile(`(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+`)
-	rePushAfter       = regexp.MustCompile(`[[:space:]]push([[:space:]]|$)`)
-	reGitCDirPrefix   = regexp.MustCompile(`^-C[[:space:]]*`)
+	// (^|space)-<flags containing f><space|$) catches bundled forms (-fu, -uf),
+	// not just a bare -f — the same shape rm's -[a-zA-Z]*[rR][a-zA-Z]* uses for -r.
+	rePushForce     = regexp.MustCompile(`(^|[[:space:]])-[a-zA-Z]*f[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--force(-with-lease(=[^[:space:]]*)?)?([[:space:]]|$)|[[:space:]]\+[^[:space:]]+`)
+	rePushDelete    = regexp.MustCompile(`(^|[[:space:]])(-d|--delete)([[:space:]]|$)|[[:space:]]:[^[:space:]]+`)
+	rePushAllMirror = regexp.MustCompile(`(^|[[:space:]])--(all|mirror)([[:space:]]|$)`)
+	rePushAfter     = regexp.MustCompile(`[[:space:]]push([[:space:]]|$)`)
 )
 
 // currentBranch resolves the checked-out branch of dir, "" when it cannot.
@@ -441,22 +459,29 @@ func currentBranch(dir string) string {
 // ask, or "" and false for a silent feature-branch push.
 func (c *Ctx) pushNeedsConfirm() (string, bool) {
 	for _, seg := range c.segs {
-		if !reGitPush.MatchString(seg) {
+		if !reGitPush.MatchString(seg.Text) {
 			continue
 		}
-		if rePushForce.MatchString(seg) {
+		if rePushForce.MatchString(seg.Text) {
 			return "git push --force rewrites history — confirm?", true
 		}
-		if rePushDelete.MatchString(seg) {
+		if rePushDelete.MatchString(seg.Text) {
 			return "git push deleting a remote branch — confirm?", true
 		}
+		if rePushAllMirror.MatchString(seg.Text) {
+			return "git push --all/--mirror pushes every branch — confirm?", true
+		}
+		// -C is resolved from the parsed argument words (seg.GitCDir), not by
+		// regex over seg.Text: the text can contain an unrelated "-C" living
+		// inside a heredoc body nested in some other argument, and a text
+		// search cannot tell that occurrence from a real global flag.
 		dir := c.cwd
-		if m := reGitCDir.FindString(seg); m != "" {
-			dir = strings.TrimSpace(reGitCDirPrefix.ReplaceAllString(m, ""))
+		if seg.HasGitCDir {
+			dir = seg.GitCDir
 		}
 		rest := ""
-		if loc := rePushAfter.FindStringIndex(seg); loc != nil {
-			rest = seg[loc[1]:]
+		if loc := rePushAfter.FindStringIndex(seg.Text); loc != nil {
+			rest = seg.Text[loc[1]:]
 		}
 		remote, hasRef := "", false
 		for _, tok := range strings.Fields(rest) {
@@ -469,11 +494,14 @@ func (c *Ctx) pushNeedsConfirm() (string, bool) {
 				continue
 			}
 			hasRef = true
+			if strings.Contains(tok, "*") {
+				return "git push with a glob refspec — confirm?", true
+			}
 			dst := tok
 			if i := strings.Index(tok, ":"); i >= 0 {
 				dst = tok[i+1:]
 			}
-			if dst == "HEAD" {
+			if dst == "HEAD" || dst == "@" {
 				dst = currentBranch(dir)
 			}
 			if dst == "" {
@@ -504,18 +532,21 @@ var gitleaksPath, gitleaksErr = exec.LookPath("gitleaks")
 
 func gitleaksAvailable() bool { return gitleaksErr == nil }
 
-var reGitCDir = regexp.MustCompile(`-C[[:space:]]*[^[:space:]]+`)
-
-// commitTargetDir extracts the -C directory of the first `git ... commit`
-// segment, if any, the same way the bash guard's grep -Eo | sed does.
+// commitTargetDir returns the -C directory of the first `git ... commit`
+// segment that HAS one — mirroring the bash guard's `grep -Eo ... | head -1`
+// over every matching segment's -C occurrences, which does not stop at the
+// first commit segment either: a `git commit -m a; git -C /other commit -m b`
+// with the secret staged only in /other must still resolve to /other, even
+// though the first commit segment has no -C of its own.
+//
+// -C comes from seg.GitCDir (resolved structurally from the argument words at
+// parse time), never from a regex over seg.Text — a commit message built
+// from `$(cat <<'EOF' ... git -C ... EOF)` puts a heredoc body inside the
+// segment's own text, and a text search cannot tell that from a real flag.
 func (c *Ctx) commitTargetDir() string {
 	for _, seg := range c.segs {
-		if reGitCommitHead.MatchString(seg) {
-			m := reGitCDir.FindString(seg)
-			if m == "" {
-				return ""
-			}
-			return strings.TrimSpace(regexp.MustCompile(`^-C[[:space:]]*`).ReplaceAllString(m, ""))
+		if reGitCommitHead.MatchString(seg.Text) && seg.HasGitCDir {
+			return seg.GitCDir
 		}
 	}
 	return ""
@@ -720,7 +751,7 @@ func evaluate(c *Ctx) Decision {
 
 	// ---- Interpreters: judge the code, not the command name ----
 	if c.mentions(mPythonNode) && c.has(reInterp) {
-		if c.has(reInterpWrite) && !reScratchAny.MatchString(c.cmd) {
+		if c.has(reInterpWrite) && !c.has(reScratchAny) {
 			return deny(`patching a file from an interpreter — that is Edit; a helper script lives in $CLAUDE_JOB_DIR/tmp and runs from there`)
 		}
 		if c.has(reInterpShellOut) {

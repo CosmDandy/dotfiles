@@ -11,14 +11,37 @@ import (
 // pathological input (self-referential -c chains) cannot blow the stack.
 const maxShellCDepth = 20
 
+// maxSubstNesting is a cheap pre-parse guard against pathological
+// $(...)-in-$(...) nesting (e.g. `echo $($($(...)))` thousands deep), which
+// makes both mvdan/sh's parser and our own AST walk slow and memory-hungry.
+// It is a rough, quote-unaware scan on purpose — a safety valve, not a
+// correctness check — so a false trip just means an extra fallback split,
+// never a crash or a silent allow.
+const maxSubstNesting = 256
+
+// Segment is one simple command at command position — see ParseResult.
+// GitCDir/HasGitCDir hold the -C directory of a `git`-headed segment,
+// resolved structurally from its argument words (see gitDashCFlag) rather
+// than by regex over Text: Text may itself contain an embedded "-C" that
+// belongs to a heredoc body nested inside an argument (e.g. a commit
+// message built from `$(cat <<'EOF' ... EOF)`), and a text search cannot
+// tell that occurrence from a real global flag.
+type Segment struct {
+	Text       string
+	GitCDir    string
+	HasGitCDir bool
+}
+
 // ParseResult is the outcome of splitting a command into segments, mirroring
 // the bash guard's segs(): one entry per simple command at command position
 // (pipeline/;/&&/||/& members, subshells, $(...) and backtick bodies, and the
-// recursively-parsed bodies of `shell -c '...'` invocations). Heredoc bodies
-// are never turned into segments — they are data, not commands — even though
-// the raw command text (used by has()) still contains them verbatim.
+// recursively-parsed bodies of `shell -c '...'` invocations, wherever in the
+// command line they occur — behind env/timeout/nohup/nice/xargs/find -exec/
+// exec/command/ssh, or bare). Heredoc bodies are never turned into segments —
+// they are data, not commands — even though the raw command text (used by
+// has()) still contains them verbatim.
 type ParseResult struct {
-	Segments []string
+	Segments []Segment
 	Fallback bool // true when mvdan/sh could not parse the command at all
 }
 
@@ -36,21 +59,56 @@ var (
 // a quote-unaware split, per spec: never crash, never silently allow — has()
 // rules still run against the raw text regardless of which path was taken.
 func parseCommand(cmd string) ParseResult {
-	parser := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.RecoverErrors(1000))
+	return parseCommandDepth(cmd, 0)
+}
+
+// parseCommandDepth is parseCommand with an explicit shell-c nesting depth,
+// threaded through so maxShellCDepth actually bounds recursion (a top-level
+// call to parseCommand always starts at 0; expandShellC below is the only
+// other caller, and it passes depth+1).
+func parseCommandDepth(cmd string, depth int) ParseResult {
+	if depth < maxShellCDepth && exceedsSubstNesting(cmd, maxSubstNesting) {
+		return ParseResult{Segments: fallbackSegments(cmd, depth), Fallback: true}
+	}
+	parser := syntax.NewParser(syntax.Variant(syntax.LangBash))
 	f, err := parser.Parse(strings.NewReader(cmd), "")
 	if err != nil || f == nil {
-		return ParseResult{Segments: fallbackSplit(cmd), Fallback: true}
+		// NOTE: no RecoverErrors here on purpose. It used to let the parser
+		// swallow an unparsed tail silently (err == nil, the bad statement
+		// just missing from f.Stmts) instead of routing to the fallback,
+		// which is the one path guaranteed to still run has()/at() on the
+		// raw text. A real syntax error must always reach the fallback.
+		return ParseResult{Segments: fallbackSegments(cmd, depth), Fallback: true}
 	}
 	src := []byte(cmd)
-	var out []string
-	collectStmts(src, f.Stmts, &out, 0)
-	return ParseResult{Segments: out}
+	return ParseResult{Segments: collectSegments(src, f, depth)}
+}
+
+// exceedsSubstNesting is a rough, quote-unaware scan for "$(" nesting beyond
+// limit. It over-triggers on quoted/escaped "$(" text, which is fine: this
+// only ever pushes a command onto the (still-safe) fallback path early.
+func exceedsSubstNesting(cmd string, limit int) bool {
+	depth := 0
+	for i := 0; i < len(cmd); i++ {
+		switch {
+		case cmd[i] == '$' && i+1 < len(cmd) && cmd[i+1] == '(':
+			depth++
+			if depth > limit {
+				return true
+			}
+			i++
+		case cmd[i] == ')' && depth > 0:
+			depth--
+		}
+	}
+	return false
 }
 
 // fallbackSplit is the dumb, quote-unaware split used only when the real
-// parser rejects the command outright (unbalanced quotes, unclosed heredoc —
-// inputs a model does sometimes produce). It mirrors the separator set the
-// bash splitter uses at the character level: ; | & ( ) and backtick.
+// parser rejects the command outright (unbalanced quotes, unclosed heredoc,
+// zsh-only syntax the Bash tool runs directly — inputs a model does sometimes
+// produce). It mirrors the separator set the bash splitter uses at the
+// character level: ; | & ( ) and backtick.
 //
 // It also splits on a bare newline. This is a deliberate deviation from a
 // literal ; | & ( ) ` -only split: an unclosed heredoc (mvdan/sh cannot
@@ -80,17 +138,97 @@ func fallbackSplit(cmd string) []string {
 	return segs
 }
 
-func collectStmts(src []byte, stmts []*syntax.Stmt, out *[]string, depth int) {
-	for _, st := range stmts {
-		collectStmt(src, st, out, depth)
+// reFallbackShellC finds `[/path/]shell [flags] -c BODY` anywhere in raw
+// text, the same shape bash's SHELLC_RE matches with grep -Eo — used only on
+// the fallback path, where there is no AST to walk. Body is the last capture
+// group (quoted or a single bare word).
+var reFallbackShellC = regexp.MustCompile(`(^|[[:space:]])([^[:space:]]*/)?(zsh|bash|sh|dash|ksh)([[:space:]]+(-o[[:space:]]+[^[:space:]]+|--[a-z][a-z-]*|-[a-zA-Z]+))*[[:space:]]+-[a-zA-Z]*c[[:space:]]+("[^"]*"|'[^']*'|[^[:space:]]+)`)
+
+// fallbackSegments is fallbackSplit plus, for every `shell -c BODY` found
+// anywhere in the raw text, BODY's own fallback-split segments (recursively,
+// since BODY can itself contain another `shell -c ...`). Without this, the
+// fallback path — reached whenever mvdan/sh cannot parse the command at all —
+// would never look inside a -c body, unlike bash's shellc_bodies, which
+// always runs on raw text regardless of what else parses.
+func fallbackSegments(cmd string, depth int) []Segment {
+	texts := fallbackSplit(cmd)
+	texts = append(texts, fallbackShellCBodies(cmd, depth)...)
+	segs := make([]Segment, len(texts))
+	for i, t := range texts {
+		segs[i] = Segment{Text: t}
 	}
+	return segs
+}
+
+func fallbackShellCBodies(cmd string, depth int) []string {
+	if depth >= maxShellCDepth {
+		return nil
+	}
+	var out []string
+	for _, m := range reFallbackShellC.FindAllStringSubmatch(cmd, -1) {
+		body := stripOuterQuotes(m[len(m)-1])
+		if body == "" {
+			continue
+		}
+		out = append(out, fallbackSplit(body)...)
+		out = append(out, fallbackShellCBodies(body, depth+1)...)
+	}
+	return out
+}
+
+// collectSegments walks the whole parsed tree with syntax.Walk rather than a
+// hand-enumerated type switch. A hand-enumerated switch is exactly what used
+// to miss DeclClause (export/local/declare/readonly), TestClause ([[ ]]),
+// ArithmCmd ((( ))), LetClause, a C-style for's Init/Cond/Post, and a
+// substitution nested inside any of those (${a[$(...)]}, $(( $(...) + 1 )))
+// — Walk's own type switch in the syntax package already knows how to
+// recurse into every one of them, so there is nothing left to hand-list.
+func collectSegments(src []byte, root syntax.Node, depth int) []Segment {
+	var out []Segment
+	skipHdoc := map[*syntax.Word]bool{}
+	var visit func(syntax.Node) bool
+	visit = func(n syntax.Node) bool {
+		switch v := n.(type) {
+		case *syntax.Redirect:
+			if v.Hdoc != nil {
+				// The heredoc BODY is data, never a segment — matching the
+				// bash guard's split-vs-has asymmetry. The tag (v.Word) is
+				// still walked normally, below.
+				skipHdoc[v.Hdoc] = true
+			}
+		case *syntax.Word:
+			if skipHdoc[v] {
+				return false
+			}
+		case *syntax.Stmt:
+			if cmd, ok := v.Cmd.(*syntax.CallExpr); ok {
+				end := cmd.End()
+				for _, r := range v.Redirs {
+					if re := redirEnd(r); re.Offset() > end.Offset() {
+						end = re
+					}
+				}
+				if text := offsetSlice(src, v.Pos(), end); text != "" {
+					seg := Segment{Text: text}
+					if isGitInvocation(src, cmd) {
+						seg.GitCDir, seg.HasGitCDir = gitDashCFlag(src, cmd.Args)
+					}
+					out = append(out, seg)
+				}
+				expandShellC(src, cmd, &out, depth)
+			}
+		}
+		return true
+	}
+	syntax.Walk(root, visit)
+	return out
 }
 
 // redirEnd is like (*syntax.Redirect).End(), except for a heredoc it stops
 // right after the opening tag instead of extending through the body — the
-// heredoc body is data, not part of any segment (see the package doc on
-// Segments), even though the real Redirect.End() spans all the way to the
-// terminator line to support round-tripping the source.
+// heredoc body is data, not part of any segment, even though the real
+// Redirect.End() spans all the way to the terminator line to support
+// round-tripping the source.
 func redirEnd(r *syntax.Redirect) syntax.Pos {
 	if r.Hdoc != nil {
 		return r.Word.End()
@@ -106,162 +244,118 @@ func offsetSlice(src []byte, start, end syntax.Pos) string {
 	return string(src[so:eo])
 }
 
-func collectStmt(src []byte, st *syntax.Stmt, out *[]string, depth int) {
-	if st == nil {
-		return
+func basename(s string) string {
+	if idx := strings.LastIndexByte(s, '/'); idx >= 0 {
+		return s[idx+1:]
 	}
-	switch cmd := st.Cmd.(type) {
-	case *syntax.CallExpr:
-		end := cmd.End()
-		for _, r := range st.Redirs {
-			if re := redirEnd(r); re.Offset() > end.Offset() {
-				end = re
-			}
-		}
-		if text := offsetSlice(src, st.Pos(), end); text != "" {
-			*out = append(*out, text)
-		}
-		for _, a := range cmd.Assigns {
-			scanWord(src, a.Value, out, depth)
-			if a.Array != nil {
-				for _, el := range a.Array.Elems {
-					scanWord(src, el.Value, out, depth)
-				}
-			}
-		}
-		for _, w := range cmd.Args {
-			scanWord(src, w, out, depth)
-		}
-		expandShellC(src, cmd, out, depth)
-	case *syntax.BinaryCmd:
-		collectStmt(src, cmd.X, out, depth)
-		collectStmt(src, cmd.Y, out, depth)
-	case *syntax.Subshell:
-		collectStmts(src, cmd.Stmts, out, depth)
-	case *syntax.Block:
-		collectStmts(src, cmd.Stmts, out, depth)
-	case *syntax.IfClause:
-		for ic := cmd; ic != nil; ic = ic.Else {
-			collectStmts(src, ic.Cond, out, depth)
-			collectStmts(src, ic.Then, out, depth)
-		}
-	case *syntax.WhileClause:
-		collectStmts(src, cmd.Cond, out, depth)
-		collectStmts(src, cmd.Do, out, depth)
-	case *syntax.ForClause:
-		if wi, ok := cmd.Loop.(*syntax.WordIter); ok {
-			for _, w := range wi.Items {
-				scanWord(src, w, out, depth)
-			}
-		}
-		collectStmts(src, cmd.Do, out, depth)
-	case *syntax.CaseClause:
-		scanWord(src, cmd.Word, out, depth)
-		for _, item := range cmd.Items {
-			collectStmts(src, item.Stmts, out, depth)
-		}
-	case *syntax.FuncDecl:
-		collectStmt(src, cmd.Body, out, depth)
-	case *syntax.TimeClause:
-		collectStmt(src, cmd.Stmt, out, depth)
-	case *syntax.CoprocClause:
-		collectStmt(src, cmd.Stmt, out, depth)
-	}
-	for _, r := range st.Redirs {
-		// The heredoc TAG (r.Word) is scanned like any other word; the heredoc
-		// BODY (r.Hdoc) is deliberately skipped — it is data for has(), never a
-		// segment, matching the bash guard's split-vs-has asymmetry.
-		scanWord(src, r.Word, out, depth)
-	}
+	return s
 }
 
-func scanWord(src []byte, w *syntax.Word, out *[]string, depth int) {
-	if w == nil {
-		return
-	}
-	for _, p := range w.Parts {
-		scanWordPart(src, p, out, depth)
-	}
+func isGitInvocation(src []byte, cmd *syntax.CallExpr) bool {
+	return len(cmd.Args) > 0 && basename(wordLiteral(src, cmd.Args[0])) == "git"
 }
 
-func scanWordPart(src []byte, p syntax.WordPart, out *[]string, depth int) {
-	switch x := p.(type) {
-	case *syntax.CmdSubst:
-		collectStmts(src, x.Stmts, out, depth)
-	case *syntax.ProcSubst:
-		collectStmts(src, x.Stmts, out, depth)
-	case *syntax.DblQuoted:
-		for _, pp := range x.Parts {
-			scanWordPart(src, pp, out, depth)
-		}
-	case *syntax.ParamExp:
-		if x.Repl != nil {
-			scanWord(src, x.Repl.Orig, out, depth)
-			scanWord(src, x.Repl.With, out, depth)
-		}
-		if x.Exp != nil {
-			scanWord(src, x.Exp.Word, out, depth)
+// gitDashCFlag scans a git invocation's own global flags (args[1:], stopping
+// at the first token that is not one of them — the subcommand or anything
+// else) for -C, structurally rather than by regex over the segment's text.
+// It mirrors the GITPFX grammar in rules.go: -C/-c (separate or bundled),
+// --git-dir/--work-tree/--namespace/--exec-path (separate or =value), -p/-P,
+// and the handful of no-value long flags. Only the FIRST -C is kept, like
+// the bash guard's `head -1` over its own (also structurally first) match.
+func gitDashCFlag(src []byte, args []*syntax.Word) (dir string, ok bool) {
+	i := 1
+	for i < len(args) {
+		lit := wordLiteral(src, args[i])
+		switch {
+		case lit == "-C":
+			if !ok && i+1 < len(args) {
+				dir, ok = wordLiteral(src, args[i+1]), true
+			}
+			i += 2
+		case strings.HasPrefix(lit, "-C") && len(lit) > 2:
+			if !ok {
+				dir, ok = lit[2:], true
+			}
+			i++
+		case lit == "-c":
+			i += 2
+		case strings.HasPrefix(lit, "-c") && len(lit) > 2:
+			i++
+		case lit == "--git-dir" || lit == "--work-tree" || lit == "--namespace" || lit == "--exec-path":
+			i += 2
+		case strings.HasPrefix(lit, "--git-dir=") || strings.HasPrefix(lit, "--work-tree=") ||
+			strings.HasPrefix(lit, "--namespace=") || strings.HasPrefix(lit, "--exec-path="):
+			i++
+		case lit == "-p" || lit == "-P":
+			i++
+		case lit == "--paginate" || lit == "--no-pager" || lit == "--bare" || lit == "--literal-pathspecs" ||
+			lit == "--no-optional-locks" || lit == "--no-replace-objects" || lit == "--no-lazy-fetch":
+			i++
+		default:
+			return dir, ok
 		}
 	}
+	return dir, ok
 }
 
 // expandShellC recognises `[/path/to/]shell [flags] -c BODY` (zsh, bash, sh,
 // dash, ksh; flags bundled like -lc/-ec/-ic/-xc, or spelled out as --login,
 // -o pipefail, etc. — the same shapes SHELLC_FLAGS in the bash guard allows)
-// and recursively parses BODY as its own script, folding its segments into
-// out. Unlike the bash guard, which extracts only one level via a single
+// at ANY position among a call's arguments — not just Args[0] — and
+// recursively parses BODY as its own script, folding its segments into out.
+// Scanning every position is what catches `env bash -c '...'`,
+// `timeout 10 sh -c "..."`, `nohup zsh -lc '...' &`, `nice -n 5 ksh -c '...'`,
+// `xargs -I{} sh -c '...'`, `find . -exec bash -c '...' \;`,
+// `exec bash -c '...'`, `command bash -c '...'`, `ssh host bash -c '...'` —
+// bash's own shellc_bodies already gets these for free because it greps the
+// raw text for the shell name with no regard for what precedes it; matching
+// only Args[0] here missed every one of them.
+//
+// Unlike the bash guard, which extracts only one level via a single
 // grep -Eo pass, this recurses fully: a nested `bash -c "zsh -c '...'"` is
-// unwound all the way down (bounded by maxShellCDepth).
-func expandShellC(src []byte, cmd *syntax.CallExpr, out *[]string, depth int) {
-	if depth >= maxShellCDepth || len(cmd.Args) == 0 {
+// unwound all the way down (bounded by maxShellCDepth, now actually enforced
+// since the depth is threaded through parseCommandDepth).
+func expandShellC(src []byte, cmd *syntax.CallExpr, out *[]Segment, depth int) {
+	if depth >= maxShellCDepth {
 		return
 	}
-	name := wordLiteral(src, cmd.Args[0])
-	if idx := strings.LastIndexByte(name, '/'); idx >= 0 {
-		name = name[idx+1:]
-	}
-	if !shellCNames[name] {
-		return
-	}
-	i := 1
-	for i < len(cmd.Args) {
-		lit := wordLiteral(src, cmd.Args[i])
-		switch {
-		case lit == "-o":
-			i += 2 // "-o value"
-		case reLongFlag.MatchString(lit):
-			i++
-		case reShortC.MatchString(lit):
-			if i+1 >= len(cmd.Args) {
-				return
-			}
-			body := rawWordText(src, cmd.Args[i+1])
-			body = stripOuterQuotes(body)
-			if body == "" {
-				return
-			}
-			inner := parseCommand(body)
-			collectFromSource(inner, out)
-			if inner.Fallback {
-				// Recursion into a fallback split cannot go deeper reliably;
-				// stop here rather than mis-splitting further.
-				return
-			}
-			return
-		case reShortFlags.MatchString(lit):
-			i++
-		default:
-			return
+	for j := 0; j < len(cmd.Args); j++ {
+		if !shellCNames[basename(wordLiteral(src, cmd.Args[j]))] {
+			continue
 		}
+		body := shellCBodyAt(src, cmd.Args, j+1)
+		if body == "" {
+			continue
+		}
+		inner := parseCommandDepth(body, depth+1)
+		*out = append(*out, inner.Segments...)
 	}
 }
 
-// collectFromSource merges a recursively-parsed sub-result's segments,
-// re-running the shellc expansion for that nested body too (parseCommand
-// already recursed into further nested -c bodies via expandShellC, since
-// collectStmt calls it — this just appends what it produced).
-func collectFromSource(r ParseResult, out *[]string) {
-	*out = append(*out, r.Segments...)
+// shellCBodyAt scans args[start:] for FLAGS* -c BODY (bundled or spelled
+// out, as bash's SHELLC_FLAGS allows) and returns BODY's unquoted text, or ""
+// if the flags never resolve to a -c invocation.
+func shellCBodyAt(src []byte, args []*syntax.Word, start int) string {
+	i := start
+	for i < len(args) {
+		lit := wordLiteral(src, args[i])
+		switch {
+		case lit == "-o":
+			i += 2
+		case reLongFlag.MatchString(lit):
+			i++
+		case reShortC.MatchString(lit):
+			if i+1 >= len(args) {
+				return ""
+			}
+			return stripOuterQuotes(rawWordText(src, args[i+1]))
+		case reShortFlags.MatchString(lit):
+			i++
+		default:
+			return ""
+		}
+	}
+	return ""
 }
 
 // wordLiteral returns the literal value of a word when possible (via the
