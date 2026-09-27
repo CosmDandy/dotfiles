@@ -127,14 +127,19 @@ relative speedup is what carries over, not the absolute millisecond count.
 
 ## Switching things over
 
-Not done by writing this binary — see the dotfiles-repo-level commit that
-switches `tools/claude/settings.json` (all four hooks + the statusline
-command) and `tools/tmux/.tmux.conf`'s `set-titles-string`, and deletes the
-five replaced scripts, once `parity.test.sh` is green. Both the tmux and
-the statusline invocation are wrapped so a missing binary (e.g. before
-`/nix` mounts, ~11s after login on macOS) prints nothing and exits 0 rather
-than showing an error where a status line used to be — see that commit for
-the exact wrapper.
+Done: `tools/claude/settings.json` (the opsctx and bashhint hooks, and the
+statusLine command) and `tools/tmux/.tmux.conf`'s `set-titles-string` all
+point at `wrapper.sh <subcommand>` now, and the five replaced scripts are
+gone — see the commit that made the switch for the 70/70 parity run that
+gated it. `wrapper.sh` execs `./claude-cli` next to itself and exits 0
+silently when the binary is not there yet (e.g. before `/nix` mounts,
+~11s after login on macOS, or on a fresh clone before the first `go
+build`/`nix build`), so a missing binary means an empty statusline/title,
+never a visible error where one used to be.
+
+`parity.test.sh` still lives here as the record of that migration; once
+the originals are gone (they are) it exits 0 immediately rather than
+failing forever — see the file for the exact check.
 
 ## The guard subcommand — not wired in
 

@@ -15,7 +15,7 @@ let
     # CLI
     eza
     fd
-    jq # statusline.sh parses the payload with it — without jq the line is empty
+    jq # several hooks (guard, lint, read, session lifecycle) parse JSON with it
     ripgrep
     starship
     neovim

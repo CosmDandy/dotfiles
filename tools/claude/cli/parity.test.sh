@@ -22,6 +22,16 @@ OLD_PANETITLE="$REPO_ROOT/tools/tmux/pane-title.sh"
 OLD_OPSCTX="$REPO_ROOT/tools/claude/hooks/pretooluse-opsctx.sh"
 BASHHINT_TEST="$REPO_ROOT/tools/claude/hooks/posttooluse-bashhint.test.sh"
 
+# This suite gated the switch commit that deleted the five originals (see
+# that commit's message for the last real 70/70 run). Once they are gone
+# there is nothing left to compare against, so this is a deliberate no-op,
+# not a failure — the historical proof lives in git log, not in a test that
+# would otherwise fail forever.
+if [[ ! -f $OLD_STATUSLINE ]]; then
+  echo "originals already removed (see git log for the pre-switch 70/70 parity run) — nothing to compare, skipping"
+  exit 0
+fi
+
 pass=0 fail=0
 ok()  { pass=$((pass + 1)); printf '  ok    %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf '  FAIL  %s\n' "$1"; [[ $# -gt 1 ]] && printf '        %s\n' "$2"; }

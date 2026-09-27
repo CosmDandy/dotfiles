@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# Behaviour tests for posttooluse-bashhint.sh.
+# Behaviour tests for the PostToolUse(Failure) bash-trap hint — `claude-cli bashhint`
+# (tools/claude/cli), the Go port of what used to be posttooluse-bashhint.sh.
 #
 # Each case is the shape of a real tool result from a transcript: the hook must answer with
 # a hint on exactly these and stay silent on everything else — a hint on every Bash call
 # would be noise the model learns to skip.
 #
 # Usage: bash tools/claude/hooks/posttooluse-bashhint.test.sh
-# Needs jq (so does the hook).
+# Needs jq and, unless BASHHINT_HOOK is set, go (to build claude-cli on the fly).
 # NOTE: no `set -e` — the test counts failures and must reach the end.
 set -uo pipefail
 
-# BASHHINT_HOOK, like the guard test's GUARD_HOOK, points this suite at another
-# implementation — e.g. "/path/to/claude-cli bashhint" for the Go port. Word-split on
-# purpose: a binary plus its subcommand is two words, not one path.
+# BASHHINT_HOOK, like the guard test's GUARD_HOOK, points this suite at a specific
+# implementation — e.g. "/path/to/claude-cli bashhint". Word-split on purpose: a binary
+# plus its subcommand is two words, not one path. Unset, it builds claude-cli fresh.
 if [[ -n ${BASHHINT_HOOK:-} ]]; then
   # shellcheck disable=SC2206
   HOOK_CMD=($BASHHINT_HOOK)
 else
-  HOOK_CMD=("$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/posttooluse-bashhint.sh")
+  CLI_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../cli" && pwd)"
+  BIN="$(mktemp -d)/claude-cli"
+  (cd "$CLI_DIR" && go build -o "$BIN" .) || { echo "сборка claude-cli не удалась"; exit 2; }
+  HOOK_CMD=("$BIN" bashhint)
 fi
 [[ -x ${HOOK_CMD[0]} ]] || { echo "не найден исполняемый ${HOOK_CMD[0]}"; exit 2; }
 command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
