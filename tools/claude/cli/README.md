@@ -158,13 +158,15 @@ library (a decision for whoever owns that module), wiring it in here is a
 five-line subcommand: parse stdin the same way, call the library, emit the
 same JSON.
 
-## Linux / devcontainer build
+## Where the binary comes from
 
-Not yet wired into `platform/linux/install.sh` or
-`platform/nix/home/default.nix` — `claude-guard` itself isn't wired into
-`home.packages` yet either (same "not done on purpose, owner decides"
-status as its own README states), so there's no existing "where claude-cli
-would go" slot to drop this into. The Nix package builds and runs
-correctly cross-platform (`buildGoModule` targets `x86_64-linux` and
-`aarch64-linux` too, in `packages.<system>.claude-cli`); it has not been
-built or run on an actual Linux devcontainer in this change.
+`packages.<system>.claude-cli` in `platform/nix/flake.nix` is in the profile
+on every machine: `home.packages` (`platform/nix/home/default.nix`) on Linux
+and the devcontainer, `environment.systemPackages`
+(`platform/nix/darwin-configuration.nix`) on the mac — handed in as the
+`claudeTools` special arg. `wrapper.sh` looks next to itself first (a local
+`go build -o claude-cli .`), then on PATH, and exits 0 silently when neither
+exists, so a statusline never shows an error — check with
+`command -v claude-cli` if it went blank. Built and run on aarch64-darwin;
+the Linux package evaluates but has not been run on a devcontainer in this
+change.

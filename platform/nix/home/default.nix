@@ -2,6 +2,11 @@
   pkgs,
   lib,
   profile,
+  # The Go hooks (tools/claude/guard, tools/claude/cli), built from this flake's
+  # own packages and handed in by mkHome. tools/claude/cli/wrapper.sh finds
+  # claude-cli on PATH through this; the mac gets the same pair via
+  # systemPackages in darwin-configuration.nix.
+  claudeTools,
   ...
 }:
 let
@@ -41,6 +46,8 @@ let
     # on the devpod that fallback costs 5.6 s of cold start per .py write — 711 writes
     # in one project's sessions, an hour of waiting. The binary starts in 50 ms.
     ruff
+    claudeTools.guard
+    claudeTools.cli
     gh
     glab
     # NOTE: the base image has neither dig nor host nor nslookup, while the

@@ -42,7 +42,13 @@
             inherit system;
             config.allowUnfree = true; # terraform (BUSL)
           };
-          extraSpecialArgs = { inherit profile; };
+          extraSpecialArgs = {
+            inherit profile;
+            claudeTools = {
+              guard = mkGuard system;
+              cli = mkCli system;
+            };
+          };
           modules = [
             ./home
             {
@@ -117,6 +123,10 @@
               cpuCores
               memoryGiB
               ;
+            claudeTools = {
+              guard = mkGuard system;
+              cli = mkCli system;
+            };
           };
           modules = [
             ./darwin-configuration.nix

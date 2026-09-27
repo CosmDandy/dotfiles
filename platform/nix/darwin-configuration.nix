@@ -6,6 +6,7 @@
   hostname,
   cpuCores,
   memoryGiB,
+  claudeTools,
   ...
 }:
 
@@ -178,6 +179,10 @@ in
     gofumpt
     delve
     golangci-lint
+    # Go hooks from this flake; tools/claude/cli/wrapper.sh finds claude-cli on
+    # PATH through this (see home/default.nix for the Linux side).
+    claudeTools.guard
+    claudeTools.cli
     uv
     luarocks # for mason (luacheck); brings its own lua
     eza

@@ -79,6 +79,7 @@ PreToolUse hooks as:
 { "type": "command", "command": "~/.dotfiles/tools/claude/hooks/pretooluse-guard.sh" }
 ```
 
-To switch, point `command` at the built binary instead, e.g.
-`~/.dotfiles/tools/claude/guard/guard` (build it first, or add it to the Nix
-home profile once `claude-guard` is wired into `home.packages`).
+To switch, point `command` at `claude-guard`: it is on PATH after
+`home-manager switch` / `darwin-rebuild switch` (`packages.<system>.claude-guard`
+is in `home.packages` and in the mac's `systemPackages`), or at a local
+`go build -o guard .` output for a quick trial.
