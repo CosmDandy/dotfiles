@@ -74,7 +74,6 @@ run_statusline_case() {
   fi
 }
 
-BASE=case01_basic
 run_statusline_case "wide 120, full segments"        "$TESTDATA/statusline/stdin/case01_basic.json"          COLUMNS=120
 run_statusline_case "narrow <60"                      "$TESTDATA/statusline/stdin/case02_narrow_50.json"      COLUMNS=50
 run_statusline_case "narrow <80"                      "$TESTDATA/statusline/stdin/case03_narrow_70.json"      COLUMNS=70
