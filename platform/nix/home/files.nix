@@ -34,7 +34,6 @@ in
     ".git-hooks".source = link "tools/git/hooks";
     ".claude/CLAUDE.md".source = link "tools/claude/CLAUDE.md";
     ".claude/settings.json".source = link "tools/claude/settings.json";
-    ".claude/statusline.sh".source = link "tools/claude/statusline.sh";
     ".claude/keybindings.json".source = link "tools/claude/keybindings.json";
     # NOTE: ~/.claude/{agents,commands,skills,rules} are not here — the custom submodule
     # owns them, and it may be absent at linkGeneration time.

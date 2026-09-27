@@ -398,7 +398,7 @@
           },
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/pretooluse-opsctx.sh"
+            "command": "~/.dotfiles/tools/claude/cli/wrapper.sh opsctx"
           }
         ]
       },
@@ -428,7 +428,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
+            "command": "~/.dotfiles/tools/claude/cli/wrapper.sh bashhint",
             "async": true
           }
         ]
@@ -485,7 +485,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/posttooluse-bashhint.sh",
+            "command": "~/.dotfiles/tools/claude/cli/wrapper.sh bashhint",
             "async": true
           }
         ]
@@ -494,7 +494,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "~/.claude/statusline.sh",
+    "command": "~/.dotfiles/tools/claude/cli/wrapper.sh statusline",
     "refreshInterval": 15
   },
   "outputStyle": "default",
