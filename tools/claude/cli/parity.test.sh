@@ -106,7 +106,11 @@ section "statusline: rate-limit history (time-relative — templated, not frozen
 # that cannot be a byte-frozen file — see the report's self-check.
 render_template() {
   local src="$1" dst="$2" now="$3" reset="$4"
-  sed -e "s/__RESET__/$reset/g" \
+  # __RESET__ is quoted in the JSON fixtures so they stay valid JSON for the
+  # syntax lint (the quotes go with the placeholder); the state files carry
+  # it bare, so both spellings are substituted — quoted first.
+  sed -e "s/\"__RESET__\"/$reset/g" \
+      -e "s/__RESET__/$reset/g" \
       -e "s/__NOW_M1800__/$((now - 1800))/g" \
       -e "s/__NOW_M1500__/$((now - 1500))/g" \
       -e "s/__NOW_M1200__/$((now - 1200))/g" \

@@ -40,10 +40,13 @@ var (
 	yellow = esc + "[33m"
 	red    = esc + "[31m"
 	blue   = esc + "[34m"
-	// Solarized orange has no slot in the 16-colour theme (it lands on
-	// "bright red"), so this one is absolute. It exists for a single
-	// purpose: the Fable segments.
-	orange = esc + "[38;5;166m"
+	// Solarized orange DOES have a slot: it lands on 9, the one named "bright
+	// red", and the ghostty iTerm2 presets put #cb4b16 there in both the light
+	// and the dark variant. So this follows the theme like everything else;
+	// 166 was an absolute xterm tone that did not. Contrast holds on both
+	// sides: 3.26 dark, 4.27 light. It exists for a single purpose: the Fable
+	// segments.
+	orange = esc + "[38;5;9m"
 	// Neutral for "on track" — green already means "room to accelerate" in
 	// these segments.
 	cyan = esc + "[36m"
@@ -66,9 +69,9 @@ var (
 
 // NOTE: the red threshold must equal CLAUDE_AUTOCOMPACT_PCT_OVERRIDE —
 // change them as a pair, or the bar turns red only after the compact and
-// warns about nothing. Yellow sits 25pp below to leave room to wrap up.
+// warns about nothing. Yellow sits 15pp below to leave room to wrap up.
 const (
-	ctxYellow = 20
+	ctxYellow = 30
 	ctxRed    = 45
 	barLen    = 10
 

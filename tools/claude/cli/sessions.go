@@ -49,12 +49,19 @@ import (
 const permissionWait = "permission prompt"
 
 // Solarized: cyan for work in progress, yellow for "your turn", red for
-// "cannot go on without you". All three hold on both the light and the dark
-// variant.
+// "cannot go on without you".
+// NOTE: palette SLOTS 0-15, not absolute 256-colour tones. 37/136/160 were
+// approximations of the Solarized hues picked out of the xterm cube, so they
+// stayed put when the terminal theme flipped. A slot is resolved by the
+// terminal, so these now ARE the theme's cyan, yellow and red, in both
+// variants. The swap also fixes the worst of the three: red went from 2.78
+// contrast on the dark background to 3.25. Cyan improves on light (2.51 ->
+// 2.93) and yellow is a wash (3.10 -> 2.98) — on base3 those two hues sit
+// near 3 whatever you do, a property of Solarized, not of this choice.
 const (
-	runColour     = 37
-	waitColour    = 136
-	approveColour = 160
+	runColour     = 6
+	waitColour    = 3
+	approveColour = 1
 )
 
 func envOr(key, fallback string) string {
