@@ -68,8 +68,8 @@ var (
 // change them as a pair, or the bar turns red only after the compact and
 // warns about nothing. Yellow sits 25pp below to leave room to wrap up.
 const (
-	ctxYellow = 40
-	ctxRed    = 65
+	ctxYellow = 20
+	ctxRed    = 45
 	barLen    = 10
 
 	// The cache is shown only when it actually dips — it sits at 85-95%

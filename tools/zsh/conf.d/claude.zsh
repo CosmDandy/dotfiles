@@ -7,7 +7,7 @@
 # hand from a shell does not and falls back to "window − 13000" (~987K instead of 650K on
 # a 1M window). Measured in one container: the daemon session compacted 4 times by 258K,
 # the shell session reached 819K with no autocompact at all.
-export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=65
+export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=45
 
 # The everyday one.
 # NOTE: the auto-mode classifier is off — an audit of five containers showed it caused 100%
