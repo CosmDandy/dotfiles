@@ -78,11 +78,15 @@ if [[ "$have_last_msg" != "true" ]]; then
   fi
 fi
 
-# Job-list conventions (see CLAUDE.md): a line starting with one of these, or the
-# word "blocked"/"заблокирован" anywhere, means the run already reported its own
-# stop condition — nudging it again would talk over that report.
+# Job-list conventions (see CLAUDE.md): a line starting with one of these, or a
+# statement that the run itself is blocked, means it already reported its own stop
+# condition — nudging it again would talk over that report.
+# NOTE: "blocked" alone is not a blocker: "the guard blocked the command" and
+# "non-blocking" are ordinary progress prose. Only the run saying it IS blocked
+# counts — "blocked on/by …", a line starting with "blocked:", or the Russian
+# "заблокирован(а/о)" / "блокирует" as a statement, not "разблокирован".
 if grep -qiE '^[[:space:]]*(needs input|failed|result):' <<<"$msg_text" \
-  || grep -qiE 'blocked|заблокирован' <<<"$msg_text"; then
+  || grep -qiE '^[[:space:]]*blocked:|(^|[^[:alnum:]-])blocked (on|by)[[:space:]]|(^|[^[:alnum:]])(заблокирован[аоы]?|блокирует)([^[:alnum:]]|$)' <<<"$msg_text"; then
   exit 0
 fi
 
