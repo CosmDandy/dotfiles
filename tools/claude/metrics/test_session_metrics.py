@@ -32,9 +32,10 @@ def result(text, error=False, denial=None):
     return rec
 
 
-def assistant(blocks, ctx=1000, out=10, model="m1"):
+def assistant(blocks, ctx=1000, out=10, model="m1", mid=None):
     return {"type": "assistant", "sessionId": "abcdef12-x",
             "message": {"role": "assistant", "model": model, "content": blocks,
+                        "id": mid,
                         "usage": {"input_tokens": ctx, "cache_read_input_tokens": 0,
                                   "cache_creation_input_tokens": 0,
                                   "output_tokens": out}}}
@@ -61,8 +62,13 @@ TRANSCRIPT = [
     user("любой"),
     assistant([text(RU), tool("Read", file_path="a.py")]),  # full read
     result("ok"),
-    assistant([tool("Read", file_path="a.py", offset=1, limit=10),
-               tool("Bash", command="ls")]),  # batched turn
+    # one batched API message, streamed as two records sharing message.id
+    assistant([tool("Read", file_path="a.py", offset=1, limit=10)],
+              out=900, mid="m-batch"),
+    assistant([tool("Bash", command="ls")], out=900, mid="m-batch"),
+    {"type": "user", "isMeta": True, "sessionId": "abcdef12-x",
+     "message": {"role": "user", "content": "goal check-in"}},
+    user("<task-notification>agent done</task-notification>"),
     result("ok"),
     result("ok"),
     assistant([tool("Bash", command="cat > x.txt <<'EOF'\nhi\nEOF")]),
@@ -107,7 +113,8 @@ class MetricsTest(unittest.TestCase):
         m = self.m
         self.assertEqual(m["sid"], "abcdef12")
         self.assertEqual(m["model"], "m1")
-        self.assertEqual(m["human_turns"], 2)
+        self.assertEqual(m["human_turns"], 2)  # meta and <…> records skipped
+        self.assertEqual(m["assistant_msgs"], 11)  # m-batch counted once
         self.assertEqual(m["tool_calls"], 9)  # the sidechain call is skipped
         self.assertEqual(m["questions_before_work"], 1)
         self.assertEqual(m["ask_user_question"], 1)
@@ -143,6 +150,7 @@ class MetricsTest(unittest.TestCase):
         # 8 tool turns, one of them with two calls
         self.assertEqual(m["single_call_share"], round(7 / 8, 2))
         self.assertEqual(m["ctx_peak_k"], 250)
+        self.assertEqual(m["out_k"], 1)  # 9*10 + 900 (once) + 500 = 1490
         self.assertEqual(m["turn_min"], 1.5)
         self.assertEqual(m["compactions"], 1)
 

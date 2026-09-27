@@ -120,6 +120,7 @@ def analyze(path):
     models = Counter()
     texts_ru = []
     tool_turns = []
+    per_msg = {}
     bash_cmds = Counter()
     last_text = ""
     seen_tool = False
@@ -146,9 +147,16 @@ def analyze(path):
             if kind == "user":
                 content = blocks(rec)
                 if content and content[0].get("type") != "tool_result":
-                    m["human_turns"] += 1
-                    if not m["started"]:
-                        m["started"] = rec.get("timestamp", "")
+                    # isMeta and "<…>" strings are harness injections (goal
+                    # check-ins, task notifications); the compaction summary is
+                    # "This session is being continued…". None of them is a person.
+                    first = content[0].get("text", "").lstrip()
+                    if not rec.get("isMeta") and not first.startswith(
+                        ("<", "This session is being continued")
+                    ):
+                        m["human_turns"] += 1
+                        if not m["started"]:
+                            m["started"] = rec.get("timestamp", "")
                 denial = rec.get("toolDenialKind")
                 if denial:
                     m["denials"] += 1
@@ -163,17 +171,14 @@ def analyze(path):
             if kind != "assistant":
                 continue
 
-            m["assistant_msgs"] += 1
+            # One API message is streamed as several records sharing message.id
+            # (one per content block), each carrying the whole message's usage:
+            # count calls and tokens per id, not per record.
             msg = rec.get("message", {})
+            mid = msg.get("id") or rec.get("uuid") or str(len(per_msg))
+            entry = per_msg.setdefault(mid, {"calls": 0, "usage": {}})
+            entry["usage"] = msg.get("usage") or entry["usage"]
             models[msg.get("model", "")] += 1
-            usage = msg.get("usage") or {}
-            ctx = (
-                (usage.get("input_tokens") or 0)
-                + (usage.get("cache_read_input_tokens") or 0)
-                + (usage.get("cache_creation_input_tokens") or 0)
-            )
-            m["ctx_peak_k"] = max(m["ctx_peak_k"], ctx // 1000)
-            m["out_k"] += usage.get("output_tokens") or 0
 
             calls = 0
             for b in blocks(rec):
@@ -209,9 +214,21 @@ def analyze(path):
                             m["commits"] += 1
                             if not CYRILLIC.search(msg_text):
                                 m["commits_en"] += 1
-            if calls:
-                tool_turns.append(calls)
+            entry["calls"] += calls
             m["tool_calls"] += calls
+
+    m["assistant_msgs"] = len(per_msg)
+    for entry in per_msg.values():
+        usage = entry["usage"]
+        ctx = (
+            (usage.get("input_tokens") or 0)
+            + (usage.get("cache_read_input_tokens") or 0)
+            + (usage.get("cache_creation_input_tokens") or 0)
+        )
+        m["ctx_peak_k"] = max(m["ctx_peak_k"], ctx // 1000)
+        m["out_k"] += usage.get("output_tokens") or 0
+        if entry["calls"]:
+            tool_turns.append(entry["calls"])
 
     m["model"] = models.most_common(1)[0][0] if models else ""
     m["report_lines"] = len([ln for ln in last_text.splitlines() if ln.strip()])
