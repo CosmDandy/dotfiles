@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - 'platform/nix/**'
+      # the Go hooks are built by the flake into the image's home profile
+      - 'tools/claude/guard/**'
+      - 'tools/claude/cli/**'
       # mac-only files: homeConfigurations never read them
       - '!platform/nix/darwin-configuration.nix'
       - '!platform/nix/home/darwin.nix'

@@ -167,7 +167,7 @@ HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 # the two sides hashed different trees and the skip never fired.
 generation_hash() {
   (cd "$DOTFILES_ROOT" \
-    && find platform/nix tools/nvim -type f \
+    && find platform/nix tools/nvim tools/claude/guard tools/claude/cli -type f \
          ! -path platform/nix/darwin-configuration.nix \
          ! -path platform/nix/home/darwin.nix \
          ! -name lazy-lock.json -print0 \

@@ -9,6 +9,9 @@ on:
   push:
     paths:
       - 'platform/nix/**'
+      # the Go hooks are built by the flake into every home profile
+      - 'tools/claude/guard/**'
+      - 'tools/claude/cli/**'
       - '.github/workflows/nix-check.yml'
   workflow_dispatch:
 

@@ -84,7 +84,12 @@
           # repo (currentBranch shells out to `git symbolic-ref`) — not available
           # in the build sandbox by default.
           nativeCheckInputs = [ pkgs.git ];
-          meta.mainProgram = "guard";
+          # buildGoModule names the binary after the package directory ("guard");
+          # settings.json, the READMEs and wrapper-style lookups expect claude-guard.
+          postInstall = ''
+            mv $out/bin/guard $out/bin/claude-guard
+          '';
+          meta.mainProgram = "claude-guard";
         };
       # The hot-path CLI (tools/claude/cli), a Go port of statusline.sh,
       # claude-sessions.py, pane-title.sh and the opsctx/bashhint hooks —
