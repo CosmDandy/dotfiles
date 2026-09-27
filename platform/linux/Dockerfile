@@ -93,6 +93,11 @@ RUN curl -fsSL https://releases.nixos.org/nix/nix-2.33.1/install -o /tmp/nix-ins
 ENV PATH=/home/cosmdandy/.nix-profile/bin:$PATH
 
 COPY --chown=cosmdandy:cosmdandy platform/nix /opt/dotfiles/platform/nix
+# The flake builds the Go hooks from these two trees (packages claude-guard and
+# claude-cli, src = ../../tools/claude/…) into home.packages; /opt/dotfiles is a
+# plain path, not a git checkout, so nothing outside what is COPYed exists for it.
+COPY --chown=cosmdandy:cosmdandy tools/claude/guard /opt/dotfiles/tools/claude/guard
+COPY --chown=cosmdandy:cosmdandy tools/claude/cli /opt/dotfiles/tools/claude/cli
 
 # NOTE: the nvim config has to exist for the activation hooks — home-manager
 # links ~/.config/nvim into ~/dotfiles, and with a dangling symlink the `-e
