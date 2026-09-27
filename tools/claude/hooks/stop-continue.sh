@@ -66,27 +66,35 @@ open_items="$(grep -E '^[[:space:]]*- \[ \]' "$todo" 2>/dev/null)"
 # harnesses that don't send the field yet.
 msg_text="$last_msg"
 if [[ "$have_last_msg" != "true" ]]; then
-  msg_text=""
-  if [[ -n "$transcript" && -f "$transcript" ]]; then
-    msg_text="$(tail -n 200 "$transcript" 2>/dev/null | jq -rs '
-      map(select(.type == "assistant")) | last
-      | if . == null then "" else ((.message.content // [])[]? | select(.type == "text") | .text) end
-    ' 2>/dev/null)"
-    # jq failing on unparseable JSONL means we cannot tell whether the run already
-    # reported a blocker — stay silent rather than block on that guess.
-    [[ $? -eq 0 ]] || exit 0
-  fi
+  # No message in the input and no readable transcript: nothing to judge, so no
+  # nudge — the same "never block from an uncertain read" as the jq case below.
+  [[ -n "$transcript" && -f "$transcript" ]] || exit 0
+  msg_text="$(tail -n 200 "$transcript" 2>/dev/null | jq -rs '
+    map(select(.type == "assistant")) | last
+    | if . == null then "" else ((.message.content // [])[]? | select(.type == "text") | .text) end
+  ' 2>/dev/null)"
+  # jq failing on unparseable JSONL means we cannot tell whether the run already
+  # reported a blocker — stay silent rather than block on that guess.
+  [[ $? -eq 0 ]] || exit 0
 fi
 
 # Job-list conventions (see CLAUDE.md): a line starting with one of these, or a
 # statement that the run itself is blocked, means it already reported its own stop
-# condition — nudging it again would talk over that report.
+# condition — nudging it again would talk over that report. The keyword may sit
+# behind a list marker, a CLAUDE.md block label (✘ ! ? ») or markdown bold, and
+# CLAUDE.md's own dead-end label `✘ failed` counts with or without a colon.
 # NOTE: "blocked" alone is not a blocker: "the guard blocked the command" and
 # "non-blocking" are ordinary progress prose. Only the run saying it IS blocked
 # counts — "blocked on/by …", a line starting with "blocked:", or the Russian
 # "заблокирован(а/о)" / "блокирует" as a statement, not "разблокирован".
-if grep -qiE '^[[:space:]]*(needs input|failed|result):' <<<"$msg_text" \
-  || grep -qiE '^[[:space:]]*blocked:|(^|[^[:alnum:]-])blocked (on|by)[[:space:]]|(^|[^[:alnum:]])(заблокирован[аоы]?|блокирует)([^[:alnum:]]|$)' <<<"$msg_text"; then
+# NOTE: Cyrillic is matched with explicit [Зз]/[Бб] — under LC_ALL=C (hooks in a
+# headless container) `grep -i` folds ASCII only, and the sentence-initial
+# "Заблокирован:" was slipping through.
+lead='^[[:space:]]*(-|\*|>|✘|✔|!|\?|»)?[[:space:]]*(\*\*|__|`)?'
+if grep -qiE "${lead}(needs input|failed|result)(\*\*|__|\`)?:" <<<"$msg_text" \
+  || grep -qE '^[[:space:]]*✘[[:space:]]*failed' <<<"$msg_text" \
+  || grep -qiE "${lead}blocked:|(^|[^[:alnum:]-])blocked (on|by)[[:space:]]" <<<"$msg_text" \
+  || grep -qE '(^|[^[:alnum:]])([Зз]аблокирован[аоы]?|[Бб]локирует)([^[:alnum:]]|$)' <<<"$msg_text"; then
   exit 0
 fi
 

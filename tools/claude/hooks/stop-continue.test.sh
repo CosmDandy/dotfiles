@@ -118,6 +118,30 @@ run_hook "$SID" "$R" "" false present "failed: сеть недоступна"
 [[ -z $OUT ]] && ok "'failed:' — тишина" || bad "'failed:' — тишина" "$OUT"
 run_hook "$SID" "$R" "" false present "дальше не пойти — заблокирован конфигом"
 [[ -z $OUT ]] && ok "'заблокирован' — тишина" || bad "'заблокирован' — тишина" "$OUT"
+# sentence-initial Cyrillic under the C locale: grep -i folds ASCII only there
+LC_ALL=C run_hook "$SID" "$R" "" false present "Заблокирован: нет доступа к ssh"
+[[ -z $OUT ]] && ok "'Заблокирован:' под LC_ALL=C — тишина" || bad "'Заблокирован:' под LC_ALL=C" "$OUT"
+# the keyword behind markdown / CLAUDE.md block labels
+run_hook "$SID" "$R" "" false present "✘ failed: build is red"
+[[ -z $OUT ]] && ok "'✘ failed:' — тишина" || bad "'✘ failed:'" "$OUT"
+run_hook "$SID" "$R" "" false present "✘ failed — сборка красная, дальше не иду"
+[[ -z $OUT ]] && ok "'✘ failed' без двоеточия — тишина" || bad "'✘ failed' без двоеточия" "$OUT"
+run_hook "$SID" "$R" "" false present "- failed: build"
+[[ -z $OUT ]] && ok "'- failed:' — тишина" || bad "'- failed:'" "$OUT"
+run_hook "$SID" "$R" "" false present "**Result:** всё сделано"
+[[ -z $OUT ]] && ok "'**Result:**' — тишина" || bad "'**Result:**'" "$OUT"
+run_hook "$SID" "$R" "" false present "» act: запусти home-manager switch"
+[[ -n $OUT ]] && ok "'» act' — не блокер, продолжаем" || bad "'» act' — не блокер" "$OUT"
+rm -rf "$R"
+
+printf '\n== нет last_assistant_message и транскрипт нечитаем — тишина ==\n'
+R="$(newrepo)"; SID=aaaaaaaa-0000-0000-0000-00000000000a
+printf -- '- [ ] пункт\n' > "$R/TODO.aaaaaaaa.md"
+run_hook "$SID" "$R" "" false absent
+[[ -z $OUT ]] && ok "пустой transcript_path без сообщения — тишина" || bad "пустой transcript_path" "$OUT"
+run_hook "$SID" "$R" "/nonexistent/transcript.jsonl" false absent
+[[ -z $OUT ]] && ok "несуществующий транскрипт без сообщения — тишина" || bad "несуществующий транскрипт" "$OUT"
+[[ ! -f "$STATE_DIR/$SID" ]] && ok "состояние не записано" || bad "состояние не должно писаться"
 rm -rf "$R"
 
 printf '\n== застой: те же пункты, транскрипт не изменился — тишина, не блок ==\n'
