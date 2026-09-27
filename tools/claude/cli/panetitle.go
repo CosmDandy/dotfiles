@@ -31,8 +31,11 @@ func inContainer() bool {
 	if runtime.GOOS != "linux" {
 		return false
 	}
+	// os.Stat, not Lstat: the original is `[ -e path ]`, which follows
+	// symlinks and reports false for a dangling one — Lstat would report
+	// true for a broken symlink at any of these marker paths.
 	exists := func(path string) bool {
-		_, err := os.Lstat(path)
+		_, err := os.Stat(path)
 		return err == nil
 	}
 	if exists("/proc/vz") && !exists("/proc/bc") {

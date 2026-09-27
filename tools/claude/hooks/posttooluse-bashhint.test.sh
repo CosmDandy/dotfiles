@@ -63,6 +63,12 @@ h=$(run "git push" "To github.com:o/r.git
 [[ -z $h ]] && ok "push в ветку с PR — тишина" || bad "лишняя подсказка на обычный push" "$h"
 h=$(run "gh pr view 12" "$PUSH_OUT")
 [[ -z $h ]] && ok "тот же текст не от push — тишина" || bad "подсказка не на push" "$h"
+# Regression: grep never lets a match span two physical lines, so "git" alone
+# on one line and "push" starting the next must NOT read as a push — a
+# multiline-mode port of the regex (rather than testing line by line) matched
+# this and fired the hint spuriously.
+h=$(run "$(printf 'git\npush')" "$PUSH_OUT")
+[[ -z $h ]] && ok "git и push на разных строках — не пуш, тишина" || bad "лишняя подсказка: git/push через перевод строки" "$h"
 
 echo "— старые случаи не сломаны —"
 h=$(run "ls *.log" "zsh: no matches found: *.log")

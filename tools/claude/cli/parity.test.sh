@@ -23,12 +23,13 @@ OLD_OPSCTX="$REPO_ROOT/tools/claude/hooks/pretooluse-opsctx.sh"
 BASHHINT_TEST="$REPO_ROOT/tools/claude/hooks/posttooluse-bashhint.test.sh"
 
 # This suite gated the switch commit that deleted the five originals (see
-# that commit's message for the last real 70/70 run). Once they are gone
-# there is nothing left to compare against, so this is a deliberate no-op,
-# not a failure — the historical proof lives in git log, not in a test that
-# would otherwise fail forever.
+# git log for the last real run's pass count — 70/70 at switch time, 71/71
+# after a follow-up fix added a regression case). Once the originals are
+# gone there is nothing left to compare against, so this is a deliberate
+# no-op, not a failure — the historical proof lives in git log, not in a
+# test that would otherwise fail forever.
 if [[ ! -f $OLD_STATUSLINE ]]; then
-  echo "originals already removed (see git log for the pre-switch 70/70 parity run) — nothing to compare, skipping"
+  echo "originals already removed (see git log for the last pre-switch parity run) — nothing to compare, skipping"
   exit 0
 fi
 

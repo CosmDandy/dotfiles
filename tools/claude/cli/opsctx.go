@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -25,7 +26,27 @@ import (
 // script) use, so a domain word quoted inside `git commit -m "..."` does not
 // trigger anything: only a word at command position — the start of the
 // string or right after a `;`, `&`, `|`, `&&` or `||` separator.
+//
+// NOTE: no `^`/`$` multiline flag here on purpose. The original tests this
+// with `grep -Eq ... <<<"$cmd"`, which matches per PHYSICAL LINE (success if
+// any line matches) and never lets a match span two lines. `^` alone would
+// only anchor to the whole string's start and miss a keyword at the start of
+// a later line; Go's (?m) would fix that but would also let `[[:space:]]`
+// elsewhere in a pattern swallow a newline and match across lines, which
+// grep never does either. matchesAnyLine (below) replicates the real
+// semantics: split on "\n" first, then match each line as its own string.
 const commandPosition = `(^|[;&|]|&&|\|\|)[[:space:]]*`
+
+// matchesAnyLine reports whether re matches at least one line of s, the way
+// `grep -Eq pattern <<<"$s"` does: tested line by line, never as one blob.
+func matchesAnyLine(re *regexp.Regexp, s string) bool {
+	for _, line := range strings.Split(s, "\n") {
+		if re.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
 
 var opsctxDomains = []struct {
 	name string
@@ -69,7 +90,7 @@ func runOpsctx(_ []string) {
 
 	domain := ""
 	for _, d := range opsctxDomains {
-		if d.re.MatchString(cmd) {
+		if matchesAnyLine(d.re, cmd) {
 			domain = d.name
 		}
 	}

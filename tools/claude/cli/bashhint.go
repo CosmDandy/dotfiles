@@ -24,9 +24,15 @@ import (
 // pushWithoutPR matches `git … push`, allowing -C/-c and other flags to
 // carry their own argument between "git" and "push" — so `git -C dir push`
 // and `git --no-pager push` are still recognised as a push, not just a bare
-// `git push`. (?m) mirrors grep's line-by-line matching of a (rarely)
-// multi-line command.
-var pushWithoutPR = regexp.MustCompile(`(?m)(^|[[:space:];&|])git[[:space:]]+((-C|-c)[[:space:]]*[^[:space:]]+[[:space:]]+|-[^[:space:]]+[[:space:]]+)*push([[:space:]]|$)`)
+// `git push`.
+//
+// NOTE: no (?m) here — the original is `grep -Eq pattern <<<"$cmd"`, which
+// never lets a match span two physical lines. A [[:space:]] class matches a
+// literal newline too, so (?m) alone would let "git" at the end of one line
+// and "push" at the start of the next match here when grep would stay
+// silent on that same input. matchesAnyLine (opsctx.go) is what supplies
+// the per-line semantics instead.
+var pushWithoutPR = regexp.MustCompile(`(^|[[:space:];&|])git[[:space:]]+((-C|-c)[[:space:]]*[^[:space:]]+[[:space:]]+|-[^[:space:]]+[[:space:]]+)*push([[:space:]]|$)`)
 
 func toolResponseText(v any) string {
 	switch t := v.(type) {
@@ -71,7 +77,7 @@ func runBashhint(_ []string) {
 	case strings.Contains(out, "Create a pull request for") || strings.Contains(out, "/pull/new/"):
 		// NOTE: GitHub prints this on push only while the branch has no PR —
 		// so the push output itself is the check, no gh call needed.
-		if pushWithoutPR.MatchString(cmd) {
+		if matchesAnyLine(pushWithoutPR, cmd) {
 			hint = "Пуш прошёл, а PR для ветки нет — GitHub предлагает его создать. Последний шаг DELEGATED-запуска — `gh pr create`, не ссылка в отчёте."
 		}
 	case strings.Contains(out, "control characters that would be hidden"):
