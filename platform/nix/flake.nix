@@ -69,6 +69,26 @@
           vendorHash = "sha256-sULOJKCnZ9nS/EVH8Q4MhH7U9zdrcruxCKI6HqP/1a4=";
           meta.mainProgram = "guard";
         };
+      # The hot-path CLI (tools/claude/cli), a Go port of statusline.sh,
+      # claude-sessions.py, pane-title.sh and the opsctx/bashhint hooks —
+      # same idea as mkGuard: one binary instead of five forking scripts.
+      # Stdlib only, so there is no vendor directory at all — nixpkgs wants
+      # vendorHash = null for that case rather than a hash.
+      mkCli =
+        system:
+        (import nixpkgs { inherit system; }).buildGoModule {
+          pname = "claude-cli";
+          version = "0.1.0";
+          src = ../../tools/claude/cli;
+          vendorHash = null;
+          # buildGoModule names the output after the package directory
+          # ("cli") since main.go sits at the module root; rename to match
+          # the binary's actual invocation name everywhere else.
+          postInstall = ''
+            mv $out/bin/cli $out/bin/claude-cli
+          '';
+          meta.mainProgram = "claude-cli";
+        };
       # NOTE: cpuCores/memoryGiB are DECLARED, not detected — eval must be reproducible
       # and compute the same on any machine, so the current host's specs are invisible to
       # it (getEnv needs --impure). The daemon's max-jobs/cores are derived from them.
@@ -136,6 +156,7 @@
 
       packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (system: {
         claude-guard = mkGuard system;
+        claude-cli = mkCli system;
       });
 
       # NOTE: without formatter.<system> the `nix fmt` command does not work at all.

@@ -10,8 +10,16 @@
 # NOTE: no `set -e` — the test counts failures and must reach the end.
 set -uo pipefail
 
-HOOK="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/posttooluse-bashhint.sh"
-[[ -x $HOOK ]] || { echo "не найден исполняемый $HOOK"; exit 2; }
+# BASHHINT_HOOK, like the guard test's GUARD_HOOK, points this suite at another
+# implementation — e.g. "/path/to/claude-cli bashhint" for the Go port. Word-split on
+# purpose: a binary plus its subcommand is two words, not one path.
+if [[ -n ${BASHHINT_HOOK:-} ]]; then
+  # shellcheck disable=SC2206
+  HOOK_CMD=($BASHHINT_HOOK)
+else
+  HOOK_CMD=("$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/posttooluse-bashhint.sh")
+fi
+[[ -x ${HOOK_CMD[0]} ]] || { echo "не найден исполняемый ${HOOK_CMD[0]}"; exit 2; }
 command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
 
 pass=0 fail=0
@@ -26,7 +34,7 @@ SID=aaaabbbb-1111-2222-3333-444455556666
 run() {
   jq -nc --arg c "$1" --arg r "$2" --arg s "${3:-$SID}" \
     '{hook_event_name:"PostToolUseFailure", session_id:$s, tool_input:{command:$c}, tool_response:$r}' \
-    | "$HOOK" | jq -r '.hookSpecificOutput.additionalContext // empty'
+    | "${HOOK_CMD[@]}" | jq -r '.hookSpecificOutput.additionalContext // empty'
 }
 
 echo "— отказ харнеса не доходит до PostToolUseFailure — подсказки нет —"
@@ -57,6 +65,17 @@ h=$(run "ls *.log" "zsh: no matches found: *.log")
 [[ $h == *"null_glob"* ]] && ok "глоб без совпадений" || bad "глоб без совпадений" "$h"
 h=$(run "ls" "file1 file2")
 [[ -z $h ]] && ok "обычный вывод — тишина" || bad "подсказка на обычный вывод" "$h"
+
+echo "— hookEventName эхом от входного события —"
+event_of() {
+  jq -nc --arg c "$1" --arg r "$2" --arg ev "$3" \
+    '{hook_event_name:$ev, session_id:"'"$SID"'", tool_input:{command:$c}, tool_response:$r}' \
+    | "${HOOK_CMD[@]}" | jq -r '.hookSpecificOutput.hookEventName // empty'
+}
+e=$(event_of "ls *.log" "zsh: no matches found: *.log" "PostToolUseFailure")
+[[ $e == "PostToolUseFailure" ]] && ok "PostToolUseFailure эхом" || bad "PostToolUseFailure не эхом" "$e"
+e=$(event_of "ls *.log" "zsh: no matches found: *.log" "PostToolUse")
+[[ $e == "PostToolUse" ]] && ok "PostToolUse эхом" || bad "PostToolUse не эхом" "$e"
 
 rm -rf "$TMPDIR"
 printf '\n%d ok, %d fail\n' "$pass" "$fail"
