@@ -1,6 +1,6 @@
 return {
   'lewis6991/gitsigns.nvim',
-  event = 'BufRead',
+  event = 'VeryLazy',
   opts = {
     -- unstaged changes use a thin bar, staged a thick one
     signs = {
