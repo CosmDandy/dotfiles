@@ -65,7 +65,7 @@ byte_diff() {
   cmp -s "$golden" "$actual" && return 0
   local line
   # the hunk header alone ("1c1") says nothing in a CI log — show the two lines
-  line=$(diff "$golden" "$actual" 2>&1 | head -n4 | cat -v)
+  line=$(diff "$golden" "$actual" 2>&1 | head -n6 | cat -v)
   printf '%s' "$line"
   return 1
 }
@@ -111,9 +111,16 @@ section "statusline: static cases (COLUMNS / glyphs / thresholds)"
 # ---------------------------------------------------------------------------
 # Shared session-badge fixture: a real ~/.claude/sessions snapshot recorded
 # on this machine (no secrets — pid, sessionId, cwd, job names only), reused
-# by every static case below via HOME, so the badge segment is pinned
-# without depending on the live machine's current sessions.
-SL_HOME="$TESTDATA/statusline/home"
+# by every static case below via HOME.
+# NOTE: the badge counts only sessions whose pid is alive, and the recorded pids
+# were whatever ran on the recording mac — alive there for a while, dead on a CI
+# runner. Every pid is rewritten to 1 (init/launchd, alive everywhere) in a
+# private copy, so the badge depends on the fixture's status/kind fields only.
+SL_HOME="$RUN/statusline-home"
+mkdir -p "$SL_HOME/.claude/sessions"
+for f in "$TESTDATA/statusline/home/.claude/sessions/"*.json; do
+  jq -c '.pid = 1' "$f" > "$SL_HOME/.claude/sessions/$(basename "$f")"
+done
 
 run_statusline_case() {
   local desc="$1" slug="$2" json_file="$3"; shift 3
