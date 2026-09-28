@@ -28,6 +28,11 @@ BASHHINT_TEST="$REPO_ROOT/tools/claude/hooks/posttooluse-bashhint.test.sh"
 
 UPDATE=0
 [[ "${1:-}" == "--update" ]] && UPDATE=1
+
+# NOTE: the statusline prints reset times in local time, so the goldens are only
+# comparable under one fixed zone — the first CI run (UTC) failed every case with a
+# clock against goldens taken on a Moscow-time mac.
+export TZ=UTC
 mkdir -p "$GOLDEN"
 
 pass=0 fail=0
@@ -59,7 +64,8 @@ byte_diff() {
   fi
   cmp -s "$golden" "$actual" && return 0
   local line
-  line=$(diff "$golden" "$actual" 2>&1 | head -n1 | cat -v)
+  # the hunk header alone ("1c1") says nothing in a CI log — show the two lines
+  line=$(diff "$golden" "$actual" 2>&1 | head -n4 | cat -v)
   printf '%s' "$line"
   return 1
 }
