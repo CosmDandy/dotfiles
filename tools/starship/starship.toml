@@ -1,8 +1,8 @@
 add_newline = false
 palette = "solarized"
-# $all is every module in default order; ${custom.vm} is pulled to the start of the second
+# $all is every module in default order; ${env_var.STARSHIP_VM} is pulled to the start of the second
 # line so the server icon sits like the container one instead of trailing on line one.
-format = "$all${custom.vm}$character"
+format = "$all${env_var.STARSHIP_VM}$character"
 
 [git_branch]
 format = 'on [$branch(:$remote_branch)]($style) '
@@ -36,12 +36,15 @@ format = '[$symbol$number]($style) '
 symbol = '󰆧'
 format = '[$symbol]($style) '
 
-[custom.vm]
-when = "systemd-detect-virt -v -q && ! systemd-detect-virt -c -q"
+# VM badge without a fork: STARSHIP_VM is exported once per shell by
+# tools/zsh/conf.d/tab-title.zsh, which already runs systemd-detect-virt at load
+# (set only inside a VM, never in a container). The previous custom.vm ran
+# `bash -c 'systemd-detect-virt …'` on EVERY prompt — 9 of 23 ms on the devpod.
+[env_var.STARSHIP_VM]
+variable = 'STARSHIP_VM'
 symbol = '󰒋'
 format = '[$symbol]($style) '
 style = 'bold yellow'
-shell = ["bash", "--noprofile", "--norc"]
 
 [python]
 format = '[${symbol}(${version} )(\($virtualenv\))]($style) '

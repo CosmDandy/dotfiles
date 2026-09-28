@@ -102,9 +102,7 @@ return {
     'neovim/nvim-lspconfig',
     event = { 'BufReadPre', 'BufNewFile' },
     dependencies = {
-      'saghen/blink.cmp',
-      -- loaded with lspconfig so require works in after/lsp/*.lua; version=false
-      -- because the latest tag is stale
+      -- version=false because the latest tag is stale
       { 'b0o/schemastore.nvim', version = false },
     },
     config = function()
@@ -250,9 +248,39 @@ return {
       -- order and the later file wins, so nvim-lspconfig's copy (a plugin, after the
       -- config dir) silently overrode every key both set: yamlls lost yaml.ansible,
       -- ansiblels ran ansible-lint again, terraformls dropped its on_attach.
-      -- NOTE: capabilities are NOT set here through vim.lsp.config('*', …) —
-      -- blink.cmp does that itself in its own plugin/ directory, and a second
-      -- call would be a hand copy of the same thing.
+      -- blink.cmp is lazy on InsertEnter (see plugins/editor/blink-cmp.lua) and must
+      -- NOT be a dependency here: nvim-lspconfig loads on BufReadPre/BufNewFile, and a
+      -- dependency loads with its parent regardless of the dependency's own `event`,
+      -- which used to force blink.cmp in on every buffer open (~10-25ms, measured).
+      -- Its plugin/ file would normally set these completion capabilities as the
+      -- '*' default before any client starts; since it now loads too late for that,
+      -- the same static table (blink.cmp.sources.lib.get_lsp_capabilities, no
+      -- config/setup involved) is copied here by hand. Keep in sync with upstream.
+      vim.lsp.config('*', {
+        capabilities = {
+          textDocument = {
+            completion = {
+              completionItem = {
+                snippetSupport = true,
+                documentationFormat = { 'markdown', 'plaintext' },
+                deprecatedSupport = true,
+                tagSupport = { valueSet = { 1 } },
+                insertReplaceSupport = true,
+                resolveSupport = {
+                  properties = { 'documentation', 'detail', 'additionalTextEdits', 'command', 'data' },
+                },
+                insertTextModeSupport = { valueSet = { 1 } },
+                labelDetailsSupport = true,
+              },
+              completionList = {
+                itemDefaults = { 'commitCharacters', 'editRange', 'insertTextFormat', 'insertTextMode', 'data' },
+              },
+              contextSupport = true,
+              insertTextMode = 1,
+            },
+          },
+        },
+      })
 
       -- The servers, by lspconfig name. An explicit list, so linters and formatters
       -- mason also installs (ruff, tflint, stylua) never attach as LSP servers.

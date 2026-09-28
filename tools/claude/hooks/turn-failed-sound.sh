@@ -10,7 +10,7 @@
 # tell that apart from an ordinary question. That marker is gone: the state is in
 # ~/.claude/sessions/<pid>.json, where status is busy|idle|waiting and waitingFor
 # defaults to "permission prompt" — Claude Code draws the distinction itself, and
-# claude-sessions.py reads it straight from there.
+# `claude-cli sessions` reads it straight from there.
 #
 # Fails quietly by design: a hook that cannot make a sound must not break the turn.
 

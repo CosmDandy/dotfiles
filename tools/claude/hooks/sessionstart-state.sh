@@ -20,7 +20,16 @@ src="$(printf '%s' "$input" | jq -r '.source // empty' 2>/dev/null)"
 out=""
 
 if [[ -n "$sid8" ]]; then
-  out+="Session id: ${sid8}. Per-session files go under this id: running handoff notes to PROGRESS.${sid8}.md (not PROGRESS.md directly), the session's task list to TODO.${sid8}.md."$'\n'
+  # The Stop hook (stop-continue.sh) reads the checklist from the MAIN checkout even
+  # when the session runs in a worktree, so name that directory: a bare file name
+  # would be written into the worktree root and never seen.
+  cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)"
+  where=""
+  if [[ -n "$cwd" ]]; then
+    common="$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+    [[ -n "$common" ]] && where=" in $(dirname "$common")/"
+  fi
+  out+="Session id: ${sid8}. Per-session files go under this id${where}: running handoff notes to PROGRESS.${sid8}.md (not PROGRESS.md directly), the session's task list to TODO.${sid8}.md."$'\n'
 fi
 
 sub="${HOME}/.dotfiles/tools/claude/custom"

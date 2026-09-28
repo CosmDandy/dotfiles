@@ -21,8 +21,15 @@ _tabtitle_in_container() {
 _tabtitle_icon=''
 if _tabtitle_in_container; then
     _tabtitle_icon='󰆧 '
-elif command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q -v; then
+    # a container started from a VM shell (distrobox, toolbox) inherits the
+    # environment — the VM badge must not come along with it
+    unset STARSHIP_VM
+elif command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt -q -v \
+    && ! systemd-detect-virt -q -c; then
     _tabtitle_icon='󰒋 '
+    # starship's env_var.STARSHIP_VM badge reads this instead of forking
+    # systemd-detect-virt on every prompt (tools/starship/starship.toml).
+    export STARSHIP_VM=1
 fi
 
 _tabtitle_emit() { printf '\e]2;%s\a' "$1" }

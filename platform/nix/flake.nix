@@ -48,7 +48,10 @@
             inherit system;
             config.allowUnfree = true; # terraform (BUSL)
           };
-          extraSpecialArgs = { inherit profile; };
+          extraSpecialArgs = {
+            inherit profile;
+            claudeTools = mkClaudeTools system;
+          };
           modules = [
             ./home
             {
@@ -63,6 +66,58 @@
       # rather than derived from user, because the attribute name (macbook-cosmdandy, used
       # by install-nix.sh and updm) and networking.hostName were linked only through
       # primaryUser and would drift on another user.
+      # The PreToolUse guard hook (tools/claude/guard), a Go port of the bash version,
+      # exposed as a package so `nix build .#claude-guard` builds it without anyone
+      # having to run `go build` by hand.
+      mkGuard =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        pkgs.buildGoModule {
+          pname = "claude-guard";
+          version = "0.1.0";
+          src = ../../tools/claude/guard;
+          vendorHash = "sha256-sULOJKCnZ9nS/EVH8Q4MhH7U9zdrcruxCKI6HqP/1a4=";
+          # go test's checkPhase runs the package's own tests, and a few of them
+          # exercise pushNeedsConfirm's branch resolution against a real temp git
+          # repo (currentBranch shells out to `git symbolic-ref`) — not available
+          # in the build sandbox by default.
+          nativeCheckInputs = [ pkgs.git ];
+          # buildGoModule names the binary after the package directory ("guard");
+          # settings.json, the READMEs and wrapper-style lookups expect claude-guard.
+          postInstall = ''
+            mv $out/bin/guard $out/bin/claude-guard
+          '';
+          meta.mainProgram = "claude-guard";
+        };
+      # The hot-path CLI (tools/claude/cli), a Go port of statusline.sh,
+      # claude-sessions.py, pane-title.sh and the opsctx/bashhint hooks —
+      # same idea as mkGuard: one binary instead of five forking scripts.
+      # Stdlib only, so there is no vendor directory at all — nixpkgs wants
+      # vendorHash = null for that case rather than a hash.
+      mkCli =
+        system:
+        (import nixpkgs { inherit system; }).buildGoModule {
+          pname = "claude-cli";
+          version = "0.1.0";
+          src = ../../tools/claude/cli;
+          vendorHash = null;
+          # buildGoModule names the output after the package directory
+          # ("cli") since main.go sits at the module root; rename to match
+          # the binary's actual invocation name everywhere else.
+          postInstall = ''
+            mv $out/bin/cli $out/bin/claude-cli
+          '';
+          meta.mainProgram = "claude-cli";
+        };
+      # Both Go hooks as one special arg for every user layer (Linux home,
+      # darwin, NixOS): home/default.nix and darwin-configuration.nix put them
+      # on PATH, which is where tools/claude/cli/wrapper.sh looks.
+      mkClaudeTools = system: {
+        guard = mkGuard system;
+        cli = mkCli system;
+      };
       # NOTE: cpuCores/memoryGiB are DECLARED, not detected — eval must be reproducible
       # and compute the same on any machine, so the current host's specs are invisible to
       # it (getEnv needs --impure). The daemon's max-jobs/cores are derived from them.
@@ -83,6 +138,7 @@
               cpuCores
               memoryGiB
               ;
+            claudeTools = mkClaudeTools system;
           };
           modules = [
             ./darwin-configuration.nix
@@ -128,7 +184,10 @@
                 # see mkDarwin: activation must not die on a pre-existing file
                 backupFileExtension = "hm-backup";
                 overwriteBackup = true;
-                extraSpecialArgs = { inherit profile; };
+                extraSpecialArgs = {
+                  inherit profile;
+                  claudeTools = mkClaudeTools system;
+                };
                 users.${user}.imports = [ ./home ];
               };
             }
@@ -166,6 +225,11 @@
           ) users
         ) linuxSystems
       );
+
+      packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (system: {
+        claude-guard = mkGuard system;
+        claude-cli = mkCli system;
+      });
 
       # NOTE: without formatter.<system> the `nix fmt` command does not work at all.
       # nixfmt (RFC 166), not nixfmt-classic — the same one the rules and CI call.

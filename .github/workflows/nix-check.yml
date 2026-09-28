@@ -9,6 +9,9 @@ on:
   push:
     paths:
       - 'platform/nix/**'
+      # the Go hooks are built by the flake into every home profile
+      - 'tools/claude/guard/**'
+      - 'tools/claude/cli/**'
       - '.github/workflows/nix-check.yml'
   workflow_dispatch:
 
@@ -71,10 +74,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25  # v22
-      # NOTE: `path:` is kept here, unlike eval-darwin above — homeConfigurations read
-      # nothing outside platform/nix, and git+file would copy the whole repository into the
-      # store for each of the four matrix jobs.
+      # NOTE: same working-directory + '.#' as eval-darwin. `path:./platform/nix` used to
+      # be enough because homeConfigurations read nothing outside platform/nix; since the
+      # Go hooks (packages claude-guard / claude-cli, src = ../../tools/claude/…) went into
+      # home.packages, pure eval under `path:` fails with "access to absolute path
+      # '/nix/tools/claude/guard' is forbidden" — run 36328329553. The price is the whole
+      # repository copied into the store once per matrix job.
       - name: Build ${{ matrix.config }}
+        working-directory: platform/nix
         run: |
           nix build --no-link --print-out-paths \
-            "path:./platform/nix#homeConfigurations.\"${{ matrix.config }}-x86_64-linux\".activationPackage"
+            ".#homeConfigurations.\"${{ matrix.config }}-x86_64-linux\".activationPackage"

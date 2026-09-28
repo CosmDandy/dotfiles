@@ -108,12 +108,46 @@ jobs:
           echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
           echo "$PWD" >> "$GITHUB_PATH"
-      - name: Guard behaviour tests
-        run: bash tools/claude/hooks/pretooluse-guard.test.sh
       # Each case builds its own throwaway git repository, so running this in CI touches
       # nothing in the checkout.
       - name: Session lifecycle hook tests
         run: bash tools/claude/hooks/session-lifecycle.test.sh
+      - name: Read and Stop hook tests
+        run: |
+          bash tools/claude/hooks/pretooluse-read.test.sh
+          bash tools/claude/hooks/stop-continue.test.sh
+          bash tools/claude/hooks/posttooluse-lint.test.sh
+          bash tools/claude/hooks/precompact-snapshot.test.sh
+          bash tools/claude/hooks/sessionend-fold.test.sh
+          bash tools/claude/hooks/sessionstart-state.test.sh
+          bash tools/claude/hooks/turn-failed-sound.test.sh
+      - name: Session metrics tests
+        run: python3 -m unittest tools/claude/metrics/test_session_metrics.py
+      # The Go guard and claude-cli: unit tests, then the SAME bash behaviour suite
+      # against the built guard — a deny in bash that turns into a silent allow in Go is
+      # the regression this exists for (GUARD_HOOK, see the test's header).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: tools/claude/guard/go.mod
+          cache-dependency-path: tools/claude/guard/go.sum
+      - name: Go guard — vet, unit tests, bash suite against the binary
+        run: |
+          cd tools/claude/guard
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+          go build -o "$RUNNER_TEMP/claude-guard" .
+          cd ../../..
+          GUARD_HOOK="$RUNNER_TEMP/claude-guard" bash tools/claude/hooks/pretooluse-guard.test.sh
+      - name: claude-cli — vet, test, build, bashhint suite against the binary
+        run: |
+          cd tools/claude/cli
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+          go build -o "$RUNNER_TEMP/claude-cli" .
+          cd ../../..
+          BASHHINT_HOOK="$RUNNER_TEMP/claude-cli bashhint" bash tools/claude/hooks/posttooluse-bashhint.test.sh
 
   # The pre-commit hook runs gitleaks too, but --no-verify skips it and the repository is
   # public.

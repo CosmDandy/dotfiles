@@ -7,7 +7,7 @@
 # hand from a shell does not and falls back to "window − 13000" (~987K instead of 650K on
 # a 1M window). Measured in one container: the daemon session compacted 4 times by 258K,
 # the shell session reached 819K with no autocompact at all.
-export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=65
+export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=45
 
 # Inside tmux Claude Code caps its own palette at 256 colours — the check is literally
 # `if (TMUX && level > 2) level = 2`, with this variable as the documented way out. The
@@ -24,8 +24,8 @@ export CLAUDE_CODE_TMUX_TRUECOLOR=1
 # The everyday one.
 # NOTE: the auto-mode classifier is off — an audit of five containers showed it caused 100%
 # of the interruptions in background sessions, while interactively 135 of 136 prompts were
-# approved unchanged. The barrier is the deny rules plus pretooluse-guard.sh, which was
-# written for exactly this mode and applies in full here.
+# approved unchanged. The barrier is the deny rules plus the PreToolUse guard
+# (tools/claude/guard), which was written for exactly this mode and applies in full here.
 # The flag duplicates defaultMode from settings.json on purpose: it does not depend on the
 # client honouring bypass from the file.
 alias cl='claude --permission-mode bypassPermissions'
