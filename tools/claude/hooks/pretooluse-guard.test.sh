@@ -287,7 +287,11 @@ chk pass 'git push -u origin feat/session-audit-hints'             'feature-ве
 # flag it allows silent, and -q was never named. Flagged per task instructions
 # rather than silently widening the shape back open.
 chk ask  'git push -q -u origin worktree-reviews-nightly-sync'     'worktree-ветка (реальная) — -q не входит в белый список shape (было pass)'
-chk pass 'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка с редиректом (реальная)'
+# CONTRADICTS THE WHITELIST (was `chk pass`, a real session transcript): gate 1 (Go
+# port only) requires the push to be the WHOLE command — exactly one segment, no `|`,
+# no `>` — and this line pipes into `tail -1` and redirects stderr, so it now asks.
+# Flagged per task instructions rather than silently widening gate 1 back open.
+chk ask  'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка с редиректом (реальная) — gate 1: не целая команда (было pass)'
 chk pass 'git push origin "feat/x"'                                'ветка в кавычках'
 chk ask  'git push origin master'                                  'push в master'
 chk ask  'git push origin HEAD:main'                               'HEAD:main'
@@ -856,6 +860,57 @@ dchk pass "$FEAT2" 'git push origin HEAD'          'HEAD как refspec на fea
 # cwd на main, но refspec явно целится в feat/x — резолвить нужно ЦЕЛЬ, не текущую ветку.
 dchk pass "$MAIN2" 'git push -u origin feat/x'     '-u origin feat/x с cwd на main — refspec решает, не текущая ветка'
 rm -rf "$MAIN2" "$FEAT2"
+
+section 'push: гейты 1-4 (только Go-порт) — перед логикой белого списка'
+printf '\n%s\n' "$SECTION"
+# Эти четыре гейта добавлены только в Go-порт (rules.go), НЕ в pretooluse-guard.sh —
+# при запуске без GUARD_HOOK bash-хук по-прежнему пройдёт по старой белой логике, и
+# эти случаи закономерно провалятся там. Они существуют для прогона с
+# GUARD_HOOK=<go-бинарь>.
+
+# Gate 1: push должен быть ЦЕЛОЙ командой — один сегмент, без ;&|(){}`$(<># и без
+# trap/source/builtin/command/eval/exec как отдельного слова.
+G1=$(mktemp -d); git -C "$G1" init -q -b feat/gate1
+git -C "$G1" config user.email test@example.invalid; git -C "$G1" config user.name test
+git -C "$G1" commit -q --allow-empty -m init
+dchk ask "$G1" 'git push -u origin feat/gate1; echo done' \
+  'gate 1: ";" после иначе молчащего push — не целая команда'
+dchk ask "$G1" 'git push origin feat/gate-source-cleanup' \
+  'gate 1: слово "source" как отдельное слово внутри refspec (без иных спецсимволов)'
+rm -rf "$G1"
+
+# Gate 2: относительный -C резолвится от payload cwd, а не от cwd самого hook-процесса.
+G2_PARENT=$(mktemp -d)
+G2_FEAT="$G2_PARENT/feat"
+mkdir -p "$G2_FEAT"
+git -C "$G2_FEAT" init -q -b feat/gate2
+git -C "$G2_FEAT" config user.email test@example.invalid; git -C "$G2_FEAT" config user.name test
+git -C "$G2_FEAT" commit -q --allow-empty -m init
+dchk pass "$G2_PARENT" 'git -C feat push' \
+  'gate 2: относительный -C feat резолвится от payload cwd — feature-ветка, молча'
+rm -rf "$G2_PARENT"
+
+# Gate 3: локальный git config не должен незаметно перенаправлять push — config
+# создаётся прямо в fixture-репозитории через `git config`.
+G3=$(mktemp -d); git -C "$G3" init -q -b feat/gate3
+git -C "$G3" config user.email test@example.invalid; git -C "$G3" config user.name test
+git -C "$G3" commit -q --allow-empty -m init
+git -C "$G3" config remote.origin.push 'feat/gate3:main'
+dchk ask "$G3" 'git push -u origin feat/gate3' \
+  'gate 3: remote.origin.push в конфиге переопределяет назначение push'
+rm -rf "$G3"
+
+# Gate 4: назначение должно быть веткой — не имя существующего тега, не HEAD/@ как
+# явный dst в src:dst.
+G4=$(mktemp -d); git -C "$G4" init -q -b feat/gate4
+git -C "$G4" config user.email test@example.invalid; git -C "$G4" config user.name test
+git -C "$G4" commit -q --allow-empty -m init
+git -C "$G4" -c tag.gpgsign=false tag v1
+dchk ask "$G4" 'git push origin v1' \
+  'gate 4: refspec совпадает с именем существующего тега'
+dchk ask "$G4" 'git push origin feat/gate4:HEAD' \
+  'gate 4: HEAD как явный dst в src:dst — не имеет смысла как назначение'
+rm -rf "$G4"
 
 printf '\nпройдено: %d, провалено: %d, пропущено: %d\n' "$pass" "$fail" "$skip"
 [[ $fail -eq 0 ]]

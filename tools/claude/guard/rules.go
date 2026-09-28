@@ -2,6 +2,7 @@ package main
 
 import (
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -472,10 +473,137 @@ func currentBranch(dir string) string {
 
 const cannotTellPushTarget = "git push — could not tell the target branch, confirm?"
 
+// ---- push whitelist gates 1–4 — checked before the whitelist logic below --
+//
+// Rules 1–4 close bypasses the structural shape/disqualifier checks (rules
+// 1/3/5 in the original comment numbering, still enforced further down)
+// cannot see at all: a command that is not really just one push, a -C
+// directory resolved against the wrong cwd, local git config quietly
+// changing where the push actually lands, or a destination that is not an
+// ordinary branch to begin with.
+
+// rePushWholeCmdChars/rePushWholeCmdWords/rePushLeadingDot are gate 1: the
+// push must be the WHOLE command, checked textually on the raw command
+// string — not structurally on the AST — because the point is exactly to
+// catch anything that could put more than one thing in the command, or run
+// the git invocation somewhere else, that the parser's own segmentation
+// might not: a newline, a shell separator/grouping/substitution character,
+// or a wrapper keyword, anywhere in the raw text.
+var (
+	rePushWholeCmdChars = regexp.MustCompile("[\n;&|(){}`<>#]|\\$\\(")
+	rePushWholeCmdWords = regexp.MustCompile(`\b(trap|source|builtin|command|eval|exec)\b`)
+	rePushLeadingDot    = regexp.MustCompile(`^[ \t]*\.([ \t]|$)`)
+)
+
+// pushCommandNotWhole is gate 1.
+func pushCommandNotWhole(cmd string) bool {
+	return rePushWholeCmdChars.MatchString(cmd) ||
+		rePushWholeCmdWords.MatchString(cmd) ||
+		rePushLeadingDot.MatchString(cmd)
+}
+
+// resolvePushDir is gate 2: a relative -C dir is resolved against the
+// payload cwd (c.cwd) — the directory the command actually runs in — never
+// against the hook process's own cwd, which exec.Command would otherwise
+// use for a relative Dir. Every git call below (currentBranch, the config
+// and ref lookups in gates 3/4) is resolved through this, not through
+// shape.Dir directly.
+func (c *Ctx) resolvePushDir(shape PushShape) string {
+	if !shape.HasDir {
+		return c.cwd
+	}
+	if filepath.IsAbs(shape.Dir) {
+		return shape.Dir
+	}
+	return filepath.Join(c.cwd, shape.Dir)
+}
+
+// gitUpstream resolves dir's current branch's upstream (<remote>/<branch>),
+// or "" when there is none.
+func gitUpstream(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// gitRefExists reports whether ref resolves in dir.
+func gitRefExists(dir, ref string) bool {
+	return exec.Command("git", "-C", dir, "show-ref", "--verify", "--quiet", ref).Run() == nil
+}
+
+// pushConfigRedirects is gate 3: local git config that could send the push
+// somewhere other than what the command's own argument words say — asked of
+// git directly (config can hold anything; a hand-rolled read of the config
+// file would just be one more thing to keep in sync with git's own rules).
+func (c *Ctx) pushConfigRedirects(dir string, shape PushShape) (string, bool) {
+	if out, err := exec.Command("git", "-C", dir, "config", "--get-regexp", `^remote\..*\.push$`).Output(); err == nil && strings.TrimSpace(string(out)) != "" {
+		return cannotTellPushTarget, true
+	}
+	if out, err := exec.Command("git", "-C", dir, "config", "push.default").Output(); err == nil {
+		if v := strings.TrimSpace(string(out)); v != "" && v != "empty" && v != "simple" && v != "current" {
+			return cannotTellPushTarget, true
+		}
+	}
+	if !shape.HasRefspec {
+		if u := gitUpstream(dir); u != "" {
+			branch := u
+			if i := strings.IndexByte(u, '/'); i >= 0 {
+				branch = u[i+1:]
+			}
+			if reProtectedBranch.MatchString(branch) {
+				return "git push to a protected branch (" + branch + ") — confirm?", true
+			}
+		}
+	}
+	return "", false
+}
+
+// pushDestNotABranch is gate 4: the destination must resolve to an ordinary
+// branch — never a bare ref outside refs/heads/, an existing tag sharing the
+// name, or a literal HEAD/@ used as the dst half of an explicit src:dst
+// refspec (nonsensical as a push destination; HEAD/@ alone with no colon is
+// the existing current-branch shorthand, left to rule 4 below).
+func (c *Ctx) pushDestNotABranch(dir string, shape PushShape) bool {
+	if !shape.HasRefspec {
+		return false
+	}
+	src, dst, hasColon := shape.Refspec, shape.Refspec, false
+	if i := strings.IndexByte(shape.Refspec, ':'); i >= 0 {
+		src, dst, hasColon = shape.Refspec[:i], shape.Refspec[i+1:], true
+	}
+	if strings.HasPrefix(dst, "refs/") && !strings.HasPrefix(dst, "refs/heads/") {
+		return true
+	}
+	if hasColon && (dst == "HEAD" || dst == "@") {
+		return true
+	}
+	toks := map[string]bool{}
+	if src != "" && !strings.HasPrefix(src, "refs/") {
+		toks[src] = true
+	}
+	if dst != "" && !strings.HasPrefix(dst, "refs/") {
+		toks[dst] = true
+	}
+	for tok := range toks {
+		if gitRefExists(dir, "refs/tags/"+tok) {
+			return true
+		}
+	}
+	return false
+}
+
 // pushNeedsConfirm implements the push whitelist end to end: the reason to
 // ask, or "" and false for a silent feature-branch push (which also covers
 // "mentions git and push but there is no push here at all", see above).
 func (c *Ctx) pushNeedsConfirm() (string, bool) {
+	// Gate 1: the push must be the whole command — checked first and on the
+	// raw text, before any structural parsing is trusted at all.
+	if pushCommandNotWhole(c.cmd) {
+		return cannotTellPushTarget, true
+	}
+
 	// Rule 3: cd/pushd/popd/export/declare/typeset/local/env/alias/eval/exec,
 	// a GIT_DIR/GIT_WORK_TREE assignment, or a --git-dir/--work-tree flag,
 	// ANYWHERE in the command — checked before anything else, so an alias
@@ -522,11 +650,21 @@ func (c *Ctx) pushNeedsConfirm() (string, bool) {
 		return "git push --all/--mirror pushes every branch — confirm?", true
 	}
 
-	// Rule 4: resolve the target branch positively.
-	dir := c.cwd
-	if shape.HasDir {
-		dir = shape.Dir
+	// Gate 2: resolve -C against the payload cwd — every git call from here
+	// on (gates 3/4, and rule 4's own currentBranch below) uses this dir.
+	dir := c.resolvePushDir(shape)
+
+	// Gate 3: local git config must not redirect the push.
+	if reason, need := c.pushConfigRedirects(dir, shape); need {
+		return reason, true
 	}
+
+	// Gate 4: the destination must be a branch.
+	if c.pushDestNotABranch(dir, shape) {
+		return cannotTellPushTarget, true
+	}
+
+	// Rule 4: resolve the target branch positively.
 	dst := ""
 	if shape.HasRefspec {
 		dst = shape.Refspec

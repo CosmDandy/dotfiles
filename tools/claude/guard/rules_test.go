@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -426,5 +427,197 @@ func TestPushOrdinaryFeatureBranchStillSilent(t *testing.T) {
 	}
 	if got := evalCmd(fmt.Sprintf("git -C %s push", dir), "/some/other/cwd"); got.Verdict != "" {
 		t.Errorf("git -C <featrepo> push = %+v, want silent pass", got)
+	}
+}
+
+// ---- Gates 1-4: added before the whitelist logic above, closing bypasses
+// the structural shape/disqualifier checks cannot see at all. ----
+
+// gitConfigSet runs `git -C dir config key value`, failing the test on error.
+func gitConfigSet(t *testing.T, dir, key, value string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "config", key, value)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config %s %s: %v\n%s", key, value, err, out)
+	}
+}
+
+// Gate 1: the push must be the WHOLE command — exactly one segment, checked
+// textually on the raw command string, not structurally on the AST.
+func TestPushCommandNotWhole(t *testing.T) {
+	mustAsk := []string{
+		"git push origin feat/x\necho done",
+		"git push origin feat/x; echo done",
+		"git push origin feat/x & echo done",
+		"git push origin feat/x | cat",
+		"(git push origin feat/x)",
+		"{ git push origin feat/x; }",
+		"git push origin `echo feat/x`",
+		"git push origin $(echo feat/x)",
+		"git push origin feat/x < /dev/null",
+		"git push origin feat/x > /tmp/x",
+		"git push origin feat/x # comment",
+		"trap 'git push origin feat/x' EXIT",
+		"source ./setup.sh",
+		"builtin git push origin feat/x",
+		"command git push origin feat/x",
+		"eval git push origin feat/x",
+		"exec git push origin feat/x",
+		// "source" as a whole word inside an otherwise ordinary refspec, with
+		// no other punctuation at all — the word list, not the char class.
+		"git push origin feat/source-cleanup",
+		". ./setup.sh",
+		"  . setup.sh",
+	}
+	for _, cmd := range mustAsk {
+		if !pushCommandNotWhole(cmd) {
+			t.Errorf("pushCommandNotWhole(%q) = false, want true", cmd)
+		}
+	}
+	mustStayWhole := []string{
+		"git push origin feat/x",
+		"git push -u origin feat/x",
+		`git push origin "feat/x"`,
+		"git push",
+	}
+	for _, cmd := range mustStayWhole {
+		if pushCommandNotWhole(cmd) {
+			t.Errorf("pushCommandNotWhole(%q) = true, want false", cmd)
+		}
+	}
+}
+
+// The same gate, exercised end to end through evaluate: an otherwise-silent
+// feature-branch push must ask once it shares its command with anything else.
+func TestPushGate1WholeCommandAsksThroughEvaluate(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	got := evalCmd("git push -u origin feat/x; echo done", dir)
+	if got.Verdict != "ask" {
+		t.Errorf("evalCmd(%q) = %+v, want ask (gate 1: not the whole command)", "git push -u origin feat/x; echo done", got)
+	}
+}
+
+// Gate 2: a relative -C dir resolves against the payload cwd (c.cwd), never
+// against the hook process's own cwd. featRepo lives at <parent>/feat; a
+// buggy resolution (exec.Command's Dir taken literally as "feat", which the
+// OS then resolves against the test binary's real working directory, not
+// parent) finds no such repo there, fails, and would ask — the fix must
+// resolve it correctly and stay silent, since feat/gate2 is not protected.
+func TestPushGate2RelativeDashCResolvesAgainstPayloadCwd(t *testing.T) {
+	parent := t.TempDir()
+	featRepo := filepath.Join(parent, "feat")
+	if err := os.MkdirAll(featRepo, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", featRepo, err)
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = featRepo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "feat/gate2")
+	run("config", "user.email", "test@example.invalid")
+	run("config", "user.name", "test")
+	run("commit", "--allow-empty", "-q", "-m", "init")
+
+	got := evalCmd("git -C feat push", parent)
+	if got.Verdict != "" {
+		t.Errorf("evalCmd(%q) with cwd=%s = %+v, want silent pass (relative -C must resolve against the payload cwd)", "git -C feat push", parent, got)
+	}
+}
+
+// Gate 3: local git config that could redirect the push — remote.<name>.push
+// — must ask even though the command's own argument words name an ordinary,
+// unprotected feature branch explicitly.
+func TestPushGate3RemotePushConfigRedirectsAsks(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	gitConfigSet(t, dir, "remote.origin.push", "feat/x:main")
+	got := evalCmd("git push -u origin feat/x", dir)
+	if got.Verdict != "ask" {
+		t.Errorf("evalCmd with remote.origin.push set = %+v, want ask", got)
+	}
+}
+
+// Gate 3: push.default set to anything other than empty/simple/current must
+// ask, again even with an explicit, unprotected refspec.
+func TestPushGate3PushDefaultNonStandardAsks(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	gitConfigSet(t, dir, "push.default", "matching")
+	got := evalCmd("git push -u origin feat/x", dir)
+	if got.Verdict != "ask" {
+		t.Errorf("evalCmd with push.default=matching = %+v, want ask", got)
+	}
+	for _, v := range []string{"simple", "current"} {
+		dir2 := setupPushTestRepo(t, "feat/x")
+		gitConfigSet(t, dir2, "push.default", v)
+		if got := evalCmd("git push -u origin feat/x", dir2); got.Verdict != "" {
+			t.Errorf("evalCmd with push.default=%s = %+v, want silent pass", v, got)
+		}
+	}
+}
+
+// Gate 3: with no explicit refspec dst, a push resolves through the current
+// branch's upstream — a local branch named unprotected but tracking a
+// protected remote branch must still ask.
+func TestPushGate3UpstreamEndsProtectedAsks(t *testing.T) {
+	mainRepo := setupPushTestRepo(t, "main")
+	featRepo := setupPushTestRepo(t, "feat/gate3")
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = featRepo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("remote", "add", "origin", mainRepo)
+	run("fetch", "-q", "origin")
+	run("branch", "--set-upstream-to=origin/main")
+
+	got := evalCmd("git push", featRepo)
+	if got.Verdict != "ask" {
+		t.Errorf("evalCmd(%q) with upstream origin/main = %+v, want ask (upstream ends in a protected name)", "git push", got)
+	}
+}
+
+// Gate 4: a refspec dst starting with refs/ but not refs/heads/ is not a
+// branch push at all — must ask, protected or not.
+func TestPushGate4NonHeadsRefspecDstAsks(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	got := evalCmd("git push origin feat/x:refs/tags/v1", dir)
+	if got.Verdict != "ask" {
+		t.Errorf("evalCmd(%q) = %+v, want ask (dst outside refs/heads/)", "git push origin feat/x:refs/tags/v1", got)
+	}
+}
+
+// Gate 4: a src or dst token that already names an existing tag must ask —
+// git would resolve it ambiguously, or against the tag, not a branch.
+func TestPushGate4ExistingTagNameAsks(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	// -c tag.gpgsign=false: a global tag.gpgsign=true would otherwise try to
+	// create a signed, annotated tag here and fail for want of a key/message.
+	cmd := exec.Command("git", "-C", dir, "-c", "tag.gpgsign=false", "tag", "v1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git tag v1: %v\n%s", err, out)
+	}
+	got := evalCmd("git push origin v1", dir)
+	if got.Verdict != "ask" {
+		t.Errorf("evalCmd(%q) = %+v, want ask (v1 already names a tag)", "git push origin v1", got)
+	}
+}
+
+// Gate 4: HEAD or @ as the dst half of an explicit src:dst refspec makes no
+// sense as a push destination and must ask; HEAD/@ ALONE (no colon) is left
+// to rule 4's own current-branch shorthand and must stay silent.
+func TestPushGate4HeadAtAsExplicitDstAsks(t *testing.T) {
+	dir := setupPushTestRepo(t, "feat/x")
+	for _, cmd := range []string{"git push origin feat/x:HEAD", "git push origin feat/x:@"} {
+		got := evalCmd(cmd, dir)
+		if got.Verdict != "ask" {
+			t.Errorf("evalCmd(%q) = %+v, want ask (HEAD/@ as explicit dst)", cmd, got)
+		}
+	}
+	if got := evalCmd("git push origin HEAD", dir); got.Verdict != "" {
+		t.Errorf(`evalCmd("git push origin HEAD") = %+v, want silent pass (HEAD alone, no colon, is current-branch shorthand)`, got)
 	}
 }
