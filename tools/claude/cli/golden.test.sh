@@ -263,7 +263,12 @@ run_sessions_case() {
   check_golden "$desc" "$slug" "$RUN/actual-sessions.out"
 }
 
-REC_HOME="$TESTDATA/sessions/recorded"
+# Same pid problem as the statusline fixture above: rewritten to 1 (always alive).
+REC_HOME="$RUN/sessions-recorded"
+mkdir -p "$REC_HOME/.claude/sessions"
+for f in "$TESTDATA/sessions/recorded/.claude/sessions/"*.json; do
+  jq -c '.pid = 1' "$f" > "$REC_HOME/.claude/sessions/$(basename "$f")"
+done
 run_sessions_case "bare mode on recorded snapshot" "sessions-bare-recorded" "$REC_HOME"
 run_sessions_case "full mode on recorded snapshot" "sessions-full-recorded" "$REC_HOME" full
 run_sessions_case "full mode, self_id excludes a recorded session" "sessions-full-recorded-selfid-excludes" "$REC_HOME" full "413069a1-4a04-442d-810d-9cc0bce44b7c"
@@ -339,18 +344,26 @@ run_panetitle_case "other command, with badge" "panetitle-other-with-badge" 1234
 rm -f "$PT_HOME/.claude/sessions/1.json"
 
 # Real spawned processes exercise the actual `ps -o tty=` / `ps -t tty -o
-# args=` lookup for real — no mocking needed. Output carries no pid, just
-# the tty/args-derived text, so it stays golden-stable across runs.
+# args=` lookup for real — no mocking needed.
+# NOTE: not goldens. What the lookup finds depends on everything else sharing the
+# tty — Claude Code's own node process on the machine that ran it, nothing at all
+# on a CI runner without a terminal — so only the stable part is pinned: the path
+# runs, returns the session prefix and a command name, and does not error.
+check_panetitle_live() {
+  local desc="$1" pid="$2" cmd="$3" out
+  out=$(env HOME="$PT_HOME" "$BIN" pane-title "$pid" "$cmd" mysession 2>&1)
+  if [[ $out =~ ^mysession\ ·\ [^[:space:]]+$ ]]; then ok "$desc"; else bad "$desc" "got [$out]"; fi
+}
 python3 -c "import time; time.sleep(20)" claude-marker-parity-test &
 REALPID=$!
 sleep 0.3
-run_panetitle_case "node cmd, real spawned process (ps tty lookup)" "panetitle-node-real-spawned" "$REALPID" node mysession "$PT_HOME"
+check_panetitle_live "node cmd, real spawned process (ps tty lookup)" "$REALPID" node
 kill "$REALPID" 2>/dev/null; wait "$REALPID" 2>/dev/null
 
 sleep 20 &
 REALPID2=$!
 sleep 0.2
-run_panetitle_case "digit-version cmd, real sleep process" "panetitle-digit-version-real-sleep" "$REALPID2" 999 mysession "$PT_HOME"
+check_panetitle_live "digit-version cmd, real sleep process" "$REALPID2" 999
 kill "$REALPID2" 2>/dev/null; wait "$REALPID2" 2>/dev/null
 
 run_panetitle_case "node cmd, nonexistent pid" "panetitle-node-nonexistent-pid" 99999999 node mysession "$PT_HOME"
