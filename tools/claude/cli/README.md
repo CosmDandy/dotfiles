@@ -76,18 +76,19 @@ cd tools/claude/cli
 go test ./...
 ```
 
-The parity suite — every subcommand against the script it replaces, on
-recorded/synthesized inputs, byte for byte:
+The golden suite — every subcommand's output (and, for a few cases, the
+state it writes) pinned against `testdata/golden/`, byte for byte:
 
 ```sh
-bash tools/claude/cli/parity.test.sh
+bash tools/claude/cli/golden.test.sh            # compare
+bash tools/claude/cli/golden.test.sh --update   # (re)write the goldens
 ```
 
 Builds the binary itself (or set `CLAUDE_CLI_BIN=/path/to/claude-cli` to
-test an already-built one). Needs `go`, `jq`, `python3` (only to run the
-OLD `claude-sessions.py` for comparison — production no longer needs it).
-Same conventions as `pretooluse-guard.test.sh`: counters, private temp
-dirs, no `set -e`.
+test an already-built one). Needs `go`, `jq` (for the bashhint suite it
+also runs) and `python3` (to spawn a marker process for one pane-title
+case). Same conventions as `pretooluse-guard.test.sh`: counters, private
+temp dirs, no `set -e`.
 
 Test seams (env vars that exist ONLY for testing — unset, behaviour is
 identical to the scripts):
@@ -100,9 +101,9 @@ identical to the scripts):
   without needing to fake `/proc`, `/run/.containerenv`, etc.
 - `CLAUDE_CLI_PANE_TITLE_TTY`, `CLAUDE_CLI_PANE_TITLE_ARGS` (pane-title) —
   override the `ps -o tty=` / `ps -t tty -o args=` results for the
-  node/claude-detection branch. The parity suite mostly avoids needing
-  these by spawning a real background process and letting both
-  implementations exec the real `ps` — see its "pane-title" section.
+  node/claude-detection branch. The golden suite mostly avoids needing
+  these by spawning a real background process and letting the binary
+  exec the real `ps` — see its "pane-title" section.
 
 ## Benchmarks
 
@@ -138,9 +139,10 @@ silently when the binary is not there yet (e.g. before `/nix` mounts,
 build`/`nix build`), so a missing binary means an empty statusline/title,
 never a visible error where one used to be.
 
-`parity.test.sh` still lives here as the record of that migration; once
-the originals are gone (they are) it exits 0 immediately rather than
-failing forever — see the file for the exact check.
+The old parity suite (the five replaced scripts against the binary) gated
+that switch; with the originals gone there's nothing left to compare
+against, so `golden.test.sh` now pins the binary's own output instead —
+produced by the binary that ran that 71/71 parity, see the file's header.
 
 ## The guard subcommand — not wired in
 

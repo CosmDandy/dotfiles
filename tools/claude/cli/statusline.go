@@ -860,6 +860,16 @@ func runStatusline(_ []string) {
 	margin := rightMargin(os.Getpid())
 
 	now := time.Now().Unix()
+	// CLAUDE_CLI_NOW is a test-only override: the rate-limit history fixtures
+	// sit their sample offsets exactly on the window/trend-lag boundaries, so
+	// any drift between the shell's `now` and this process's own clock read
+	// can flip which side of a boundary a sample falls on. Pinning "now" to
+	// the same value the fixture was rendered with removes that race.
+	if v := os.Getenv("CLAUDE_CLI_NOW"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			now = n
+		}
+	}
 
 	// --- model block -------------------------------------------------
 	// [brain] Model [1M] [· effort] [▸ custom agent].
