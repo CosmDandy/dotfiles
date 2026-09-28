@@ -371,7 +371,7 @@
     ],
     "defaultMode": "bypassPermissions"
   },
-  "model": "claude-fable-5-1",
+  "model": "opus[1m]",
   "fallbackModel": [
     "opus",
     "sonnet"
