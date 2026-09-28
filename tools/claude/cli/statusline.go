@@ -103,6 +103,14 @@ const (
 	weekMinElapsed = 43200
 	limitWindow    = 900 // rate averaging window, sec
 	idleWindow     = 300 // silence longer than this means spending stopped
+	// A 5h window cannot reset further ahead than its own length.
+	fiveHourMaxAhead = 5*3600 + 600
+	// An unchanged percentage is recorded at most this often: every session
+	// on the machine appends to one file, and a line per tick per session
+	// buys no precision the minute-scale arithmetic below can use.
+	sampleEvery = 60
+	// Nothing older is ever read (the trend's baseline is the oldest sample).
+	historyKeep = trendLag + 2*limitWindow
 
 	sessionTTL = 90
 )
@@ -402,6 +410,13 @@ type awkSample struct {
 // 5h window resets. Percentages are kept in hundredths, and the sample file
 // is shared across sessions — the limit is per-account, not per-session.
 func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
+	// NOTE: Claude Code has sent resets_at = 2030-01-01 right after a window
+	// reset. Taken at face value it became the window marker below, every
+	// real payload after it looked stale, and the segment froze on
+	// "0% (3:00)" until the marker file was deleted by hand.
+	if reset != nil && *reset > now+fiveHourMaxAhead {
+		reset = nil
+	}
 	tmpdir := os.Getenv("TMPDIR")
 	if tmpdir == "" {
 		tmpdir = "/tmp"
@@ -425,18 +440,22 @@ func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
 	if data, err := os.ReadFile(wf); err == nil {
 		fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &prevReset)
 	}
+	if prevReset > now+fiveHourMaxAhead { // a marker written before the check above
+		prevReset = 0
+	}
 	if *reset > prevReset {
 		_ = os.WriteFile(wf, []byte(fmt.Sprintf("%d\n", *reset)), 0o644)
 		_ = os.WriteFile(f, []byte(fmt.Sprintf("%d %d\n", now, pct100)), 0o644) // new window — new baseline
 		return fiveHourResult{pct100: pct100, reset: reset}
 	}
 
-	var last int64
+	var last, lastTS int64
 	if data, err := os.ReadFile(f); err == nil {
 		lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 		if lastLine := lines[len(lines)-1]; lastLine != "" {
 			fields := strings.Fields(lastLine)
 			if len(fields) >= 2 {
+				lastTS, _ = strconv.ParseInt(fields[0], 10, 64)
 				last, _ = strconv.ParseInt(fields[1], 10, 64)
 			}
 		}
@@ -453,6 +472,7 @@ func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
 		pct100 = last
 	case pct100 < last:
 		pct100 = last
+	case pct100 == last && now-lastTS < sampleEvery:
 	default:
 		// NOTE: append only. Rewriting the file through `awk > tmp && mv`
 		// on every tick let parallel sessions overwrite each other, so the
@@ -511,12 +531,15 @@ func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
 		pbTS, pbPct, plTS, plPct = &zero, &zero, &zero, &zero
 	}
 
-	// keep the file bounded; rare enough that a race does not matter
-	if len(samples) > 600 {
-		tail := samples[len(samples)-100:]
+	// Keep the file bounded by age, not by count: a count cut left minutes of
+	// history when several sessions appended, and the trend needs 45.
+	// Rare enough (~200 minutes of samples) that a race does not matter.
+	if len(samples) > 200 {
 		var b strings.Builder
-		for _, s := range tail {
-			fmt.Fprintf(&b, "%d %d\n", s.ts, s.pct)
+		for _, s := range samples {
+			if s.ts >= now-historyKeep {
+				fmt.Fprintf(&b, "%d %d\n", s.ts, s.pct)
+			}
 		}
 		_ = os.WriteFile(f, []byte(b.String()), 0o644)
 	}
