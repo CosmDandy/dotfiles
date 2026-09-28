@@ -68,42 +68,32 @@ subcommand invocation stay consistent.
 
 ## Test
 
-Go unit tests (none yet — behaviour is covered end to end by the parity
-suite below, which is the actual acceptance criterion for a *port*):
-
 ```sh
 cd tools/claude/cli
 go test ./...
 ```
 
-The golden suite — every subcommand's output (and, for a few cases, the
-state it writes) pinned against `testdata/golden/`, byte for byte:
-
-```sh
-bash tools/claude/cli/golden.test.sh            # compare
-bash tools/claude/cli/golden.test.sh --update   # (re)write the goldens
-```
-
-Builds the binary itself (or set `CLAUDE_CLI_BIN=/path/to/claude-cli` to
-test an already-built one). Needs `go`, `jq` (for the bashhint suite it
-also runs) and `python3` (to spawn a marker process for one pane-title
-case). Same conventions as `pretooluse-guard.test.sh`: counters, private
-temp dirs, no `set -e`.
+`cli_test.go` is one table per subcommand: the input (payload, env,
+session files, state) and the exact output, 70 cases. Each case runs the
+real subcommand — the test binary re-executes itself as `claude-cli` — in a
+clean environment with `TZ=UTC` and a pinned clock. On a mismatch the
+failure prints the new output as a Go literal; paste it into the table when
+the change is intended. The bashhint hook has its own suite,
+`tools/claude/hooks/posttooluse-bashhint.test.sh` (`BASHHINT_HOOK="claude-cli bashhint"`).
 
 Test seams (env vars that exist ONLY for testing — unset, behaviour is
 identical to the scripts):
 
 - `HOME` — every subcommand that touches `~/.claude/...` or `~/.claude.json`
-  reads it from `$HOME`, exactly like the script/python it replaces. Point
-  it at a fixture directory (`testdata/statusline/home`,
-  `testdata/sessions/recorded`) instead of adding a bespoke directory flag.
+  reads it from `$HOME`; the tests point it at a temp dir with the case's
+  session files instead of adding a bespoke directory flag.
+- `CLAUDE_CLI_NOW` (statusline) — pins "now" for the rate-limit history.
 - `CLAUDE_CLI_IN_CONTAINER=1|0` (pane-title) — forces `in_container()`
   without needing to fake `/proc`, `/run/.containerenv`, etc.
 - `CLAUDE_CLI_PANE_TITLE_TTY`, `CLAUDE_CLI_PANE_TITLE_ARGS` (pane-title) —
   override the `ps -o tty=` / `ps -t tty -o args=` results for the
-  node/claude-detection branch. The golden suite mostly avoids needing
-  these by spawning a real background process and letting the binary
-  exec the real `ps` — see its "pane-title" section.
+  node/claude-detection branch. The tests avoid them by spawning a real
+  process and letting the binary exec the real `ps`.
 
 ## Benchmarks
 
@@ -139,10 +129,8 @@ silently when the binary is not there yet (e.g. before `/nix` mounts,
 build`/`nix build`), so a missing binary means an empty statusline/title,
 never a visible error where one used to be.
 
-The old parity suite (the five replaced scripts against the binary) gated
-that switch; with the originals gone there's nothing left to compare
-against, so `golden.test.sh` now pins the binary's own output instead —
-produced by the binary that ran that 71/71 parity, see the file's header.
+The expected outputs in `cli_test.go` come from the binary that ran that
+71/71 parity.
 
 ## The guard subcommand — not wired in
 

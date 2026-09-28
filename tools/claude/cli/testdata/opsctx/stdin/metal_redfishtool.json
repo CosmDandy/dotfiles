@@ -1,1 +1,0 @@
-{"tool_input":{"command":"redfishtool -r bmc raw GET /redfish/v1"},"session_id":"opsctx-m3"}

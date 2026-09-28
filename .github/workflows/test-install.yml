@@ -139,15 +139,15 @@ jobs:
           go build -o "$RUNNER_TEMP/claude-guard" .
           cd ../../..
           GUARD_HOOK="$RUNNER_TEMP/claude-guard" bash tools/claude/hooks/pretooluse-guard.test.sh
-      - name: claude-cli — vet, build, bashhint suite against the binary
+      - name: claude-cli — vet, test, build, bashhint suite against the binary
         run: |
           cd tools/claude/cli
           test -z "$(gofmt -l .)"
           go vet ./...
+          go test ./...
           go build -o "$RUNNER_TEMP/claude-cli" .
           cd ../../..
           BASHHINT_HOOK="$RUNNER_TEMP/claude-cli bashhint" bash tools/claude/hooks/posttooluse-bashhint.test.sh
-          CLAUDE_CLI_BIN="$RUNNER_TEMP/claude-cli" bash tools/claude/cli/golden.test.sh
 
   # The pre-commit hook runs gitleaks too, but --no-verify skips it and the repository is
   # public.

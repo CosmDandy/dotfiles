@@ -76,8 +76,8 @@ func waitIcon() string    { return envOr("CLAUDE_WAIT_ICON", "○") }
 func approveIcon() string { return envOr("CLAUDE_APPROVE_ICON", "\U000F033E") }
 
 // sessionsDir returns ~/.claude/sessions, same as the python script's
-// os.path.expanduser("~") — both read $HOME, so parity tests point it at
-// recorded fixtures by setting HOME, with no extra knob needed.
+// os.path.expanduser("~") — both read $HOME, so the tests point it at
+// their session files by setting HOME, with no extra knob needed.
 func sessionsDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
