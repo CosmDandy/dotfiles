@@ -180,3 +180,6 @@ Drop: file contents, tool output, search results, superseded reasoning.
   files, half-finished work and submodule pointers along with what you meant.
 - Check the path is in `git status --short` before staging it: an existing but
   unchanged path stages nothing and reports success.
+- One task, one branch — the session's own. Before the final report, merge every
+  agent branch into it and delete that branch and its worktree; also remove any
+  worktree under `.claude/worktrees/` whose branch is already in the default branch.
