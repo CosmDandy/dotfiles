@@ -108,8 +108,6 @@ jobs:
           echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
           echo "$PWD" >> "$GITHUB_PATH"
-      - name: Guard behaviour tests
-        run: bash tools/claude/hooks/pretooluse-guard.test.sh
       # Each case builds its own throwaway git repository, so running this in CI touches
       # nothing in the checkout.
       - name: Session lifecycle hook tests

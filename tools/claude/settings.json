@@ -394,7 +394,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.dotfiles/tools/claude/hooks/pretooluse-guard.sh"
+            "command": "~/.dotfiles/tools/claude/guard/wrapper.sh"
           },
           {
             "type": "command",

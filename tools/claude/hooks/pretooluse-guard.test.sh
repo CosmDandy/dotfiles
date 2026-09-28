@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Behaviour tests for pretooluse-guard.sh.
+# Behaviour tests for the PreToolUse guard (tools/claude/guard, Go; it replaced the
+# bash pretooluse-guard.sh, whose verdicts these cases were first written against).
 #
 # The guard is the only gate that applies in EVERY mode, including bypassPermissions where
 # the allow rules stop applying. A regression here does not fail loudly — it silently lets
@@ -11,13 +12,20 @@
 # read-only one-liner pushes the work into bypass, where nothing works at all.
 #
 # Usage: bash tools/claude/hooks/pretooluse-guard.test.sh
-# Needs jq (so does the hook). gitleaks is optional — without it the ask/deny ordering
-# block is skipped with a note rather than failing.
+# Builds claude-guard fresh unless GUARD_HOOK points at a binary. Needs go and jq.
+# gitleaks is optional — without it the ask/deny ordering block is skipped with a note
+# rather than failing.
 #
 # NOTE: no `set -e` — the test counts failures and must reach the end.
 set -uo pipefail
 
-HOOK="${GUARD_HOOK:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pretooluse-guard.sh}"
+if [[ -n ${GUARD_HOOK:-} ]]; then
+  HOOK=$GUARD_HOOK
+else
+  GUARD_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../guard" && pwd)"
+  HOOK="$(mktemp -d)/claude-guard"
+  (cd "$GUARD_DIR" && go build -o "$HOOK" .) || { echo "сборка claude-guard не удалась"; exit 2; }
+fi
 [[ -x $HOOK ]] || { echo "не найден исполняемый $HOOK"; exit 2; }
 command -v jq >/dev/null || { echo "нужен jq"; exit 2; }
 
@@ -863,10 +871,8 @@ rm -rf "$MAIN2" "$FEAT2"
 
 section 'push: гейты 1-4 (только Go-порт) — перед логикой белого списка'
 printf '\n%s\n' "$SECTION"
-# Эти четыре гейта добавлены только в Go-порт (rules.go), НЕ в pretooluse-guard.sh —
-# при запуске без GUARD_HOOK bash-хук по-прежнему пройдёт по старой белой логике, и
-# эти случаи закономерно провалятся там. Они существуют для прогона с
-# GUARD_HOOK=<go-бинарь>.
+# These four gates exist only in the Go guard (rules.go); the bash version was retired
+# before they were written.
 
 # Gate 1: push должен быть ЦЕЛОЙ командой — один сегмент, без ;&|(){}`$(<># и без
 # trap/source/builtin/command/eval/exec как отдельного слова.

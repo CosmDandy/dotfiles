@@ -1,12 +1,13 @@
 # claude-guard
 
-A Go port of `tools/claude/hooks/pretooluse-guard.sh`: the PreToolUse guard
-hook for Claude Code's Bash tool. It reads the hook's JSON on stdin and
-prints a permission decision on stdout (or nothing, to allow silently). Same
-rules, same order, same verdicts and reason strings as the bash script — see
-that file's own comments for what each rule is guarding against. The point
-of the rewrite is speed: the bash version forks grep/sed/awk per rule
-(60-170 ms per call, measured); this binary parses the command once with
+The PreToolUse guard hook for Claude Code's Bash tool. It reads the hook's
+JSON on stdin and prints a permission decision on stdout (or nothing, to allow
+silently). It replaced the bash `tools/claude/hooks/pretooluse-guard.sh` (in
+git history): same rules, same order and reason strings, verified case for
+case against it before the switch; the git push decision has since been
+rewritten as a whitelist that only the Go guard has. The point of the port
+was speed: the bash version forked grep/sed/awk per rule (60-170 ms per call,
+measured); this binary parses the command once with
 [mvdan.cc/sh](https://github.com/mvdan/sh) and evaluates every rule against
 compiled regexes in one process (~9 ms per call, dominated by process-start
 overhead on macOS, not by the guard's own logic).
@@ -39,7 +40,7 @@ overhead on macOS, not by the guard's own logic).
 
 ```sh
 cd tools/claude/guard
-go build -o guard .
+go build -o claude-guard .
 ```
 
 Or via Nix: `nix build .#claude-guard` from `platform/nix/` (uses
@@ -55,31 +56,26 @@ cd tools/claude/guard
 go test ./...
 ```
 
-The bash behaviour suite (290 cases) runs against either implementation via
-the `GUARD_HOOK` environment variable:
+The behaviour suite (345 cases, verdict per real command) builds the binary
+itself, or takes one via `GUARD_HOOK`:
 
 ```sh
-# baseline, against the bash script itself
 bash tools/claude/hooks/pretooluse-guard.test.sh
-
-# against this binary
-go build -o /tmp/guard-bin tools/claude/guard
-GUARD_HOOK=/tmp/guard-bin bash tools/claude/hooks/pretooluse-guard.test.sh
+GUARD_HOOK=/path/to/claude-guard bash tools/claude/hooks/pretooluse-guard.test.sh
 ```
 
-Both must report `провалено: 0`.
+It must report `провалено: 0`.
 
-## Switching `settings.json` over
+## Wiring
 
-Not done by this change on purpose — the owner does it after review. The
-hook is wired in `tools/claude/settings.json` under the Bash tool's
-PreToolUse hooks as:
+`tools/claude/settings.json` calls `tools/claude/guard/wrapper.sh` for the Bash
+tool's PreToolUse hook; the bash `pretooluse-guard.sh` it replaced is gone. The
+wrapper runs `claude-guard` from next to itself (a local
+`go build -o claude-guard .`) or from PATH — `packages.<system>.claude-guard` is
+in `home.packages` and in the mac's `systemPackages`, so it arrives with
+`home-manager switch` / `darwin-rebuild switch`.
 
-```json
-{ "type": "command", "command": "~/.dotfiles/tools/claude/hooks/pretooluse-guard.sh" }
-```
-
-To switch, point `command` at `claude-guard`: it is on PATH after
-`home-manager switch` / `darwin-rebuild switch` (`packages.<system>.claude-guard`
-is in `home.packages` and in the mac's `systemPackages`), or at a local
-`go build -o guard .` output for a quick trial.
+NOTE: the wrapper fails CLOSED. With no binary it denies every Bash call with a
+reason that says how to fix it — a hook that exits 127 is a non-blocking error to
+Claude Code, i.e. an allow, and a missing guard must not mean an open door. On the
+mac that also covers the ~11 s after login before /nix is mounted.

@@ -24,8 +24,8 @@ export CLAUDE_CODE_TMUX_TRUECOLOR=1
 # The everyday one.
 # NOTE: the auto-mode classifier is off — an audit of five containers showed it caused 100%
 # of the interruptions in background sessions, while interactively 135 of 136 prompts were
-# approved unchanged. The barrier is the deny rules plus pretooluse-guard.sh, which was
-# written for exactly this mode and applies in full here.
+# approved unchanged. The barrier is the deny rules plus the PreToolUse guard
+# (tools/claude/guard), which was written for exactly this mode and applies in full here.
 # The flag duplicates defaultMode from settings.json on purpose: it does not depend on the
 # client honouring bypass from the file.
 alias cl='claude --permission-mode bypassPermissions'
