@@ -56,7 +56,7 @@ cd tools/claude/guard
 go test ./...
 ```
 
-The behaviour suite (345 cases, verdict per real command) builds the binary
+The behaviour suite (390 cases, verdict per real command) builds the binary
 itself, or takes one via `GUARD_HOOK`:
 
 ```sh

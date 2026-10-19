@@ -411,11 +411,11 @@ func isSpaceByte(b byte) bool {
 var (
 	reCurlOutputFlag   = regexp.MustCompile(`(^|[[:space:]])(-[a-zA-Z]*o|--output)([[:space:]]|=)*[^[:space:]]*`)
 	reCurlOutputPrefix = regexp.MustCompile(`^[[:space:]]*(-[a-zA-Z]*o|--output)[[:space:]=]*`)
-	reCurlSafeOutput   = regexp.MustCompile(`^(/dev/null)?$|^/(private/)?tmp/|CLAUDE_JOB_DIR|/scratchpad(/|$)`)
+	reCurlSafeOutput   = regexp.MustCompile(`^(/dev/null)?$|^/(private/)?tmp/|CLAUDE_JOB_DIR|\.claude/jobs/[^/]+/tmp/|/scratchpad(/|$)`)
 )
 
 func (c *Ctx) curlWritesAFile() bool {
-	for _, seg := range c.segs {
+	for i, seg := range c.segs {
 		if !reCurlBareHead.MatchString(seg.Text) {
 			continue
 		}
@@ -427,6 +427,120 @@ func (c *Ctx) curlWritesAFile() bool {
 			if reCurlSafeOutput.MatchString(v) {
 				continue
 			}
+			if reRelativePlainPath.MatchString(v) && c.workDirIsScratch(i) {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// A path that stays inside the directory it is resolved against.
+var reRelativePlainPath = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$`)
+
+// workDirIsScratch reports whether segment i runs in a scratch directory: the
+// last `cd` before it goes there, or there is none and the session cwd is one.
+func (c *Ctx) workDirIsScratch(i int) bool {
+	for j := i - 1; j >= 0; j-- {
+		if !reCdHead.MatchString(c.segs[j].Text) {
+			continue
+		}
+		rest := reCdHead.ReplaceAllString(c.segs[j].Text, "")
+		rest = strings.TrimLeft(rest, `'"`)
+		rest = reTrailQuoteSpace.ReplaceAllString(rest, "")
+		return reScratchToken.MatchString(rest) && !strings.Contains(rest, "..")
+	}
+	return reScratchToken.MatchString(c.cwd) && !strings.Contains(c.cwd, "..")
+}
+
+// ---- curl_mutates -------------------------------------------------------------
+//
+// A method or an upload always asks. A body alone does not when it cannot change
+// anything: -G sends it as the query string of a GET, and read endpoints take a query
+// as a POST body — the Prometheus API (VictoriaMetrics, Loki), OpenSearch/Elasticsearch
+// search, Grafana's datasource query. Those were 59 of 86 asks in a fortnight of
+// kvt-platform sessions, the search endpoints most of the rest.
+
+var (
+	reCurlMethodOrUpload = regexp.MustCompile(`-X[[:space:]]*["']?(POST|PUT|DELETE|PATCH)|--request[[:space:]=]+["']?(POST|PUT|DELETE|PATCH)|--json\b|(^|[[:space:]])(-F|--form|-T|--upload-file)([[:space:]]|=|@)`)
+	reCurlBody           = regexp.MustCompile(`(^|[[:space:]])(-d|--data(-raw|-binary|-urlencode|-ascii)?)([[:space:]]|=|@)`)
+	reCurlGetFlag        = regexp.MustCompile(`(^|[[:space:]])(--get|-[a-zA-Z]*G[a-zA-Z]*)([[:space:]]|$)`)
+	reCurlReadQueryURL   = regexp.MustCompile(`(/(loki/)?api/v1/(query|query_range|query_exemplars|series|labels|label/[^/[:space:]'"]+/values|metadata|status/buildinfo)|/(_search|_msearch|_count|_field_caps|_validate/query|_mapping)|/_search/scroll|/_cat/[^[:space:]'"]*|/_plugins/_sql|/_sql|/api/ds/query)([?'"[:space:]/]|$)`)
+	reShellVarRef        = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?`)
+)
+
+func (c *Ctx) curlMutates() bool {
+	for _, seg := range c.segs {
+		if !reCurlBareHead.MatchString(seg.Text) {
+			continue
+		}
+		if reCurlMethodOrUpload.MatchString(seg.Text) {
+			return true
+		}
+		if !reCurlBody.MatchString(seg.Text) || reCurlGetFlag.MatchString(seg.Text) {
+			continue
+		}
+		if reCurlReadQueryURL.MatchString(c.expandAssigned(seg.Text)) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// expandAssigned substitutes $NAME / ${NAME} with the value a plain NAME=value in the
+// same command assigns, so `Q=http://h/api/v1/query; curl $Q -d …` shows its URL.
+// An unassigned or computed variable stays as it is and the URL stays unknown.
+func (c *Ctx) expandAssigned(s string) string {
+	return reShellVarRef.ReplaceAllStringFunc(s, func(ref string) string {
+		name := reShellVarRef.FindStringSubmatch(ref)[1]
+		re, err := regexp.Compile(`(^|[[:space:];&])(export[[:space:]]+)?` + name + `=(['"]?)([^'"[:space:];&]+)`)
+		if err != nil {
+			return ref
+		}
+		if m := re.FindStringSubmatch(c.cmd); m != nil {
+			return m[4]
+		}
+		return ref
+	})
+}
+
+// ---- ansible_playbook_changes ---------------------------------------------------
+//
+// A run that cannot change a host passes: --check, --syntax-check, --list-*. So
+// does a playbook Claude wrote into its own scratch directory — in practice those
+// are read-only queries (every one of 31 such asks was), and the --check gate was
+// never a real barrier anyway: ad-hoc `ansible -m shell` is not gated at all, and a
+// task with check_mode: false runs under --check.
+
+var (
+	reAnsibleDryRun   = regexp.MustCompile(`(^|[[:space:]])(--check|-C|--syntax-check|--list-tasks|--list-hosts|--list-tags)([[:space:]]|$)`)
+	reAnsibleValueOpt = regexp.MustCompile(`^(-i|--inventory|--inventory-file|-e|--extra-vars|-l|--limit|-t|--tags|--skip-tags|-u|--user|--vault-password-file|--vault-id|-f|--forks|--private-key|--key-file|-M|--module-path|--start-at-task|-c|--connection|-T|--timeout)$`)
+	reYAMLFile        = regexp.MustCompile(`\.ya?ml$`)
+)
+
+func (c *Ctx) ansiblePlaybookChanges() bool {
+	for _, seg := range c.segs {
+		if !reAnsiblePlaybookHead.MatchString(seg.Text) || reAnsibleDryRun.MatchString(seg.Text) {
+			continue
+		}
+		playbooks, scratch := 0, 0
+		toks := strings.Fields(seg.Text)
+		for i := 1; i < len(toks); i++ {
+			t := strings.Trim(toks[i], `'"`)
+			switch {
+			case reAnsibleValueOpt.MatchString(t):
+				i++
+			case strings.HasPrefix(t, "-"), strings.HasPrefix(t, "@"):
+			case reYAMLFile.MatchString(t):
+				playbooks++
+				if reScratchToken.MatchString(t) && !strings.Contains(t, "..") {
+					scratch++
+				}
+			}
+		}
+		if playbooks == 0 || scratch < playbooks {
 			return true
 		}
 	}
@@ -594,10 +708,37 @@ func (c *Ctx) pushDestNotABranch(dir string, shape PushShape) bool {
 	return false
 }
 
+// The only wrapping the whitelist accepts around a bare push, peeled off as text
+// before gate 1 sees the rest: a leading `cd DIR &&` with a plain DIR (it does what
+// -C does, and is resolved the same way), and trailing output trimming — `2>&1` and
+// `| tail|head [-n] N`, which read the output and cannot touch the push.
+var (
+	rePushCdPrefix  = regexp.MustCompile(`^[ \t]*cd[ \t]+([A-Za-z0-9._/@][A-Za-z0-9._/@-]*)[ \t]*&&[ \t]*`)
+	rePushOutSuffix = regexp.MustCompile(`([ \t]+2>&1)?([ \t]*\|[ \t]*(tail|head)([ \t]+-n?[ \t]*[0-9]+)?)?[ \t]*$`)
+)
+
 // pushNeedsConfirm implements the push whitelist end to end: the reason to
 // ask, or "" and false for a silent feature-branch push (which also covers
 // "mentions git and push but there is no push here at all", see above).
 func (c *Ctx) pushNeedsConfirm() (string, bool) {
+	inner, cwd := c.cmd, c.cwd
+	if m := rePushCdPrefix.FindStringSubmatch(inner); m != nil {
+		cwd = m[1]
+		if !filepath.IsAbs(cwd) {
+			cwd = filepath.Join(c.cwd, cwd)
+		}
+		inner = inner[len(m[0]):]
+	}
+	if loc := rePushOutSuffix.FindStringIndex(inner); loc != nil && loc[1] > loc[0] {
+		inner = inner[:loc[0]]
+	}
+	if inner != c.cmd && strings.TrimSpace(inner) != "" {
+		return (&Ctx{cmd: inner, cwd: cwd, segs: parseCommand(inner).Segments}).pushVerdict()
+	}
+	return c.pushVerdict()
+}
+
+func (c *Ctx) pushVerdict() (string, bool) {
 	// Gate 1: the push must be the whole command — checked first and on the
 	// raw text, before any structural parsing is trusted at all.
 	if pushCommandNotWhole(c.cmd) {
@@ -752,7 +893,19 @@ var reInterp = hasPattern(`(^|[;&|(` + "`" + `]|&&|\|\||\$\()[[:space:]]*([A-Za-
 var reInterpWrite = hasPattern(`\.write_text\(|\bopen\([^)]*,[[:space:]]*\\?["'][wa]|\bwriteFileSync\(|\bwriteFile\(`)
 var reInterpShellOut = hasPattern(`os\.(system|popen|exec[lv]|spawn)|\bsubprocess\b|\bpty\.spawn\b|child_process|\b(exec|spawn|execFile)Sync\b|__import__\([^)]*(os|subprocess|pty)`)
 var reInterpTreeDelete = hasPattern(`\brmtree\(|os\.removedirs|\b(rm|rmdir)Sync\([^)]*recursive|\bfs\.rm(dir)?\([^)]*recursive`)
-var reInterpNetwork = hasPattern(`\b(urllib|requests|httpx|http\.client|socket|ftplib|smtplib|paramiko)\b|\bfetch\(|\baxios\b`)
+
+// urllib.parse alone is string work, not the network — hence urllib.request and
+// urlopen rather than the bare package name.
+var reInterpHTTP = hasPattern(`\burllib\.request\b|from[[:space:]]+urllib[[:space:]]+import[^;\n]*\brequest\b|\burlopen\b|\b(requests|httpx|aiohttp|http\.client)\b|\bfetch\(|\baxios\b`)
+
+// By import or by call, not by the word: "requests wait in the socket backlog" in a
+// dashboard description is text.
+var reInterpRawNet = hasPattern(`\b(import|from)[[:space:]]+[A-Za-z_., ]*\b(socket|ftplib|smtplib|telnetlib|paramiko)\b|\b(socket|ftplib|smtplib|telnetlib|paramiko)\.[A-Za-z_]+\(|require\(\\?["'](net|dgram)\\?["']\)`)
+
+// A write: a mutating method by name or as a string, or a body passed as a keyword
+// argument (after "(" or ",", so a variable called data is not one) or positionally to
+// urlopen/Request.
+var reInterpHTTPWrite = hasPattern(`\.(post|put|patch|delete)\(|\\?["'](POST|PUT|PATCH|DELETE)\\?["']|[(,][[:space:]]*(data|json|files|body)[[:space:]]*[=:]|\b(urlopen|Request)\([^,)]*,[[:space:]]*[^[:space:]=,)]+[[:space:]]*[,)]`)
 
 // ---- ssh/age private-key block ---------------------------------------------
 
@@ -811,10 +964,8 @@ var reChmodHead = segHeadRe(`chmod\b`)
 var reChmod777 = regexp.MustCompile(`\b777\b`)
 
 var reAnsiblePlaybookHead = segHeadRe(`ansible-playbook\b`)
-var reAnsibleCheck = regexp.MustCompile(`(^|[[:space:]])(--check|-C)([[:space:]]|$)`)
 
 var reCurlBareHead = segHeadRe(`curl\b`)
-var reCurlMutating = regexp.MustCompile(`(-X[[:space:]]*(POST|PUT|DELETE|PATCH)|--request[[:space:]]+(POST|PUT|DELETE|PATCH)|--json\b|(^|[[:space:]])(-d|--data(-raw|-binary|-urlencode)?|-F|--form|-T|--upload-file)([[:space:]]|=|@))`)
 
 var reDockerComposeDown = segHeadRe(`docker([[:space:]]+|-)compose[[:space:]]+down\b`)
 var reDockerVolumesFlag = regexp.MustCompile(`(^|[[:space:]])(-v|--volumes)([[:space:]]|$)`)
@@ -922,7 +1073,9 @@ func evaluate(c *Ctx) Decision {
 		if c.has(reInterpTreeDelete) {
 			return deny("recursive tree delete from an interpreter")
 		}
-		if c.has(reInterpNetwork) {
+		// NOTE: an HTTP read from code is the same act as a curl GET, which passes;
+		// only a write asks. Raw sockets and mail/ftp/ssh clients always ask.
+		if c.has(reInterpRawNet) || (c.has(reInterpHTTP) && c.has(reInterpHTTPWrite)) {
 			return ask("interpreter opening the network — confirm?")
 		}
 	}
@@ -959,10 +1112,10 @@ func evaluate(c *Ctx) Decision {
 	}
 
 	// ---- ASK by argument, not by command name ----
-	if c.mentions(mAnsible) && c.segWithout(reAnsiblePlaybookHead, reAnsibleCheck) {
+	if c.mentions(mAnsible) && c.ansiblePlaybookChanges() {
 		return ask("ansible-playbook without --check — confirm?")
 	}
-	if c.mentions(mCurl) && c.segWith(reCurlBareHead, reCurlMutating) {
+	if c.mentions(mCurl) && c.curlMutates() {
 		return ask("curl with a mutating method or body — confirm?")
 	}
 	if strings.Contains(c.cmd, "hooksPath") {
