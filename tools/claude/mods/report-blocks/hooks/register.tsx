@@ -2,10 +2,10 @@ import type { Color, Register } from 'claude-code'
 
 // Splits a reply's markdown into plain runs and report blocks.
 // A block opens on a line that starts with one of the five report glyphs (bold
-// markers around it allowed) and runs to the next such line, or to a blank line
-// followed by something that is not a continuation of the block: a list item, an
-// indented line or a table row continue it, a new paragraph does not. Fenced
-// code is never a block opener.
+// markers around it allowed) and runs to the first blank line outside fenced
+// code: the card holds the claim and the list glued to it, while an explanation
+// set off by a blank line stays plain text under it. Fenced code is never a
+// block opener.
 
 export type Kind = 'done' | 'failed' | 'found' | 'decide' | 'act'
 
@@ -22,7 +22,6 @@ const GLYPHS: Record<string, Kind> = {
 }
 
 const OPENER = /^ {0,3}(\*\*|__)?(✔|✘|!|\?|»)(?=\s|\*\*|__)\s*/
-const CONTINUES = /^(\s{2,}\S|\s*([-*+]|\d+[.)])\s|\s*\|)/
 const FENCE = /^ {0,3}(```|~~~)/
 
 export function split(text: string): Part[] {
@@ -57,10 +56,8 @@ export function split(text: string): Part[] {
       continue
     }
     if (block) {
-      const prevBlank = block.lines[block.lines.length - 1].trim() === ''
-      if (!inFence && prevBlank && line.trim() !== '' && !CONTINUES.test(line)) {
+      if (!inFence && line.trim() === '') {
         flushBlock()
-        plain.push(line)
         continue
       }
       block.lines.push(line)

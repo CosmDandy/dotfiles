@@ -27,6 +27,14 @@ test('splits a report into its blocks and keeps plain runs plain', async () => {
   expect(parts[5].text).toBe('Хвост без метки.')
 })
 
+test('a blank line ends the card; the explanation under it stays plain', async () => {
+  const text = '! **Найдено.** Сабмодуль отстаёт.\n- на два коммита\n\nПотому что пуш за владельцем.\n\n  - и отступ тоже'
+  const parts = split(text)
+  expect(parts.map(p => p.kind)).toEqual(['found', 'text'])
+  expect(parts[0].text).toBe('**Найдено.** Сабмодуль отстаёт.\n- на два коммита')
+  expect(parts[1].text).toBe('Потому что пуш за владельцем.\n\n  - и отступ тоже')
+})
+
 test('a glyph inside code or mid-sentence opens no block', async () => {
   const text = 'Ответ.\n\n```sh\n! not a block\n? neither\n```\nДа! И что?\n!important'
   expect(split(text).every(p => p.kind === 'text')).toBe(true)
