@@ -1,0 +1,5 @@
+{
+  "name": "report-blocks",
+  "version": "0.1.0",
+  "description": "Colours the report blocks of a reply — ✔ done, ✘ failed, ! found, ? decide, » act — each in a bordered card of its own colour"
+}

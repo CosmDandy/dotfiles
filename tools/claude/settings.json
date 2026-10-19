@@ -3,6 +3,7 @@
   "cleanupPeriodDays": 365,
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "45",
+    "CLAUDE_CODE_PLUGIN_DIRS": "~/.dotfiles/tools/claude/mods/report-blocks",
     "CLAUDE_CODE_AUTO_CONNECT_IDE": "false",
     "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
     "CLAUDE_CODE_RESUME_INTERRUPTED_TURN": "1",
