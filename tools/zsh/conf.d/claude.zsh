@@ -79,12 +79,9 @@ claude-memory-push() {
 # `"theme": "custom:solarized"`, so the slug never changes — only what the file holds.
 # Solarized both sides: base02/base2 for the message plate, the same pair nvim uses for
 # CursorLine and fzf for bg+, so a session reads as part of the same desktop.
-# NOTE: copied, not symlinked. Claude watches the themes directory and rereads what
-# changed; a repointed symlink leaves the target file's mtime untouched, and whether the
-# watcher notices then depends on how it resolves links. A copy always looks changed.
-# NOTE: this is what makes the switch live — a running session repaints itself, which is
-# why `term-theme` calls it too. Nothing else here can do that: with a custom theme Claude
-# stops polling the terminal for the background on its own.
+# The copy itself is tools/claude/themes/apply.sh, shared with the tmux theme hooks that
+# switch running sessions when the system flips; this picks the side at launch and for
+# `term-theme`. With a custom theme Claude stops polling the terminal on its own.
 _claude_theme_apply() {
     emulate -L zsh
     local theme="$1"
@@ -101,13 +98,7 @@ _claude_theme_apply() {
                 fi ;;
         esac
     fi
-    local dir="$HOME/.claude/themes"
-    local src="${DOTFILES_DIR:-$HOME/.dotfiles}/tools/claude/themes/solarized-${theme}.json"
-    [[ -r "$src" ]] || return 1
-    mkdir -p "$dir" 2>/dev/null || return 1
-    # Idempotent: an unchanged file is left alone, so starting a shell does not make every
-    # running session reload its theme for nothing.
-    cmp -s "$src" "$dir/solarized.json" 2>/dev/null || cp -f "$src" "$dir/solarized.json"
+    "${DOTFILES_DIR:-$HOME/.dotfiles}/tools/claude/themes/apply.sh" "$theme"
 }
 
 # The wrapper picks the theme at launch, where asking the terminal is free — the same
