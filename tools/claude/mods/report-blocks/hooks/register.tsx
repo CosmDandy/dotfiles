@@ -102,6 +102,17 @@ export const register: Register = on => {
             <Box key={`t${i}`} marginLeft={2}>
               <Markdown text={p.text} />
             </Box>
+          ) : p.kind === 'act' ? (
+            // NOTE: no border here: an act block holds commands to copy, and a
+            // terminal selection would take the border's `│` along with them
+            <Box key={`b${i}`} marginLeft={2} flexDirection="row">
+              <Text color={COLOR.act} bold>
+                {p.glyph}{' '}
+              </Text>
+              <Box flexGrow={1} flexShrink={1}>
+                <Markdown text={p.text} />
+              </Box>
+            </Box>
           ) : (
             <Box
               key={`b${i}`}

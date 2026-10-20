@@ -57,7 +57,9 @@ test('a reply with blocks draws a card per block; one without is left to the eng
     for (const key of ['b0', 'b1', 'b2', 'b3']) {
       colours.push((await ui.find({ key }))?.props.borderColor)
     }
-    expect(colours).toEqual(['success', 'claude', 'warning', 'suggestion'])
+    // the act block holds commands to copy, so it has no border
+    expect(colours).toEqual(['success', 'claude', 'warning', undefined])
+    expect((await ui.find({ key: 'b3' }))?.props.borderStyle).toBeUndefined()
     expect((await ui.find({ key: 't4' }))?.text).toBe('Хвост без метки.')
     // the engine draws the opening plain run only, so its bullet stays
     expect((await ui.find({ type: 'Text' }))?.text).toBe('Тема Claude теперь следует за системой.')
