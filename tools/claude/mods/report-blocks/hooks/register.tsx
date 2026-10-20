@@ -117,12 +117,14 @@ export const register: Register = on => {
     const head = await next({ ...e, props: { ...e.props, text: first.text } })
 
     return (
+      // each part after the first sits one blank line below the one before, as
+      // the paragraphs of a reply do
       <Box flexDirection="column">
         {head}
         {rest.map((p, i) => {
           if (p.kind === 'text') {
             return (
-              <Box key={`t${i}`} marginLeft={2}>
+              <Box key={`t${i}`} marginLeft={2} marginTop={1}>
                 <Markdown text={p.text} />
               </Box>
             )
@@ -137,6 +139,7 @@ export const register: Register = on => {
             <Box
               key={`b${i}`}
               marginLeft={2}
+              marginTop={1}
               flexDirection={onLine ? 'row' : 'column'}
               {...FRAME[p.kind]}
               borderColor={FRAME[p.kind].borderStyle ? COLOR[p.kind] : undefined}
