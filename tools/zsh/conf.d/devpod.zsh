@@ -100,6 +100,131 @@ _dp_master_state() {
   (( $#sock )) && print -r -- up || print -r -- down
 }
 
+# The last line ssh printed before exiting 255, reduced to one word for the log.
+# The first four are the network or the far end letting go of a session that
+# worked; the rest are an entry that never got that far.
+# NOTE: "UNKNOWN port 65535" is how ssh names a ProxyCommand peer — the devpod
+# process died, and with it the tunnel through the shared kvt-d-01 master.
+_dp_drop_reason() {
+  emulate -L zsh
+  case $1 in
+    *'Timeout, server'*'not responding'*)  print timeout ;;
+    *'Broken pipe'*|*'Connection reset'*)   print broken-pipe ;;
+    *'closed by UNKNOWN port 65535'*)       print proxy-closed ;;
+    *'closed by remote host'*)              print remote-closed ;;
+    *'Killed by signal'*)                   print killed ;;
+    *'Permission denied'*)                  print auth ;;
+    *'timed out'*|*'No route to host'*|*'Network is unreachable'*|*'Connection refused'*|*'resolve'*)
+                                            print connect-failed ;;
+    # NOTE: silence is the COMMON drop, not a rare one. A session is a mux
+    # client, and when its master dies the client exits 255 saying nothing —
+    # OpenSSH reports that at debug2. The master knew why, but ControlPersist
+    # detached it with stderr on /dev/null, and devpod's `LogLevel error` in the
+    # host entry would have hidden the INFO line anyway.
+    '')                                     print master-lost ;;
+    *)                                      print other ;;
+  esac
+}
+
+# One line saying which of the two very different things a 255 was. A session
+# that lived for a while and lost its network left tmux running on the other
+# side, and the useful thing to say is that nothing was lost.
+# NOTE: 20 s separates the two for the reasons that can be either: a
+# proxy-closed at second 3 is devpod failing to start the tunnel, at hour 2 it
+# is the tunnel dying under a session.
+# With a fifth argument the caller is about to reconnect by itself, and the
+# hint to run `ds` again would be advice nobody needs.
+_dp_drop_verdict() {
+  emulate -L zsh
+  local id=$1 reason=$3 last=$4 auto=$5
+  local -i ms=$2
+  local took=$(_dp_dur $(( ms / 1000 )))
+  case $reason in
+    killed) return 0 ;;
+    timeout|broken-pipe|proxy-closed|remote-closed|connect-failed|master-lost)
+      if (( ms >= 20000 )) && [[ $reason != connect-failed ]]; then
+        local what='network lost'
+        [[ $reason == remote-closed ]] && what='closed by the container side'
+        [[ $reason == proxy-closed ]] && what='devpod tunnel died'
+        [[ $reason == master-lost ]] && what='shared ssh connection died'
+        print -u2 -P "%F{yellow}ds: $id — connection dropped after $took ($what).%f"
+        [[ -n $auto ]] \
+          && print -u2 "    tmux keeps running there; reconnecting once it answers again." \
+          || print -u2 "    tmux keeps running there; \`ds $id\` reattaches."
+        return 0
+      fi
+      if [[ -n $auto ]]; then
+        print -u2 -P "%F{yellow}ds: $id — still not answering ($reason), waiting again.%f"
+        return 0
+      fi ;;
+  esac
+  print -u2 -P "%F{red}ds: $id — could not get in ($reason after $took).%f"
+  [[ -n $last ]] && print -u2 -r -- "    $last"
+  return 0
+}
+
+_dp_dur() {
+  emulate -L zsh
+  local -i s=$1
+  if (( s >= 3600 )); then print -r -- "$(( s / 3600 ))h$(( s % 3600 / 60 ))m"
+  elif (( s >= 60 )); then print -r -- "$(( s / 60 ))m$(( s % 60 ))s"
+  else print -r -- "${s}s"; fi
+}
+
+# Sits out a dropped connection for `ds`: first until the provider host takes a
+# TCP connection again, then until a fresh snapshot says the container is still
+# running. 0 — go back in; 1 — Ctrl-C, or the container is no longer running.
+# NOTE: plain TCP to the host, not ssh. An ssh here would go through the
+# ControlMaster socket, and a master whose network is gone still accepts
+# clients — the check would hang on exactly the thing it is meant to test.
+# NOTE: the container state is asked for, not assumed. The ProxyCommand STARTS
+# a stopped container, so reconnecting blindly would bring back a workspace
+# that `dps` stopped on purpose while this tab sat waiting.
+_dp_await_workspace() {
+  emulate -L zsh
+  setopt local_options local_traps
+  local id=$1 reason=$2
+  local t0=$EPOCHREALTIME host addr port st outcome
+  local -i ms int=0
+  host=$(awk -F'\t' -v i="$id" '$1==i{print $4; exit}' $DP_SNAPSHOT 2>/dev/null)
+  if [[ -n $host && $host != - ]]; then
+    local -a g=( ${(f)"$(ssh -G "$host" 2>/dev/null)"} )
+    addr=${${(M)g:#hostname *}#hostname } port=${${(M)g:#port *}#port }
+  fi
+  trap 'int=1' INT
+  while :; do
+    if [[ -n $addr ]] && ! nc -z -w 2 "$addr" "${port:-22}" >/dev/null 2>&1; then
+      (( int )) && { outcome=interrupted; break }
+      printf '\r\e[K%s' "ds: waiting for $host — $(_dp_dur $(( EPOCHREALTIME - t0 ))) (Ctrl-C to stop)" >&2
+      sleep 2
+      (( int )) && { outcome=interrupted; break }
+      continue
+    fi
+    printf '\r\e[K%s' "ds: $host answers, checking $id…" >&2
+    _dp_snapshot_refresh >/dev/null 2>&1
+    (( int )) && { outcome=interrupted; break }
+    st=$(_dp_snap_state "$id")
+    case $st in
+      running) outcome=ok; break ;;
+      # The host took the TCP connection but the probe got nothing back — a
+      # VPN halfway up looks exactly like this. Not an answer yet.
+      unknown|'') sleep 2; (( int )) && { outcome=interrupted; break } ;;
+      *) outcome=stopped; break ;;
+    esac
+  done
+  printf '\r\e[K' >&2
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  local -i failed=1
+  [[ $outcome == ok ]] && failed=0
+  _dp_log reconnect $ms $failed "id=$id" "reason=$reason" "outcome=$outcome"
+  case $outcome in
+    ok)          print -u2 -P "%F{green}ds: $id — back after $(_dp_dur $(( ms / 1000 ))), reattaching.%f" ;;
+    stopped)     print -u2 "ds: $id is ${st} now — not starting it again; \`ds $id\` if you want it back." ;;
+    interrupted) print -u2 "ds: stopped waiting; \`ds $id\` reattaches." ;;
+  esac
+  [[ $outcome == ok ]]
+}
+
 # Where new workspaces come from. The registry is public; the provider is left
 # empty here so devpod's own default applies, and the private layer overrides it
 # with the work host.
@@ -124,8 +249,9 @@ _dp_master_state() {
 # Entering a container. NOTE: `devpod ssh` rebuilds its tunnel every call —
 # 5.8s. The <id>.devpod entry devpod writes into the ssh config uses the same
 # ProxyCommand but falls under ControlMaster from the `Host *` block: 0.15s once
-# the master socket is up, with agent forwarding intact. The fallback covers a
-# workspace whose entry does not exist yet.
+# the master socket is up, with agent forwarding intact. There is no fallback to
+# `devpod ssh`: a workspace without that entry is devpod having failed at its
+# own setup, and a quiet 6s detour only hid it.
 # NOTE: checked with `ssh -G`, which answers with the resolved configuration,
 # rather than by reading ~/.ssh by hand.
 ds() {
@@ -157,7 +283,16 @@ ds() {
     # "it answered" (0, or 1 for an empty agent) buys the link a reprieve;
     # anything else, ssh-add missing included, means re-point.
     _enter='S=$HOME/.ssh/ssh_auth_sock; if [ -n "$SSH_AUTH_SOCK" ] && [ "$SSH_AUTH_SOCK" != "$S" ]; then '
-    _enter+='SSH_AUTH_SOCK=$S ssh-add -l >/dev/null 2>&1; case $? in 0|1) : ;; '
+    # NOTE: under a timeout. After a drop the previous session is still alive
+    # on the server for a while with nobody behind it, and a request to ITS
+    # agent socket is never answered — `ssh-add -l` sat there for good and the
+    # entry never reached tmux. Auto-reconnect arrives within seconds, which is
+    # exactly inside that window. 124 falls into "re-point" like any other
+    # non-answer.
+    # NOTE: spelled out twice rather than through a variable: the far side runs
+    # this under the login shell, and zsh would hand `timeout 2` over as one word.
+    _enter+='if command -v timeout >/dev/null 2>&1; then SSH_AUTH_SOCK=$S timeout 2 ssh-add -l; '
+    _enter+='else SSH_AUTH_SOCK=$S ssh-add -l; fi >/dev/null 2>&1; case $? in 0|1) : ;; '
     _enter+='*) mkdir -p -m 700 "$HOME/.ssh" && ln -sf "$SSH_AUTH_SOCK" "$S";; esac; fi; '
     # NOTE: TERM is normalised BEFORE the script is exec'd, not after. This runs
     # as a non-interactive shell, so .zshrc never corrects an unknown
@@ -176,64 +311,94 @@ ds() {
     _enter+='command -v tmux >/dev/null 2>&1 || exec "${SHELL:-/bin/sh}" -l; '
     _enter+="exec tmux new-session -A -s $id"
   fi
-  if ssh -G "${id}.devpod" 2>/dev/null | grep -qi '^proxycommand.*devpod'; then
-    # How long it takes to GET there, measured separately from how long the
-    # session then lasts — the wall clock of an interactive shell says how long
-    # somebody worked, which is not a number any timeout is set from.
-    # One extra round trip: milliseconds when the multiplexed connection is up,
-    # and when it is not, this is the handshake the login would have paid
-    # anyway — it just pays it here and leaves the master warm.
-    # NOTE: only for a container that is already up. On a stopped one the
-    # ProxyCommand has to start it first, which takes far longer than any
-    # connect timeout worth setting — measured: 5s spent, rc=255, and those
-    # five seconds were added to the wait before the real login even began.
-    # A start is not what this row is supposed to measure anyway.
-    if [[ $(_dp_snap_state "$id") == running ]]; then
-      local _tc=$EPOCHREALTIME
-      ssh -o BatchMode=yes -o ConnectTimeout=5 -T "${id}.devpod" true 2>/dev/null
-      rc=$?
-      (( ms = (EPOCHREALTIME - _tc) * 1000 ))
-      _dp_log connect $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc"
-    fi
-    if [[ -n $_enter ]]; then
-      ssh -t "${id}.devpod" "$_enter"
-    else
-      ssh "${id}.devpod" "$@"
-    fi
-    rc=$?
-    (( ms = (EPOCHREALTIME - _t0) * 1000 ))
-    _dp_log session $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc" "tmux=$_mode"
-    # Detaching from tmux leaves the work running on the other side, so there is
-    # nothing left for this shell to do — and closing it closes the tab.
-    # NOTE: only after a SUCCESSFUL session. A failed entry that closes the tab
-    # takes the error message with it, and the next thing anybody sees is a
-    # terminal that shut itself — which is exactly how this looked from outside.
-    [[ $_mode == exit && -n $_enter ]] && (( rc == 0 )) && exit $rc
-    return $rc
-  else
-    # NOTE: --user for OUR image only. devpod takes the user from the image
-    # label, and a repository whose own devcontainer.json omits remoteUser
-    # overrides it with nothing — which is how `git status` in a work repo
-    # answers "detected dubious ownership" instead of listing files. But a
-    # workspace built from somebody else's devcontainer.json has no such user
-    # at all, and there the flag turns a working login into a hang on `su`.
-    local -a u=()
-    [[ $(_dp_ws_field "$id" .devContainerImage) == ${DP_IMAGE}:* ]] \
-      && u=(--user "$DP_USER")
-    if [[ -n $_enter ]]; then
-      devpod ssh "$id" $u --command "$_enter"
-    else
-      devpod ssh "$id" $u "$@"
-    fi
-    rc=$?
-    (( ms = (EPOCHREALTIME - _t0) * 1000 ))
-    # NOTE: no separate connect row on this path. `devpod ssh` builds its tunnel
-    # from scratch every call — measuring it would mean paying those ~6s twice,
-    # which is precisely the cost this whole fast/slow distinction is about.
-    _dp_log session $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=devpod "master=$_master" "rc=$rc" "tmux=$_mode"
-    [[ $_mode == exit && -n $_enter ]] && (( rc == 0 )) && exit $rc
-    return $rc
+  if ! ssh -G "${id}.devpod" 2>/dev/null | grep -qi '^proxycommand.*devpod'; then
+    print -u2 "ds: no ssh entry for $id — devpod did not configure it; rebuild it from \`dp\` (Ctrl-R)."
+    _dp_log session 0 1 "id=$id" "reason=no-ssh-entry"
+    return 1
   fi
+  # How long it takes to GET there, measured separately from how long the
+  # session then lasts — the wall clock of an interactive shell says how long
+  # somebody worked, which is not a number any timeout is set from.
+  # One extra round trip: milliseconds when the multiplexed connection is up,
+  # and when it is not, this is the handshake the login would have paid
+  # anyway — it just pays it here and leaves the master warm.
+  # NOTE: only for a container that is already up. On a stopped one the
+  # ProxyCommand has to start it first, which takes far longer than any
+  # connect timeout worth setting — measured: 5s spent, rc=255, and those
+  # five seconds were added to the wait before the real login even began.
+  # A start is not what this row is supposed to measure anyway.
+  if [[ $(_dp_snap_state "$id") == running ]]; then
+    local _tc=$EPOCHREALTIME
+    ssh -o BatchMode=yes -o ConnectTimeout=5 -T "${id}.devpod" true 2>/dev/null
+    rc=$?
+    (( ms = (EPOCHREALTIME - _tc) * 1000 ))
+    _dp_log connect $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc"
+  fi
+  # rc=255 alone does not say whether the network went, the server hung up or
+  # the tab was closed — the one line ssh prints on the way out does. Its
+  # stderr is teed to a file so it still reaches the screen as it happens.
+  # NOTE: a pipeline, not `2> >(tee …)`: zsh does not wait for a process
+  # substitution, and the file could be read before tee has written it.
+  # stdout goes around the pipe via fd 3, so ssh still sees a terminal.
+  # NOTE: no_multios, or `2>&1 1>&3` sends stdout to BOTH the pipe and fd 3 —
+  # every byte of the session printed twice. And one pipeline for both cases:
+  # $pipestatus read after an `if` holds the if's status, not ssh's.
+  setopt local_options no_multios
+  local _err=${TMPDIR:-/tmp}/ds.$$.err _last _reason
+  local -a _cmd=(ssh "${id}.devpod" "$@") _why _lines
+  [[ -n $_enter ]] && _cmd=(ssh -t "${id}.devpod" "$_enter")
+  # A session that dropped on the network comes back by itself: wait for the
+  # host, check the container is still meant to be up, and run the same entry
+  # again — tmux on the other side never noticed, so this lands where it left.
+  # Only for a tmux entry: a one-off command that dropped has no state to
+  # return to, and running it again is not a safe guess.
+  # NOTE: a first attempt that fails fast is an entry error, not a drop, and
+  # is reported rather than retried. After a reconnect, a fast failure is the
+  # network flapping — retried, but only five times in a row.
+  local -i _tries=0 _quick=0 _auto
+  while :; do
+    { $_cmd 2>&1 1>&3 3>&- | tee -- $_err >&2; rc=${pipestatus[1]} } 3>&1
+    (( ms = (EPOCHREALTIME - _t0) * 1000 ))
+    # NOTE: tmux on the far side switches terminal reports on — focus, mouse,
+    # colour-scheme changes (2031) — and switches them off on its way out. A
+    # dropped connection has no way out, so the terminal keeps reporting into
+    # this shell: a theme switch at night printed `^[[?997;2n` at the prompt.
+    # Everything here is something tmux sets; the alternate screen goes last,
+    # which brings back what was on screen before `ds`.
+    (( rc != 0 )) && [[ -n $_enter && -t 1 ]] \
+      && printf '\e[?2031l\e[?1004l\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[>4m\e[?25h\e[0m\e[?1049l'
+    _why=() _reason= _last=
+    if (( rc == 255 )); then
+      # NOTE: through an array. `local x=${${(f)…}[-1]}` evaluates in scalar
+      # context, joins the lines first and hands back the last CHARACTER.
+      _lines=( ${(f)"$(<$_err)"} )
+      _last=${_lines[-1]}
+      _reason=$(_dp_drop_reason "$_last")
+      _why=("reason=$_reason" "msg=${${${_last//$'\r'/}//[[:space:]]/_}[1,120]}")
+    fi
+    rm -f -- $_err
+    _dp_log session $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc" "tmux=$_mode" "try=$_tries" $_why
+    (( rc == 255 )) || break
+    _auto=0
+    if [[ -n $_enter && $_reason == (timeout|broken-pipe|proxy-closed|remote-closed|connect-failed|master-lost) ]]; then
+      (( ms >= 20000 )) && _quick=0 || (( _quick++ ))
+      if (( ms >= 20000 )) && [[ $_reason != connect-failed ]]; then _auto=1
+      elif (( _tries && _quick <= 5 )); then _auto=1; fi
+    fi
+    _dp_drop_verdict "$id" $ms "$_reason" "$_last" ${_auto:#0}
+    (( _auto )) || break
+    _dp_await_workspace "$id" "$_reason" || break
+    (( _tries++ ))
+    _master=$(_dp_master_state "$id")
+    _t0=$EPOCHREALTIME
+  done
+  # Detaching from tmux leaves the work running on the other side, so there is
+  # nothing left for this shell to do — and closing it closes the tab.
+  # NOTE: only after a SUCCESSFUL session. A failed entry that closes the tab
+  # takes the error message with it, and the next thing anybody sees is a
+  # terminal that shut itself — which is exactly how this looked from outside.
+  [[ $_mode == exit && -n $_enter ]] && (( rc == 0 )) && exit $rc
+  return $rc
 }
 
 # Stopping one, the short way. A function and not an alias so that a bare `dps`
@@ -334,8 +499,22 @@ _dp_probe_one() {
   if [[ $host == LOCAL ]]; then
     sh "$probe" > "$t" 2>/dev/null
   else
-    ssh -o BatchMode=yes -o ConnectTimeout=5 -T "$host" 'sh -s' \
-      < "$probe" > "$t" 2>/dev/null
+    # NOTE: ServerAlive is overridden for the probe alone. ConnectTimeout only
+    # covers a host that never answers; a half-up VPN completes the TCP
+    # handshake and then stalls, and the ssh config's 5s x 3 turns that into a
+    # 15s freeze with the picker sitting on stale rows. Every probe outlier in
+    # the event log — up to 20.7s, under the older 15s x 2 — is that case.
+    # 2s x 2 caps the stall near 4s
+    # and costs nothing on a healthy link, where the reply lands in ~113ms.
+    # NOTE: ControlMaster=no is what makes the impatient keepalive above safe.
+    # With the config's `auto`, a probe arriving when no master is up would
+    # CREATE one — and a master owns the transport for every session that later
+    # attaches, so the 4s patience meant for a health check would become the
+    # patience of the owner's shells. `no` still reuses an existing socket, so
+    # the warm path stays at ~113ms; it only declines to become the owner.
+    ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlMaster=no \
+      -o ServerAliveInterval=2 -o ServerAliveCountMax=2 \
+      -T "$host" 'sh -s' < "$probe" > "$t" 2>/dev/null
   fi
   local -i rc=$? ms
   (( ms = (EPOCHREALTIME - t0) * 1000 ))
@@ -526,8 +705,11 @@ _dp_refresh_async() {
   setopt local_options no_monitor
   local rows=$1
   if [[ -n $rows ]]; then
-    { _dp_snapshot_refresh \
-        && _dp_rows "$DP_SNAPSHOT" > $rows.part \
+    # NOTE: `;` and not `&&` after the refresh. A failed one still hands the
+    # picker its rows back — the same ones — because that reload is also what
+    # re-asks the header, which would otherwise say "refreshing" forever.
+    { _dp_snapshot_refresh; \
+        _dp_rows "$DP_SNAPSHOT" > $rows.part \
         && [[ -s $rows.part ]] \
         && mv -f -- $rows.part $rows } >/dev/null 2>&1 &!
   else
@@ -577,6 +759,25 @@ _dp_rows() {
   # was when it was last polled, the job says what is being done to it now.
   local jobs=$DP_CACHE_DIR/jobs
   local mark colour job jverb jstate
+
+  # Workspaces with a session open in some tab of this machine right now, and
+  # how many. One ps for the whole table.
+  # NOTE: clients only. The master socket is no answer — ControlPersist keeps it
+  # for hours after the last tab closed — and neither is the ProxyCommand
+  # (`devpod ssh --stdio`), which lives exactly as long as that master.
+  local -A open
+  local p
+  local -a pw
+  for p in ${(f)"$(ps -axo command= 2>/dev/null)"}; do
+    pw=(${=p})
+    case $pw[1] in
+      ssh|*/ssh) pw=(${(M)pw:#*.devpod}); (( $#pw )) && (( open[${pw[1]%.devpod}]++ )) ;;
+      devpod|*/devpod)
+        [[ $pw[2] == ssh && $p != *--stdio* ]] || continue
+        pw=(${pw[3,-1]:#-*}); (( $#pw )) && (( open[$pw[1]]++ )) ;;
+    esac
+  done
+
   for line in $lines; do
     c=(${(ps:\t:)line})
     job=
@@ -601,7 +802,9 @@ _dp_rows() {
       esac
     else
       case $c[2] in
-        running) mark='● running';      colour=$_DP_GREEN ;;
+        running) if (( open[$c[1]] > 1 )); then mark="◉ open ×${open[$c[1]]}"; colour=$_DP_CYAN
+                 elif (( open[$c[1]] )); then mark='◉ open';      colour=$_DP_CYAN
+                 else mark='● running';                           colour=$_DP_GREEN; fi ;;
         exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
         unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
         *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
@@ -647,7 +850,9 @@ _dp_choose() {
     # NOTE: no --delimiter any more. The default is a run of whitespace, which
     # is exactly what padded columns need; a tab delimiter would now see the
     # whole line as one field and --nth=1 would match against the date too.
-    args=(--ansi --nth=1 --accept-nth=1 --prompt="$prompt" --header="$header")
+    # NOTE: no --header at all when there is nothing to say. An empty one still
+    # takes a line and a separator — a blank band over the list.
+    args=(--ansi --nth=1 --accept-nth=1 --prompt="$prompt" ${header:+--header=$header})
     (( multi )) && args+=(--multi --bind 'ctrl-a:select-all,ctrl-d:deselect-all')
     if (( tmux_footer )); then
       local fdot=${DOTFILES_DIR:-$HOME/.dotfiles}
@@ -689,8 +894,8 @@ _dp_pick() {
   local -a rows
   rows=(${(f)"$(_dp_rows)"})
   (( ${#rows} )) || { print -u2 "no workspaces found"; return 1; }
-  local hdr='most recent first'
-  [[ $1 == -m ]] && hdr='Tab — mark, Ctrl-A — all; most recent first'
+  local hdr=$(${DOTFILES_DIR:-$HOME/.dotfiles}/tools/devpod/status.zsh $DP_SNAPSHOT)
+  [[ $1 == -m ]] && hdr="Tab — mark, Ctrl-A — all${hdr:+  $hdr}"
   print -rl -- $rows | _dp_choose ${1:+-m} -t 'workspace> ' "$hdr"
 }
 
@@ -1095,13 +1300,15 @@ _dp_pick_action() {
   local -i _rows=${#${(f)"$(< $base)"}}
   (( _ms = (EPOCHREALTIME - _t0) * 1000 ))
   _dp_log picker $_ms 0 "cached=$_cached" "rows=$_rows"
+  local _hdr=$($dot/tools/devpod/status.zsh $DP_SNAPSHOT)
   local _t_open=$EPOCHREALTIME
   local out
   out=$(fzf --ansi --nth=1 --accept-nth=1 --multi --id-nth=1 \
       --print-query --expect=ctrl-n,ctrl-s \
       --prompt='workspace> ' \
       --info='inline-right: ' \
-      --bind="load:reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
+      ${_hdr:+--header=$_hdr} \
+      --bind="load:transform-header($dot/tools/devpod/status.zsh $DP_SNAPSHOT)+reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
       --bind="ctrl-x:execute-silent($runner stop $jobs $fresh {+1})" \
       --bind="ctrl-r:transform($confirm arm recreate $cstate $ctargets {+1})" \
       --bind="ctrl-d:transform($confirm arm delete $cstate $ctargets {+1})" \
@@ -1689,3 +1896,38 @@ dp() {
     *) print -u2 "dp: unknown verb «$verb» (dp --help)"; return 1 ;;
   esac
 }
+
+# ── warm the snapshot when a shell opens ──────────────────────────────────────
+#
+# The picker draws from disk in ~33ms and never waits, which reads as instant —
+# but the event log says the median row on screen is 107 seconds old, the 90th
+# percentile 37 minutes, and the worst a day. Half the openings show a state
+# that has moved on, so the wait for the refresh happens anyway, just after the
+# menu is up instead of before. Collecting at shell start moves that cost to a
+# moment nobody is watching.
+#
+# Cheap by construction: one background ssh, and only when what is on disk is
+# already stale, so a burst of new terminals still costs a single collection.
+# Set DP_WARM_AFTER=0 to turn it off.
+: ${DP_WARM_AFTER:=120}
+if [[ -o interactive ]] && (( DP_WARM_AFTER > 0 )); then
+  # Missing counts as stale: the very first shell after a cache wipe is exactly
+  # when the handshake would otherwise land in front of the first `dp`.
+  typeset -ga _dp_stale=( $DP_SNAPSHOT(N.ms+$DP_WARM_AFTER) )
+  if [[ ! -s $DP_SNAPSHOT ]] || (( $#_dp_stale )); then
+    # NOTE: the 3s floor inside _dp_refresh_async does not cover this. Terminals
+    # opened together all read the same stale mtime before any of them has
+    # written, so each starts its own collection — measured: three shells, three
+    # snapshots, six probes. mkdir is atomic, so the first one to claim the name
+    # collects and the rest fall through. Swept after five minutes, longer than
+    # any collection can take, in case a shell died holding it.
+    if _dp_cache_dir; then
+      rmdir -- $DP_CACHE_DIR/warm.lock(N.mm+5) 2>/dev/null
+      if mkdir -- $DP_CACHE_DIR/warm.lock 2>/dev/null; then
+        setopt local_options no_monitor
+        { _dp_snapshot_refresh; rmdir -- $DP_CACHE_DIR/warm.lock } >/dev/null 2>&1 &!
+      fi
+    fi
+  fi
+  unset _dp_stale
+fi
