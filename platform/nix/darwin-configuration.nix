@@ -145,6 +145,9 @@ in
       # `brew bundle` runs inside activation with none — it hung the whole switch twice
       # (2026-09-11), on install and on uninstall alike.
       "tailscale-app"
+      # sing-box's own GUI client. The cask and not nixpkgs' `sing-box`: the CLI
+      # needs root for its tun device, the app brings a network extension.
+      "sfm"
       "yandextelemost"
       "horos"
     ];
@@ -233,6 +236,7 @@ in
     btop
     git
     gh
+    gh-dash
     glab
     lazygit
     delta # diff renderer for lazygit
