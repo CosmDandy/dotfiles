@@ -64,14 +64,13 @@ test('a reply with blocks draws a card per block; one without is left to the eng
     for (const key of ['b0', 'b1', 'b2', 'b3']) {
       colours.push((await ui.find({ key }))?.props.borderColor)
     }
-    // cards for done and decide, a bar for found; the act block holds commands
-    // to copy, so it has no frame
-    expect(colours).toEqual(['success', 'claude', 'warning', undefined])
+    // a card only for decide (and failed); done, found and act are a label alone
+    expect(colours).toEqual([undefined, undefined, 'warning', undefined])
     const styles = []
     for (const key of ['b0', 'b1', 'b2', 'b3']) {
       styles.push((await ui.find({ key }))?.props.borderStyle)
     }
-    expect(styles).toEqual(['round', 'quote', 'round', undefined])
+    expect(styles).toEqual([undefined, undefined, 'round', undefined])
     // only the glyph and the label are coloured, the bold markers dropped
     const titles = (await ui.findAll({ type: 'Text' })).filter(t => t.props.color === 'success')
     expect(titles.map(t => t.text)).toEqual(['✔ Сделано'])

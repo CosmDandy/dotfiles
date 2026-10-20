@@ -92,14 +92,14 @@ const COLOR: Record<Kind, Color> = {
   act: 'suggestion',
 }
 
-// A card for what closes something or needs a word back, a bar for a finding.
-// NOTE: the act block gets neither: it holds commands to copy, and a terminal
-// selection would take the frame's `│` along with them.
-const FRAME: Record<Kind, { borderStyle?: string; paddingX?: number; paddingLeft?: number }> = {
-  done: { borderStyle: 'round', paddingX: 1 },
+// A card only for what needs the person's attention; the rest is a coloured
+// label alone, since a terminal selection across a frame takes its `│` along
+// with the text, and done, found and act blocks are the ones read and copied.
+const FRAME: Record<Kind, { borderStyle?: string; paddingX?: number }> = {
+  done: {},
   failed: { borderStyle: 'round', paddingX: 1 },
   decide: { borderStyle: 'round', paddingX: 1 },
-  found: { borderStyle: 'quote', paddingLeft: 1 },
+  found: {},
   act: {},
 }
 
