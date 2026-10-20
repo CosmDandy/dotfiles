@@ -72,6 +72,17 @@ export function split(text: string): Part[] {
 
 
 
+// Splits a block's text into its label and the rest: the label is a leading
+// bold run (`**Сделано:**`) or, without one, the words up to the first colon;
+// a line with neither has no label.
+export function label(text: string): { label: string; rest: string } {
+  const bold = /^(\*\*|__)(.+?)\1[ \t]*/.exec(text)
+  if (bold) return { label: bold[2], rest: text.slice(bold[0].length) }
+  const colon = /^([^:\n`]{1,40}:)[ \t]*/.exec(text)
+  if (colon) return { label: colon[1], rest: text.slice(colon[0].length) }
+  return { label: '', rest: text }
+}
+
 // Theme keys, so the cards follow the person's theme (Solarized light and dark).
 const COLOR: Record<Kind, Color> = {
   done: 'success',
@@ -79,6 +90,17 @@ const COLOR: Record<Kind, Color> = {
   found: 'claude',
   decide: 'warning',
   act: 'suggestion',
+}
+
+// A card for what closes something or needs a word back, a bar for a finding.
+// NOTE: the act block gets neither: it holds commands to copy, and a terminal
+// selection would take the frame's `│` along with them.
+const FRAME: Record<Kind, { borderStyle?: string; paddingX?: number; paddingLeft?: number }> = {
+  done: { borderStyle: 'round', paddingX: 1 },
+  failed: { borderStyle: 'round', paddingX: 1 },
+  decide: { borderStyle: 'round', paddingX: 1 },
+  found: { borderStyle: 'quote', paddingLeft: 1 },
+  act: {},
 }
 
 export const register: Register = on => {
@@ -105,20 +127,26 @@ export const register: Register = on => {
               </Box>
             )
           }
-          // Markdown takes no colour, so the block's first line is drawn as
-          // coloured Text with its inline markers dropped; the rest stays markdown.
-          const [title, ...body] = p.text.split('\n')
-          // NOTE: the act block gets no bar: it holds commands to copy, and a
-          // terminal selection would take the bar along with them
-          const bar = p.kind === 'act' ? {} : { borderStyle: 'quote', borderColor: COLOR[p.kind], paddingLeft: 1 }
+          // Markdown takes no colour, so only the glyph and the label are drawn
+          // as coloured Text; what follows stays markdown in the default colour.
+          const { label: name, rest: after } = label(p.text)
+          const head = `${p.glyph}${name ? ` ${name}` : ''}`
+          const onLine = !after.startsWith('\n')
+          const rest = after.replace(/^\n/, '')
           return (
-            <Box key={`b${i}`} marginLeft={2} flexDirection="column" {...bar}>
+            <Box
+              key={`b${i}`}
+              marginLeft={2}
+              flexDirection={onLine ? 'row' : 'column'}
+              {...FRAME[p.kind]}
+              borderColor={FRAME[p.kind].borderStyle ? COLOR[p.kind] : undefined}
+            >
               <Text color={COLOR[p.kind]} bold>
-                {p.glyph} {title.replace(/\*\*|__|`/g, '')}
+                {onLine && rest ? `${head} ` : head}
               </Text>
-              {body.length > 0 && (
-                <Box marginLeft={2}>
-                  <Markdown text={body.join('\n')} />
+              {rest !== '' && (
+                <Box flexGrow={1} flexShrink={1} marginLeft={onLine ? 0 : 2}>
+                  <Markdown text={rest} />
                 </Box>
               )}
             </Box>
