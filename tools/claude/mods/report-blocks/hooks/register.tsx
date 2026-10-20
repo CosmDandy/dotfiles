@@ -97,40 +97,33 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {head}
-        {rest.map((p, i) =>
-          p.kind === 'text' ? (
-            <Box key={`t${i}`} marginLeft={2}>
-              <Markdown text={p.text} />
-            </Box>
-          ) : p.kind === 'act' ? (
-            // NOTE: no border here: an act block holds commands to copy, and a
-            // terminal selection would take the border's `│` along with them
-            <Box key={`b${i}`} marginLeft={2} flexDirection="row">
-              <Text color={COLOR.act} bold>
-                {p.glyph}{' '}
-              </Text>
-              <Box flexGrow={1} flexShrink={1}>
+        {rest.map((p, i) => {
+          if (p.kind === 'text') {
+            return (
+              <Box key={`t${i}`} marginLeft={2}>
                 <Markdown text={p.text} />
               </Box>
-            </Box>
-          ) : (
-            <Box
-              key={`b${i}`}
-              marginLeft={2}
-              flexDirection="row"
-              borderStyle="round"
-              borderColor={COLOR[p.kind]}
-              paddingX={1}
-            >
+            )
+          }
+          // Markdown takes no colour, so the block's first line is drawn as
+          // coloured Text with its inline markers dropped; the rest stays markdown.
+          const [title, ...body] = p.text.split('\n')
+          // NOTE: the act block gets no bar: it holds commands to copy, and a
+          // terminal selection would take the bar along with them
+          const bar = p.kind === 'act' ? {} : { borderStyle: 'quote', borderColor: COLOR[p.kind], paddingLeft: 1 }
+          return (
+            <Box key={`b${i}`} marginLeft={2} flexDirection="column" {...bar}>
               <Text color={COLOR[p.kind]} bold>
-                {p.glyph}{' '}
+                {p.glyph} {title.replace(/\*\*|__|`/g, '')}
               </Text>
-              <Box flexGrow={1} flexShrink={1}>
-                <Markdown text={p.text} />
-              </Box>
+              {body.length > 0 && (
+                <Box marginLeft={2}>
+                  <Markdown text={body.join('\n')} />
+                </Box>
+              )}
             </Box>
-          ),
-        )}
+          )
+        })}
       </Box>
     )
   })
