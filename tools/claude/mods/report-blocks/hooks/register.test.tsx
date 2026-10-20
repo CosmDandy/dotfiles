@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { split } from './register'
+import { label, split } from './register'
 
 const REPORT = [
   'Тема Claude теперь следует за системой.',
@@ -35,6 +35,13 @@ test('a blank line ends the card; the explanation under it stays plain', async (
   expect(parts[1].text).toBe('Потому что пуш за владельцем.\n\n  - и отступ тоже')
 })
 
+test('the label is the bold run or the words up to the colon', async () => {
+  expect(label('**Сделано:** тесты 4 из 4')).toEqual({ label: 'Сделано:', rest: 'тесты 4 из 4' })
+  expect(label('**За тобой**\n1. смёржить')).toEqual({ label: 'За тобой', rest: '\n1. смёржить' })
+  expect(label('Не вышло: удалить worktree')).toEqual({ label: 'Не вышло:', rest: 'удалить worktree' })
+  expect(label('просто текст без метки')).toEqual({ label: '', rest: 'просто текст без метки' })
+})
+
 test('a glyph inside code or mid-sentence opens no block', async () => {
   const text = 'Ответ.\n\n```sh\n! not a block\n? neither\n```\nДа! И что?\n!important'
   expect(split(text).every(p => p.kind === 'text')).toBe(true)
@@ -57,7 +64,16 @@ test('a reply with blocks draws a card per block; one without is left to the eng
     for (const key of ['b0', 'b1', 'b2', 'b3']) {
       colours.push((await ui.find({ key }))?.props.borderColor)
     }
-    expect(colours).toEqual(['success', 'claude', 'warning', 'suggestion'])
+    // a card only for decide (and failed); done, found and act are a label alone
+    expect(colours).toEqual([undefined, undefined, 'warning', undefined])
+    const styles = []
+    for (const key of ['b0', 'b1', 'b2', 'b3']) {
+      styles.push((await ui.find({ key }))?.props.borderStyle)
+    }
+    expect(styles).toEqual([undefined, undefined, 'round', undefined])
+    // only the glyph and the label are coloured, the bold markers dropped
+    const titles = (await ui.findAll({ type: 'Text' })).filter(t => t.props.color === 'success')
+    expect(titles.map(t => t.text)).toEqual(['✔ Сделано'])
     expect((await ui.find({ key: 't4' }))?.text).toBe('Хвост без метки.')
     // the engine draws the opening plain run only, so its bullet stays
     expect((await ui.find({ type: 'Text' }))?.text).toBe('Тема Claude теперь следует за системой.')

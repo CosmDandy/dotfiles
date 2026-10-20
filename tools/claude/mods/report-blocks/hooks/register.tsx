@@ -72,6 +72,17 @@ export function split(text: string): Part[] {
 
 
 
+// Splits a block's text into its label and the rest: the label is a leading
+// bold run (`**Сделано:**`) or, without one, the words up to the first colon;
+// a line with neither has no label.
+export function label(text: string): { label: string; rest: string } {
+  const bold = /^(\*\*|__)(.+?)\1[ \t]*/.exec(text)
+  if (bold) return { label: bold[2], rest: text.slice(bold[0].length) }
+  const colon = /^([^:\n`]{1,40}:)[ \t]*/.exec(text)
+  if (colon) return { label: colon[1], rest: text.slice(colon[0].length) }
+  return { label: '', rest: text }
+}
+
 // Theme keys, so the cards follow the person's theme (Solarized light and dark).
 const COLOR: Record<Kind, Color> = {
   done: 'success',
@@ -79,6 +90,17 @@ const COLOR: Record<Kind, Color> = {
   found: 'claude',
   decide: 'warning',
   act: 'suggestion',
+}
+
+// A card only for what needs the person's attention; the rest is a coloured
+// label alone, since a terminal selection across a frame takes its `│` along
+// with the text, and done, found and act blocks are the ones read and copied.
+const FRAME: Record<Kind, { borderStyle?: string; paddingX?: number }> = {
+  done: {},
+  failed: { borderStyle: 'round', paddingX: 1 },
+  decide: { borderStyle: 'round', paddingX: 1 },
+  found: {},
+  act: {},
 }
 
 export const register: Register = on => {
@@ -95,31 +117,44 @@ export const register: Register = on => {
     const head = await next({ ...e, props: { ...e.props, text: first.text } })
 
     return (
+      // each part after the first sits one blank line below the one before, as
+      // the paragraphs of a reply do
       <Box flexDirection="column">
         {head}
-        {rest.map((p, i) =>
-          p.kind === 'text' ? (
-            <Box key={`t${i}`} marginLeft={2}>
-              <Markdown text={p.text} />
-            </Box>
-          ) : (
+        {rest.map((p, i) => {
+          if (p.kind === 'text') {
+            return (
+              <Box key={`t${i}`} marginLeft={2} marginTop={1}>
+                <Markdown text={p.text} />
+              </Box>
+            )
+          }
+          // Markdown takes no colour, so only the glyph and the label are drawn
+          // as coloured Text; what follows stays markdown in the default colour.
+          const { label: name, rest: after } = label(p.text)
+          const head = `${p.glyph}${name ? ` ${name}` : ''}`
+          const onLine = !after.startsWith('\n')
+          const rest = after.replace(/^\n/, '')
+          return (
             <Box
               key={`b${i}`}
               marginLeft={2}
-              flexDirection="row"
-              borderStyle="round"
-              borderColor={COLOR[p.kind]}
-              paddingX={1}
+              marginTop={1}
+              flexDirection={onLine ? 'row' : 'column'}
+              {...FRAME[p.kind]}
+              borderColor={FRAME[p.kind].borderStyle ? COLOR[p.kind] : undefined}
             >
               <Text color={COLOR[p.kind]} bold>
-                {p.glyph}{' '}
+                {onLine && rest ? `${head} ` : head}
               </Text>
-              <Box flexGrow={1} flexShrink={1}>
-                <Markdown text={p.text} />
-              </Box>
+              {rest !== '' && (
+                <Box flexGrow={1} flexShrink={1} marginLeft={onLine ? 0 : 2}>
+                  <Markdown text={rest} />
+                </Box>
+              )}
             </Box>
-          ),
-        )}
+          )
+        })}
       </Box>
     )
   })
