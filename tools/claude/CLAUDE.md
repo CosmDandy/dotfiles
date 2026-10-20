@@ -102,8 +102,11 @@ Run every command yourself — ssh, logs, status, network probes, builds. If a c
 ends up in my hands, say what stopped you from running it.
 
 - Check a claim with the tool before it drives a decision, and don't re-verify what
-  this session already established. For a forge that means gh/glab — never raw curl
-  against the API, and in preference to MCP.
+  this session already established. Truth is the running system at its exact
+  version: docs and Context7 say where to look; the system itself — its API, an
+  export of a setting made once by hand, `--help`, a dry run — then that version's
+  source say what is so. For a forge that means gh/glab — never raw curl against
+  the API, and in preference to MCP.
 - Never poll by hand. Waiting is a script, not a sequence of tool calls: one event →
   `run_in_background` with a self-exiting `until`; a stream of them → Monitor, with a
   filter that also matches failure, because silence looks exactly like still-running.
