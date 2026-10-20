@@ -148,6 +148,7 @@ in
       # sing-box's own GUI client. The cask and not nixpkgs' `sing-box`: the CLI
       # needs root for its tun device, the app brings a network extension.
       "sfm"
+      "amneziavpn"
       "yandextelemost"
       "horos"
     ];
