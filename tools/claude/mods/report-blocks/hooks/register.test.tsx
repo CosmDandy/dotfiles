@@ -42,6 +42,25 @@ test('the label is the bold run or the words up to the colon', async () => {
   expect(label('просто текст без метки')).toEqual({ label: '', rest: 'просто текст без метки' })
 })
 
+test('lines under a label with text beside it go below, not beside the label', async ($, on) => {
+  on('ui.render', { component: 'AssistantMessage' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text key="engine">{e.props.text}</Text>
+  })
+  const text = 'Итог.\n\n**✔ `dp stats`** (`tools/devpod/stats.awk`)\n- первый пункт\n- второй'
+  const ui = await $.ui.mount({
+    plugin: 'report-blocks',
+    surface: 'terminal',
+    component: 'AssistantMessage',
+    props: { text, isFirstOfReply: true },
+  })
+  const md = (await ui.findAll({ type: 'Markdown' })).map(m => m.props.text)
+  expect(md).toEqual(['(`tools/devpod/stats.awk`)', '- первый пункт\n- второй'])
+  const titles = (await ui.findAll({ type: 'Text' })).filter(t => t.props.color === 'success')
+  expect(titles.map(t => t.text)).toEqual(['✔ dp stats '])
+  await ui.unmount()
+})
+
 test('a glyph inside code or mid-sentence opens no block', async () => {
   const text = 'Ответ.\n\n```sh\n! not a block\n? neither\n```\nДа! И что?\n!important'
   expect(split(text).every(p => p.kind === 'text')).toBe(true)

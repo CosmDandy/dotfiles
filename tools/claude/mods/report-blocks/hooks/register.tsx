@@ -132,24 +132,33 @@ export const register: Register = on => {
           // Markdown takes no colour, so only the glyph and the label are drawn
           // as coloured Text; what follows stays markdown in the default colour.
           const { label: name, rest: after } = label(p.text)
-          const head = `${p.glyph}${name ? ` ${name}` : ''}`
-          const onLine = !after.startsWith('\n')
-          const rest = after.replace(/^\n/, '')
+          const head = `${p.glyph}${name ? ` ${name.replace(/`/g, '')}` : ''}`
+          // Only the rest of the label's own line sits beside it; the lines under
+          // it go below at a fixed indent, or a list would hang at the label's width.
+          const [tail, ...below] = after.split('\n')
+          const body = below.join('\n')
           return (
             <Box
               key={`b${i}`}
               marginLeft={2}
               marginTop={1}
-              flexDirection={onLine ? 'row' : 'column'}
+              flexDirection="column"
               {...FRAME[p.kind]}
               borderColor={FRAME[p.kind].borderStyle ? COLOR[p.kind] : undefined}
             >
-              <Text color={COLOR[p.kind]} bold>
-                {onLine && rest ? `${head} ` : head}
-              </Text>
-              {rest !== '' && (
-                <Box flexGrow={1} flexShrink={1} marginLeft={onLine ? 0 : 2}>
-                  <Markdown text={rest} />
+              <Box flexDirection="row">
+                <Text color={COLOR[p.kind]} bold>
+                  {tail ? `${head} ` : head}
+                </Text>
+                {tail !== '' && (
+                  <Box flexGrow={1} flexShrink={1}>
+                    <Markdown text={tail} />
+                  </Box>
+                )}
+              </Box>
+              {body.trim() !== '' && (
+                <Box marginLeft={2}>
+                  <Markdown text={body} />
                 </Box>
               )}
             </Box>
