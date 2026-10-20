@@ -158,8 +158,11 @@ def pending(con, only=None):
 
 def summarize(transcript, model):
     prompt = PROMPT.read_text().replace("{TRANSCRIPT}", transcript)
+    # NOTE: no MCP servers. Under launchd this script is the TCC-responsible
+    # process, so a server reading another app's data (things-mcp) raised a
+    # "python3.14 wants access" dialog on every run.
     r = subprocess.run(
-        ["claude", "-p", "--model", model],
+        ["claude", "-p", "--model", model, "--strict-mcp-config"],
         input=prompt,
         capture_output=True,
         text=True,
