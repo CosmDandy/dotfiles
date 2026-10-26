@@ -114,6 +114,11 @@ _dp_drop_reason() {
     *'closed by remote host'*)              print remote-closed ;;
     *'Killed by signal'*)                   print killed ;;
     *'Permission denied'*)                  print auth ;;
+    # NOTE: before the generic "resolve" below. ssh cannot resolve a *.devpod
+    # name only when the host entry is gone from the config, and that is not a
+    # network to wait out: a reconnect found the host up and the container
+    # running, retried, and spun six times in two seconds before giving up.
+    *'Could not resolve hostname'*'.devpod'*) print no-ssh-entry ;;
     *'timed out'*|*'No route to host'*|*'Network is unreachable'*|*'Connection refused'*|*'resolve'*)
                                             print connect-failed ;;
     # NOTE: silence is the COMMON drop, not a rare one. A session is a mux
