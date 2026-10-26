@@ -15,6 +15,16 @@ while read -r name state; do
   workspace=$(docker inspect "$name" --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' | grep '\.devpod/agent' | sed 's|.*/workspaces/||;s|/content||')
   was_stopped=false
 
+  # NOTE: devpod creates containers with no restart policy, so the Sunday apt-upgrade
+  # reboot left every workspace stopped, and `ds` rightly refuses to start a stopped one
+  # on reconnect — the tabs came back to nothing. unless-stopped brings back exactly
+  # what was running and leaves alone what `dps` (a plain docker stop) stopped, including
+  # the containers this script stops back below. Set here, nightly, because devpod has
+  # no way to pass it at creation; a workspace created after tonight's run is covered
+  # from the next one.
+  docker update --restart unless-stopped "$name" > /dev/null \
+    || echo "$LOG_PREFIX WARN: could not set restart policy: $name ($workspace)"
+
   if [[ "$state" != "running" ]]; then
     echo "$LOG_PREFIX Starting stopped container: $name ($workspace)"
     docker start "$name"
