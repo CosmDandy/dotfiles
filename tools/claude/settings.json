@@ -372,7 +372,6 @@
     ],
     "defaultMode": "bypassPermissions"
   },
-  "model": "opus[1m]",
   "fallbackModel": [
     "opus",
     "sonnet"

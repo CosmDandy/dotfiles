@@ -114,6 +114,11 @@ _dp_drop_reason() {
     *'closed by remote host'*)              print remote-closed ;;
     *'Killed by signal'*)                   print killed ;;
     *'Permission denied'*)                  print auth ;;
+    # NOTE: before the generic "resolve" below. ssh cannot resolve a *.devpod
+    # name only when the host entry is gone from the config, and that is not a
+    # network to wait out: a reconnect found the host up and the container
+    # running, retried, and spun six times in two seconds before giving up.
+    *'Could not resolve hostname'*'.devpod'*) print no-ssh-entry ;;
     *'timed out'*|*'No route to host'*|*'Network is unreachable'*|*'Connection refused'*|*'resolve'*)
                                             print connect-failed ;;
     # NOTE: silence is the COMMON drop, not a rare one. A session is a mux
@@ -621,8 +626,9 @@ _dp_snapshot() {
       # NOTE: never an empty column. The readers split with ${(ps:\t:)}, which
       # DROPS empty fields and silently shifts every later column left — the
       # preview showed the profile under "repository" until this was a dash.
-      # Column 11 is the secrets pair, "claude age": 11 both, 10 token only,
-      # "--" nothing to ask because the container is not running.
+      # Column 11 is the secrets digits in DP_SECRETS order — claude, age, env,
+      # github: 1101 all but env; "--" nothing to ask because the container is
+      # not running.
       # absent = the host said there is no such container; unknown = the host
       # said nothing at all. Only the first is a reason to recreate anything.
       local st_now=${state_of[$uid]}
@@ -1051,6 +1057,34 @@ _dp_put_claude() {
 
   print "claude: token delivered to $id"
   return 0
+}
+
+# GitHub auth for the container: a PAT from Bitwarden, picked up by .zshrc as
+# GH_TOKEN — the same file route as the Claude token, for the same reason.
+# NOTE: a token of its own, not `gh auth token` from the mac. The mac's OAuth
+# token carries admin:public_key, admin:ssh_signing_key and delete:packages,
+# which nothing inside a container needs and everything running there inherits.
+: ${DPGH_ITEM:=github-token}
+
+_dp_put_github() {
+  emulate -L zsh
+  local id=$1 token
+  token=$(rbw get "$DPGH_ITEM" 2>/dev/null) || {
+    print -u2 "github: entry «$DPGH_ITEM» cannot be read from Bitwarden"
+    return 1
+  }
+  if [[ $token != (ghp_|github_pat_)* ]]; then
+    print -u2 "github: «$DPGH_ITEM» is not a PAT (ghp_... or github_pat_... expected)"
+    return 1
+  fi
+  print -r -- "$token" | _dp_put_file "$id" '$HOME/.config/dp/github.token'
+  local rc=$?
+  unset token
+  if (( rc != 0 )); then
+    print -u2 "github: token not delivered to $id"
+    return $rc
+  fi
+  print "github: token delivered to $id"
 }
 
 # The state the last collection saw for one workspace: running, exited, new,
@@ -1489,6 +1523,7 @@ typeset -ga DP_SECRETS=(
   "claude|Claude Code token|_dp_put_claude|1"
   "age|zone age key for sops|_dp_put_age|2"
   "env|work env file (jira, gitlab, nomad…)|_dp_put_workenv|3"
+  "github|GitHub token for gh|_dp_put_github|4"
 )
 
 # Where the work variables live inside a container.
