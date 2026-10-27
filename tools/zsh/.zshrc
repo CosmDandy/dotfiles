@@ -115,11 +115,6 @@ fi
 if [[ -r "$HOME/.config/claude/token" ]]; then
     export CLAUDE_CODE_OAUTH_TOKEN="$(<"$HOME/.config/claude/token")"
 fi
-# Same for gh: a hosts.yml login lives in the container's home and is gone after
-# a recreate, while this file is restored by `dp secrets`.
-if [[ -r "$HOME/.config/dp/github.token" ]]; then
-    export GH_TOKEN="$(<"$HOME/.config/dp/github.token")"
-fi
 
 if [[ -r "$HOME/.atuin/bin/env" ]]; then
     source "$HOME/.atuin/bin/env"
