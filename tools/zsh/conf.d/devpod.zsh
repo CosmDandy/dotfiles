@@ -1168,8 +1168,13 @@ _dp_put_claude() {
   return 0
 }
 
-# GitHub auth for the container: a PAT from Bitwarden, picked up by .zshrc as
-# GH_TOKEN — the same file route as the Claude token, for the same reason.
+# GitHub auth for the container: a PAT from Bitwarden, written by gh itself
+# into its own hosts.yml, so gh finds it without any env var — in VS Code tasks
+# and `devpod ssh --command` too, not only in an interactive zsh.
+# NOTE: hosts.yml and not GH_TOKEN — an exported GH_TOKEN overrides hosts.yml,
+# and `gh auth login` refuses to run at all while it is set. gh's help warns
+# about fine-grained tokens with --with-token; that is advisory: the scope check
+# is skipped when the token reports no OAuth scopes, and gh behaves the same.
 # NOTE: a token of its own, not `gh auth token` from the mac. The mac's OAuth
 # token carries admin:public_key, admin:ssh_signing_key and delete:packages,
 # which nothing inside a container needs and everything running there inherits.
@@ -1183,17 +1188,35 @@ _dp_put_github() {
     return 1
   }
   if [[ $token != (ghp_|github_pat_)* ]]; then
+    unset token
     print -u2 "github: «$DPGH_ITEM» is not a PAT (ghp_... or github_pat_... expected)"
     return 1
   fi
-  print -r -- "$token" | _dp_put_file "$id" '$HOME/.config/dp/github.token'
-  local rc=$?
+
+  # NOTE: the token travels on stdin only — on a command line it shows in `ps`.
+  # Explicit path and --insecure-storage for the same reasons as glab below.
+  # The old github.token file is removed here: the GH_TOKEN route left it
+  # behind, and a stray copy of a live token is worth nothing but a leak.
+  local errfile rc
+  errfile=$(mktemp) || { unset token; return 1 }
+  print -r -- "$token" | devpod ssh "$id" --command "
+unset GH_TOKEN GITHUB_TOKEN
+rm -f \"\$HOME/.config/dp/github.token\"
+g=\$HOME/.nix-profile/bin/gh
+[ -x \"\$g\" ] || g=\$(command -v gh) || { echo 'gh is not installed in the container' >&2; exit 3; }
+\"\$g\" auth login --hostname github.com --with-token --git-protocol ssh --insecure-storage &&
+chmod 600 \"\${GH_CONFIG_DIR:-\${XDG_CONFIG_HOME:-\$HOME/.config}/gh}/hosts.yml\"" \
+    2>"$errfile" >/dev/null
+  rc=$?
   unset token
   if (( rc != 0 )); then
-    print -u2 "github: token not delivered to $id"
+    grep -v 'Error tunneling to container' "$errfile" >&2
+    rm -f "$errfile"
+    print -u2 "github: gh not logged in to github.com in $id"
     return $rc
   fi
-  print "github: token delivered to $id"
+  rm -f "$errfile"
+  print "github: gh logged in to github.com in $id"
 }
 
 # GitLab auth for the container: a PAT and its host from Bitwarden, written by

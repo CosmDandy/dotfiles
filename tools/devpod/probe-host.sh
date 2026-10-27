@@ -29,13 +29,14 @@ docker ps -a --filter label=dev.containers.id \
       # workspaces, including immediately after a successful delivery.
       # NOTE: glab's config exists from the first glab run with an empty
       # `token:` placeholder, so the file alone means nothing — the line has to
-      # carry a value. Matched, never printed.
+      # carry a value. Matched, never printed. gh's hosts.yml is held to the
+      # same test: the file can outlive a logout.
       sec=$(docker exec "$cid" sh -c 'c=0; a=0; e=0; g=0; l=0
 for h in /root /home/*; do
   [ -f "$h/.config/claude/token" ] && c=1
   [ -f "$h/.config/dp/work.env" ] && e=1
   [ -f "$h/.config/sops/age/keys.txt" ] && a=1
-  [ -f "$h/.config/dp/github.token" ] && g=1
+  grep -qE "^[[:space:]]*oauth_token:[[:space:]]*[^[:space:]#]" "$h/.config/gh/hosts.yml" 2>/dev/null && g=1
   grep -qE "^[[:space:]]*token:[[:space:]]*[^[:space:]#]" "$h/.config/glab-cli/config.yml" 2>/dev/null && l=1
 done
 printf "%s%s%s%s%s" "$c" "$a" "$e" "$g" "$l"' 2>/dev/null)
