@@ -64,10 +64,14 @@ _upd_gc_darwin() {
 # actually moving.
 # NOTE: one cask at a time, not in a batch — brew abandons the rest on the first
 # failure, so one broken recipe would eat the whole list. A failed cask does not
-# fail the run; zinit, GC and Command Line Tools come after it.
+# stop the others; the step fails afterwards, naming them, so a partial upgrade
+# never reads as a clean run.
 # NOTE: `sudo -v` up front — pkg-based casks ask for a password from inside
 # brew, which mid-run is indistinguishable from a hung step. A running app is
 # updated on disk but keeps the old version in memory until restarted.
+# NOTE: this step needs the terminal — brew runs `sudo --reset-timestamp`
+# (utils/sudo.sh) before its first sudo, so a pkg cask may prompt whatever
+# ticket the run holds. updm keeps it in the foreground lane for that reason.
 _upd_brew_casks() {
   local out cask
   local -a outdated failed
@@ -86,6 +90,7 @@ _upd_brew_casks() {
   done
   if (( ${#failed} )); then
     print -P "%F{yellow}  не обновились: ${failed}%f" >&2
+    return 1
   fi
   return 0
 }
@@ -101,13 +106,20 @@ _upd_mas() {
     return 0
   fi
   echo "$out"
-  mas upgrade || print -P "%F{yellow}  mas upgrade не прошёл%f" >&2
-  return 0
+  mas upgrade || { print -P "%F{yellow}  mas upgrade не прошёл%f" >&2; return 1 }
 }
 
 updm() {
   emulate -L zsh
+  # NOTE: no_monitor/no_notify — with job control on, every lane would print
+  # "[1] 12345" when started and "[1] + done …" when it ends, right into the
+  # output of the foreground step. Plain `&` (not `&!`) so `wait $pid` still
+  # returns each lane's exit code.
+  setopt no_monitor no_notify
   local -i _upd_i=0
+  local -F t_start=$EPOCHREALTIME
+  local -a _upd_report _upd_failed _upd_pids _upd_bg
+  local _upd_dir
 
   _upd_step "dotfiles: pull"        git -C ~/.dotfiles pull --ff-only --no-recurse-submodules || return
   _upd_step "сабмодули к пину"      upds || return
@@ -126,18 +138,60 @@ updm() {
   # NOTE: $HOME, not ~ — a tilde inside quotes is not expanded and would reach
   # nix literally.
   _upd_step "darwin-rebuild switch" sudo darwin-rebuild switch --option warn-dirty false --flake "$HOME/.dotfiles/platform/nix#macbook-cosmdandy" || return
-  _upd_step "каски (brew upgrade)"  _upd_brew_casks || return
-  _upd_step "App Store (mas)"       _upd_mas || return
-  # the custom installer places MCP tools once and never updates them
+
+  # Everything below is independent of everything else below, so it runs
+  # concurrently. A lane exists only to serialise what shares a resource:
+  #   background — Claude Code, MCP-инструменты (all of uv and npm: one uv
+  #     cache), zinit: network-bound, no terminal, no sudo, no brew;
+  #   foreground — whatever may prompt: GC and CLT (sudo), mas (Apple ID), casks
+  #     (sudo from inside brew). Casks are also the only brew user, so a single
+  #     sequential lane is what keeps two brews off brew's lock.
+  _upd_dir=$(mktemp -d -t updm) || return
+  # NOTE: lanes are plain `&` jobs, reaped only by _upd_join. On Ctrl-C the
+  # function is abandoned before that, and zsh later announces each one
+  # ("[2] - exit 130 _upd_lane …") at the prompt. The lanes already got the
+  # SIGINT themselves (same process group, see _upd_lane); the trap reaps them.
+  # NOTE: a TRAPINT function, not `trap '…; return 130' INT`: in a string trap
+  # `return` leaves only the innermost function (clt-update, say), and updm
+  # carries on with the next step. A non-zero return from TRAPINT makes the
+  # shell behave as if interrupted, which unwinds updm as a whole. local_traps
+  # (from emulate -L) removes it when updm returns.
+  # NOTE: inside the trap `wait` reaps the lanes but leaves them in the job table
+  # as "terminated", still to be announced; listing them is what clears them.
+  TRAPINT() {
+    kill $_upd_pids 2> /dev/null
+    wait $_upd_pids 2> /dev/null
+    jobs > /dev/null
+    print -P "%F{yellow}прервано; логи фоновых шагов: $_upd_dir%f" >&2
+    return 130
+  }
+
   # NOTE: the only place claude updates on the mac — background updates are off in
   # managed settings (darwin-configuration.nix), so the new-version TCC dialogs
   # arrive here, when they are expected. DISABLE_AUTOUPDATER leaves `claude update`
   # working; DISABLE_UPDATES would not.
-  _upd_step "Claude Code"           claude update || return
-  _upd_step "MCP-инструменты"       _upd_mcp_tools || return
-  _upd_step "zinit"                 _upd_zinit || return
-  _upd_step "GC поколений"          _upd_gc_darwin || return
-  _upd_step "Command Line Tools"    clt-update || return
+  _upd_spawn "Claude Code"          claude update
+  # the custom installer places MCP tools once and never updates them
+  _upd_spawn "MCP-инструменты"      _upd_mcp_tools
+  # NOTE: in a subshell `zinit self-update` reloads zinit only there; this shell
+  # keeps the old copy in memory until the next one starts.
+  _upd_spawn "zinit"                _upd_zinit
 
+  # NOTE: sudo steps first, while darwin-rebuild's ticket is still fresh; casks
+  # last, because brew resets the ticket and any sudo after it would prompt again.
+  _upd_fg "GC поколений"            _upd_gc_darwin
+  _upd_fg "Command Line Tools"      clt-update
+  _upd_fg "App Store (mas)"         _upd_mas
+  _upd_fg "каски (brew upgrade)"    _upd_brew_casks
+
+  _upd_join
+  _upd_summary $(( EPOCHREALTIME - t_start ))
+
+  if (( ${#_upd_failed} )); then
+    print -P "%F{red}✗ упало шагов: ${#_upd_failed} из $_upd_i — ${(j:, :)_upd_failed}%f" >&2
+    print -P "%F{yellow}  остальные шаги применены; логи фоновых шагов: $_upd_dir%f" >&2
+    return 1
+  fi
+  rm -rf "$_upd_dir"
   print -P "%F{green}✓ обновление прошло целиком ($_upd_i шагов)%f"
 }

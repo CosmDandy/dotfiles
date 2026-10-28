@@ -97,6 +97,33 @@ jobs:
           sha=$(git ls-tree HEAD tools/claude/custom | awk '{print $3}')
           [ -n "$sha" ] || { echo "gitlink tools/claude/custom не найден" >&2; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # BuildKit layer cache, kept in the registry (one ref per arch), NOT in
+      # type=gha: Actions caches are writable from unprivileged workflows and
+      # cross branch boundaries, and this job pushes prod images. A registry ref
+      # is written only with this job's packages:write token, and the job runs
+      # on main only.
+      # NOTE: ONE ref per arch, written ONLY by the devops build. mode=max there
+      # exports the intermediate stages too, so the ref already holds every core
+      # layer, and both builds read that same ref. Two refs (core, devops) could
+      # drift apart after a partial failure and hand the two builds different
+      # candidates for the core stage — which is exactly the divergence that
+      # produced the 1.22 GiB pull regression. A cache hit only reuses
+      # already-built layer blobs, so core and devops still share identical
+      # blobs: the devops build resolves its core stage from the same builder
+      # (local cache after the first build) and the same ref.
+      # NOTE: scheduled runs read no cache. The first Dockerfile RUN is the apt
+      # install and every later layer hangs off it, so the cache would freeze
+      # apt packages (and the ssh-keyscan host keys) forever; the weekly rebuild
+      # exists precisely to refresh them. Busting just that layer would bust all
+      # of them anyway, so the schedule does a full rebuild and still WRITES the
+      # cache, which makes the next push builds start from fresh apt. Push
+      # builds therefore carry apt packages at most a week old.
+      # NOTE: the ref shows up as a tag (buildcache-<arch>) in the public
+      # package. It is an OCI image manifest holding cache layers, not a runnable
+      # image, and devcontainer-cleanup ignores it (no immutable tag).
+      # ignore-error: a ghcr hiccup while exporting the cache must not fail the
+      # build whose image is already pushed.
+      #
       # push-by-digest: layers and manifest go to the registry WITHOUT a tag and
       # only the digest comes back. The old intermediate :<profile>-<arch> tags
       # were mutable shared state through which jobs exchanged results, and they
@@ -108,6 +135,7 @@ jobs:
           file: platform/linux/Dockerfile
           target: core
           build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+          cache-from: ${{ github.event_name != 'schedule' && format('type=registry,ref={0}:buildcache-{1}', env.IMAGE, matrix.arch) || '' }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       # The second build runs on the same builder immediately after, taking the
       # core stage from its local cache — that is what makes the lower layers
@@ -119,6 +147,8 @@ jobs:
           file: platform/linux/Dockerfile
           target: devops
           build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+          cache-from: ${{ github.event_name != 'schedule' && format('type=registry,ref={0}:buildcache-{1}', env.IMAGE, matrix.arch) || '' }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       # NOTE: matrix jobs cannot return outputs reliably — the last one
       # overwrites the rest — so digests travel to the merge job as artifacts.

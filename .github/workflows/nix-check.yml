@@ -18,6 +18,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to a branch obsoletes the run in flight; the job only checks, so
+# cancelling loses nothing. main is keyed by sha instead of ref: every main
+# commit keeps its own run and signal, and none is cancelled or squeezed out of
+# the pending slot by a later one.
+concurrency:
+  group: nix-check-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   eval-darwin:
     # The mac config is EVALUATED on a linux runner: system = "aarch64-darwin" is set
