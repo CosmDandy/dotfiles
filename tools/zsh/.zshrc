@@ -492,11 +492,18 @@ RPROMPT2='%F{8}^C cancel%f'
 # Transient prompt: once a line is accepted its prompt collapses to the bare
 # arrow, so the scrollback reads as a list of commands. precmd puts the full
 # prompt back before the next one is drawn.
-typeset -g _full_prompt=$PROMPT _full_rprompt=$RPROMPT
+#
+# Both prompts open with OSC 133;A, the mark tmux copy-mode jumps between with
+# [ and ]. Ghostty's own shell integration emits it only for shells it launched
+# itself, never inside a tmux pane or over devpod ssh.
+# NOTE: the mark must live inside PROMPT, not be printed from precmd: the
+# collapse redraws the line, and tmux drops the mark of a line that is erased.
+typeset -g _prompt_mark=$'%{\e]133;A\e\\%}'
+typeset -g _full_prompt=$_prompt_mark$PROMPT _full_rprompt=$RPROMPT
 _prompt_collapse() {
     local c=green
     (( ${STARSHIP_CMD_STATUS:-0} )) && c=red
-    PROMPT="%F{$c}❯%f " RPROMPT=
+    PROMPT="$_prompt_mark%F{$c}❯%f " RPROMPT=
     zle .reset-prompt
 }
 _prompt_restore() { PROMPT=$_full_prompt RPROMPT=$_full_rprompt }
