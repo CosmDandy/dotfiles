@@ -163,7 +163,12 @@ FROM base AS core
 # reach containers until the next image rebuild, silently. `unknown` makes a
 # hand-built image fail the comparison, i.e. err towards running the installer.
 ARG CUSTOM_SHA=unknown
-RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
+# NOTE: the profile marker is written BEFORE the switch — the activation's mason
+# step runs nvim, and lsp.lua reads the marker to decide whether the IaC tools
+# belong in this profile. Written after, core saw no marker and baked them in,
+# and devops saw "core" and installed none of its own.
+RUN echo core > "$HOME/.dotfiles-profile" \
+  && ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "path:/opt/dotfiles?dir=platform/nix#cosmdandy-core-$(uname -m)-linux" -b hm-backup \
   # zinit plugins: core only, devops inherits them with the layer. `|| true`
@@ -215,15 +220,15 @@ RUN ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   # wheels and is the largest.
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
             "$HOME/.cache/pip" "$HOME/.cache/uv" \
-  && nix-collect-garbage -d \
-  && echo core > "$HOME/.dotfiles-profile"
+  && nix-collect-garbage -d
 
 # --- devops: core + IaC/K8s/container ---
 FROM core AS devops
 # NOTE: rm -rf, not just ln — core leaves a REAL clone in ~/dotfiles, and `ln
 # -sfn` onto an existing directory silently links inside it (same trap as
 # ~/.claude/* above). This stage puts its own clone back at the end.
-RUN rm -rf "$HOME/dotfiles" \
+RUN echo devops > "$HOME/.dotfiles-profile" \
+  && rm -rf "$HOME/dotfiles" \
   && ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "path:/opt/dotfiles?dir=platform/nix#cosmdandy-devops-$(uname -m)-linux" -b hm-backup \
@@ -236,6 +241,5 @@ RUN rm -rf "$HOME/dotfiles" \
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
             "$HOME/.cache/pip" \
   && nix-collect-garbage -d \
-  && echo devops > "$HOME/.dotfiles-profile" \
   && git clone --quiet --depth 1 https://github.com/CosmDandy/dotfiles.git "$HOME/dotfiles" \
   && git -C "$HOME/dotfiles" remote set-url origin git@github.com:CosmDandy/dotfiles.git

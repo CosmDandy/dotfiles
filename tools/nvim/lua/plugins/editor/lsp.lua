@@ -87,6 +87,25 @@ return {
         vim.list_extend(ensure_installed, iac_tools)
       end
 
+      -- NOTE: on Linux these come from nixpkgs (platform/nix/home/default.nix),
+      -- which the lint hook needs on the shell PATH anyway. A mason copy would
+      -- shadow the nix binary inside Neovim, and mason's luacheck rots: luarocks
+      -- bakes a store path into its wrapper that the next GC removes. The mac
+      -- keeps mason's copies — nix-darwin does not install these there.
+      if vim.fn.has 'linux' == 1 then
+        local from_nix = {
+          ruff = true,
+          yamllint = true,
+          shellcheck = true,
+          luacheck = true,
+          tflint = true,
+          ['ansible-lint'] = true,
+        }
+        ensure_installed = vim.tbl_filter(function(name)
+          return not from_nix[name]
+        end, ensure_installed)
+      end
+
       require('mason-tool-installer').setup {
         ensure_installed = ensure_installed,
         auto_update = false,

@@ -209,6 +209,12 @@ in
         # bare ENOENT, because there is no /usr/bin to borrow one from. It did not
         # make terraform-ls install — that one 404s upstream — but it is what turned
         # an invisible PATH problem into the real error.
+        # NOTE: luarocks is for mason's luacheck build, which only the mac still
+        # does — on Linux luacheck comes from nixpkgs, and gcc left with it. It
+        # is passed explicitly rather than trusted to the system profile in
+        # profilePath: nix-darwin runs this activation before it repoints
+        # /run/current-system, so on a fresh mac's first switch that path does
+        # not exist yet.
         PATH="${profilePath}:${
           lib.makeBinPath (
             [
@@ -220,11 +226,9 @@ in
               pkgs.gzip
               pkgs.unzip
               pkgs.nodejs_24
-              pkgs.luarocks
               pkgs.uv
             ]
-            # luacheck builds luafilesystem, a C module
-            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.gcc ]
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.luarocks ]
           )
         }:$PATH:/usr/bin:/bin"
         export PATH
@@ -274,6 +278,17 @@ in
 
         run nvim --headless "+MasonToolsInstallSync" +qa \
           || ${warn "mason tools install failed (offline?)"}
+        ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+          # NOTE: on Linux lsp.lua drops from mason's list the tools nixpkgs
+          # already provides; Clean removes the copies installed before that,
+          # which would keep shadowing the nix binaries (mason's bin comes first
+          # on Neovim's PATH). uninstall() goes through mason's async runner, so
+          # the wait keeps +qa from racing it — a small package happened to finish
+          # in time without it, a large venv like ansible-lint need not.
+          run nvim --headless "+MasonToolsClean" \
+            "+lua vim.wait(60000, function() for _, p in ipairs(require('mason-registry').get_installed_packages()) do if p:is_uninstalling() then return false end end return true end, 100)" \
+            +qa || ${warn "mason clean failed"}
+        ''}
         if [ -f "$MASON_LOG" ]; then
           # NOTE: the log check is mandatory — MasonToolsInstallSync returns 0
           # even when a package fails, so a failure shows up in neither the exit
