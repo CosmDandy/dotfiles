@@ -226,7 +226,11 @@ else
   # files HM would refuse to overwrite to *.hm-backup.
   # NOTE: the marker goes in before the switch, not only after it — the
   # activation's mason step reads it through lsp.lua to pick the profile's tools.
-  # BAKED_PROFILE above has already been read, so the skip check is unaffected.
+  # The generation file goes away with it: if the switch then fails, the marker
+  # already names the new profile while the baked generation still matches, and
+  # every later run would take the skip branch and stay on the old profile. The
+  # file is written back below only once the switch has succeeded.
+  rm -f "$GEN_FILE"
   echo "$PROFILE" > "$HOME/.dotfiles-profile"
   if command -v home-manager &> /dev/null; then
     home-manager switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup

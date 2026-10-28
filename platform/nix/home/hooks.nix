@@ -209,21 +209,27 @@ in
         # bare ENOENT, because there is no /usr/bin to borrow one from. It did not
         # make terraform-ls install — that one 404s upstream — but it is what turned
         # an invisible PATH problem into the real error.
-        # NOTE: no luarocks/gcc here. They were only for mason's luacheck build;
-        # on Linux luacheck now comes from nixpkgs, and on the mac mason still
-        # builds it with the luarocks from the system profile in profilePath.
+        # NOTE: luarocks is for mason's luacheck build, which only the mac still
+        # does — on Linux luacheck comes from nixpkgs, and gcc left with it. It
+        # is passed explicitly rather than trusted to the system profile in
+        # profilePath: nix-darwin runs this activation before it repoints
+        # /run/current-system, so on a fresh mac's first switch that path does
+        # not exist yet.
         PATH="${profilePath}:${
-          lib.makeBinPath [
-            pkgs.git
-            pkgs.neovim
-            pkgs.curl
-            pkgs.wget
-            pkgs.gnutar
-            pkgs.gzip
-            pkgs.unzip
-            pkgs.nodejs_24
-            pkgs.uv
-          ]
+          lib.makeBinPath (
+            [
+              pkgs.git
+              pkgs.neovim
+              pkgs.curl
+              pkgs.wget
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.unzip
+              pkgs.nodejs_24
+              pkgs.uv
+            ]
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.luarocks ]
+          )
         }:$PATH:/usr/bin:/bin"
         export PATH
 
