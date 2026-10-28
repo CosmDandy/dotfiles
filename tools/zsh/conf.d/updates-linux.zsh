@@ -18,7 +18,7 @@ updl() {
     print -P "%F{yellow}на NixOS обновляется система целиком:%f sudo nixos-rebuild switch --flake ~/dotfiles/platform/nix#\$(hostname)"
     return 1
   fi
-  local -i _upd_i=0
+  local -i _upd_i=0 mcp_rc=0
   local profile="$(cat ~/.dotfiles-profile 2> /dev/null || echo devops)"
   local target="$HOME/dotfiles/platform/nix#$(whoami)-${profile}-$(uname -m)-linux"
 
@@ -27,9 +27,15 @@ updl() {
   _upd_step "apt upgrade"        _upd_apt || return
   # the same gap as on the mac: the claude/custom installer places context7-mcp once and
   # never updates it
-  _upd_step "MCP-инструменты"    _upd_mcp_tools || return
+  # NOTE: not fatal — the run goes on to zinit and GC, but it is no longer
+  # reported as complete
+  _upd_step "MCP-инструменты"    _upd_mcp_tools || mcp_rc=$?
   _upd_step "zinit"              _upd_zinit || return
   _upd_step "GC поколений"       _upd_gc_linux || return
 
+  if (( mcp_rc )); then
+    print -P "%F{yellow}✗ обновление прошло, кроме части MCP-инструментов ($_upd_i шагов)%f" >&2
+    return $mcp_rc
+  fi
   print -P "%F{green}✓ обновление прошло целиком ($_upd_i шагов)%f"
 }

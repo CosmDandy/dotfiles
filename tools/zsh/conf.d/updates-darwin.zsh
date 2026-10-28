@@ -64,17 +64,15 @@ _upd_gc_darwin() {
 # actually moving.
 # NOTE: one cask at a time, not in a batch — brew abandons the rest on the first
 # failure, so one broken recipe would eat the whole list. A failed cask does not
-# fail the step; it is listed and the run goes on.
-# NOTE: pkg-based casks run sudo from inside brew. This step runs as a background
-# lane, where a password prompt would land on the terminal in the middle of the
-# foreground step's output. updm keeps the sudo timestamp fresh for the whole
-# concurrent phase; if it lapses anyway, SUDO_ASKPASS makes brew call `sudo -A`
-# (system_command.rb adds -A whenever the variable is set), /usr/bin/false
-# supplies no password, and that cask fails into the list below instead of
-# prompting. A running app is updated on disk but keeps the old version in
-# memory until restarted.
+# stop the others; the step fails afterwards, naming them, so a partial upgrade
+# never reads as a clean run.
+# NOTE: `sudo -v` up front — pkg-based casks ask for a password from inside
+# brew, which mid-run is indistinguishable from a hung step. A running app is
+# updated on disk but keeps the old version in memory until restarted.
+# NOTE: this step needs the terminal — brew runs `sudo --reset-timestamp`
+# (utils/sudo.sh) before its first sudo, so a pkg cask may prompt whatever
+# ticket the run holds. updm keeps it in the foreground lane for that reason.
 _upd_brew_casks() {
-  local -x SUDO_ASKPASS=/usr/bin/false
   local out cask
   local -a outdated failed
   # NOTE: NO_COLOR — the captured output becomes cask names, and ANSI inside a
@@ -86,11 +84,13 @@ _upd_brew_casks() {
     return 0
   fi
   echo "к обновлению (${#outdated}): ${outdated}"
+  sudo -v
   for cask in $outdated; do
     brew upgrade --cask --greedy "$cask" || failed+=("$cask")
   done
   if (( ${#failed} )); then
     print -P "%F{yellow}  не обновились: ${failed}%f" >&2
+    return 1
   fi
   return 0
 }
@@ -106,8 +106,7 @@ _upd_mas() {
     return 0
   fi
   echo "$out"
-  mas upgrade || print -P "%F{yellow}  mas upgrade не прошёл%f" >&2
-  return 0
+  mas upgrade || { print -P "%F{yellow}  mas upgrade не прошёл%f" >&2; return 1 }
 }
 
 updm() {
@@ -142,27 +141,31 @@ updm() {
 
   # Everything below is independent of everything else below, so it runs
   # concurrently. A lane exists only to serialise what shares a resource:
-  #   background — каски: the only brew user (two brews fight over brew's lock);
-  #     Claude Code, MCP-инструменты (all of uv and npm: one uv cache), zinit —
-  #     network-bound, no terminal, no sudo of their own;
-  #   foreground — mas may ask for the Apple ID, GC and CLT call sudo: these keep
-  #     the terminal and run one after another while the lanes work.
-  # NOTE: one `sudo -v` here, in the foreground — darwin-rebuild has just used
-  # sudo, so it normally does not prompt. The keepalive then renews the timestamp
-  # every minute (the default lifetime is 5) for the pkg casks in the brew lane;
-  # `-n` makes it give up silently instead of prompting if the ticket is revoked.
-  # Should it lapse, the casks fail without a prompt (see _upd_brew_casks) and
-  # the foreground sudo steps prompt as they always did.
-  # NOTE: the keepalive's output goes to /dev/null — once it is killed, its
-  # orphaned `sleep` would otherwise hold the terminal (or a pipe) open for up
-  # to a minute. `&!`: nothing waits for it, and a job still in the table when
-  # it is killed is announced as "[2] + terminated" once updm returns.
-  sudo -v || return
-  { trap - INT QUIT; while sleep 60; do sudo -n -v || exit 0; done } &> /dev/null &!
-  local -i keepalive=$!
-  _upd_dir=$(mktemp -d -t updm) || { kill $keepalive; return 1 }
+  #   background — Claude Code, MCP-инструменты (all of uv and npm: one uv
+  #     cache), zinit: network-bound, no terminal, no sudo, no brew;
+  #   foreground — whatever may prompt: GC and CLT (sudo), mas (Apple ID), casks
+  #     (sudo from inside brew). Casks are also the only brew user, so a single
+  #     sequential lane is what keeps two brews off brew's lock.
+  _upd_dir=$(mktemp -d -t updm) || return
+  # NOTE: lanes are plain `&` jobs, reaped only by _upd_join. On Ctrl-C the
+  # function is abandoned before that, and zsh later announces each one
+  # ("[2] - exit 130 _upd_lane …") at the prompt. The lanes already got the
+  # SIGINT themselves (same process group, see _upd_lane); the trap reaps them.
+  # NOTE: a TRAPINT function, not `trap '…; return 130' INT`: in a string trap
+  # `return` leaves only the innermost function (clt-update, say), and updm
+  # carries on with the next step. A non-zero return from TRAPINT makes the
+  # shell behave as if interrupted, which unwinds updm as a whole. local_traps
+  # (from emulate -L) removes it when updm returns.
+  # NOTE: inside the trap `wait` reaps the lanes but leaves them in the job table
+  # as "terminated", still to be announced; listing them is what clears them.
+  TRAPINT() {
+    kill $_upd_pids 2> /dev/null
+    wait $_upd_pids 2> /dev/null
+    jobs > /dev/null
+    print -P "%F{yellow}прервано; логи фоновых шагов: $_upd_dir%f" >&2
+    return 130
+  }
 
-  _upd_spawn "каски (brew upgrade)" _upd_brew_casks
   # NOTE: the only place claude updates on the mac — background updates are off in
   # managed settings (darwin-configuration.nix), so the new-version TCC dialogs
   # arrive here, when they are expected. DISABLE_AUTOUPDATER leaves `claude update`
@@ -174,12 +177,14 @@ updm() {
   # keeps the old copy in memory until the next one starts.
   _upd_spawn "zinit"                _upd_zinit
 
-  _upd_fg "App Store (mas)"         _upd_mas
+  # NOTE: sudo steps first, while darwin-rebuild's ticket is still fresh; casks
+  # last, because brew resets the ticket and any sudo after it would prompt again.
   _upd_fg "GC поколений"            _upd_gc_darwin
   _upd_fg "Command Line Tools"      clt-update
+  _upd_fg "App Store (mas)"         _upd_mas
+  _upd_fg "каски (brew upgrade)"    _upd_brew_casks
 
   _upd_join
-  kill $keepalive 2> /dev/null
   _upd_summary $(( EPOCHREALTIME - t_start ))
 
   if (( ${#_upd_failed} )); then
