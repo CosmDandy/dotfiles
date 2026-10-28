@@ -287,24 +287,35 @@ return {
       -- NOTE: no executable check — for a missing binary (the core profile has no
       -- terraform-ls, ansiblels or gopls) vim.lsp.enable skips the server and only
       -- logs it to lsp.log. mason's bin and nixpkgs (gopls) are both on PATH.
-      vim.lsp.enable {
-        'basedpyright',
-        'lua_ls',
-        'jsonls',
-        'yamlls',
-        'bashls',
-        'dockerls',
-        'terraformls',
-        'helm_ls',
-        'ansiblels',
-        'jsonnet_ls',
-        'docker_compose_language_service',
-        'gopls',
-        -- markdown links/headings; installed by mason above but never enabled before
-        'marksman',
-        -- Nix, from nixpkgs (nix-darwin on the mac); absent in containers, so skipped there
-        'nil_ls',
-      }
+      -- NOTE: scheduled because enabling resolves every config below and the first
+      -- buffer's FileType then spawns its client, ~10ms (measured) before that buffer
+      -- is first drawn. vim.lsp.enable replays FileType on the buffers already open
+      -- only once vim_did_enter is set; a tick that runs earlier (anything calling
+      -- vim.wait during startup) would leave the first buffer without a client, so
+      -- that case is replayed by hand below.
+      vim.schedule(function()
+        vim.lsp.enable {
+          'basedpyright',
+          'lua_ls',
+          'jsonls',
+          'yamlls',
+          'bashls',
+          'dockerls',
+          'terraformls',
+          'helm_ls',
+          'ansiblels',
+          'jsonnet_ls',
+          'docker_compose_language_service',
+          'gopls',
+          -- markdown links/headings; installed by mason above but never enabled before
+          'marksman',
+          -- Nix, from nixpkgs (nix-darwin on the mac); absent in containers, so skipped there
+          'nil_ls',
+        }
+        if vim.v.vim_did_enter == 0 then
+          vim.cmd.doautoall 'nvim.lsp.enable FileType'
+        end
+      end)
     end,
   },
 }
