@@ -176,6 +176,83 @@ _dp_dur() {
   else print -r -- "${s}s"; fi
 }
 
+# Starts a stopped workspace's container directly on its host, so `ds` can go in
+# over the running path.
+# NOTE: why not leave it to devpod: its ProxyCommand, finding the container
+# stopped, first asks the registry about the floating image tag — measured once
+# at 50s before `docker start` ran, and longer when the tag had moved and it
+# began downloading 7GB. A plain start skips all of that; the container comes up
+# on the image it was built from, which is what devpod ends up doing anyway.
+# The workspace uid is the value of the container's dev.containers.id label.
+_dp_start_container() {
+  emulate -L zsh
+  local id=$1 host uid t0=$EPOCHREALTIME
+  local -i ms rc
+  local -a c=( ${(ps:\t:)"$(awk -F'\t' -v i="$id" '$1==i{print $4"\t"$5; exit}' $DP_SNAPSHOT 2>/dev/null)"} )
+  host=$c[1] uid=$c[2]
+  [[ -n $uid && $uid != - ]] || return 1
+  local cmd="c=\$(docker ps -aq --filter label=dev.containers.id=$uid); [ -n \"\$c\" ] && docker start \$c >/dev/null"
+  if [[ $host == - ]]; then
+    sh -c "$cmd"
+  else
+    # NOTE: ControlMaster=no, as in _dp_probe_one: with `auto` this one-off
+    # would become the 4-hour host master, opened without the log _dp_warm
+    # gives it — and _dp_warm, finding a master up, would not open its own.
+    ssh -o BatchMode=yes -o ConnectTimeout=5 -o ControlMaster=no -T "$host" "$cmd" 2>/dev/null
+  fi
+  rc=$?
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  _dp_log start $ms $(( rc == 0 ? 0 : 1 )) "id=$id" "rc=$rc"
+  return $rc
+}
+
+# Opens the two ssh masters a session rides — to the provider host and to the
+# workspace — before the session itself would, so that they log to a file.
+# NOTE: why a file at all: a session is a mux client, and when its master dies
+# the client exits 255 in silence; the master knew why, but ControlPersist
+# detached it with stderr on /dev/null, and devpod's `LogLevel error` hides the
+# INFO line it would have printed anyway. -E plus LogLevel=INFO on the
+# connection that BECOMES the master keeps that line, per host, for
+# _dp_master_cause to read. Nothing is added when a master is already up.
+# The workspace half doubles as the connect measurement: one round trip,
+# milliseconds over a live master, and otherwise the handshake the login would
+# have paid anyway — paid here, and leaving the master warm.
+_dp_warm() {
+  emulate -L zsh
+  local id=$1 master=$3 host dir=${DP_LOG:h}/ssh
+  local -i patience=$2 ms rc
+  [[ -d $dir ]] || mkdir -p -- $dir
+  host=$(awk -F'\t' -v i="$id" '$1==i{print $4; exit}' $DP_SNAPSHOT 2>/dev/null)
+  if [[ -n $host && $host != - ]] && ! ssh -O check "$host" >/dev/null 2>&1; then
+    ssh -E $dir/$host.log -o LogLevel=INFO -o BatchMode=yes -o ConnectTimeout=5 \
+      -T "$host" true 2>/dev/null
+  fi
+  local t0=$EPOCHREALTIME
+  ssh -E $dir/$id.devpod.log -o LogLevel=INFO -o BatchMode=yes -o ConnectTimeout=$patience \
+    -T "${id}.devpod" true 2>/dev/null
+  rc=$?
+  (( ms = (EPOCHREALTIME - t0) * 1000 ))
+  _dp_log connect $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$master" "rc=$rc"
+}
+
+# Why the masters under a session died, from the logs _dp_warm gave them: the
+# host's first, since its death is what takes the workspace one down with it,
+# then the workspace's own. Only a line written in the last two minutes counts
+# — an old one is the story of some earlier drop.
+_dp_master_cause() {
+  emulate -L zsh
+  local id=$1 dir=${DP_LOG:h}/ssh host f
+  host=$(awk -F'\t' -v i="$id" '$1==i{print $4; exit}' $DP_SNAPSHOT 2>/dev/null)
+  local -a fresh
+  for f in $dir/$host.log $dir/$id.devpod.log; do
+    fresh=( $f(N.ms-120) )
+    (( $#fresh )) || continue
+    f=$(tail -n 1 -- $f)
+    [[ -n $f ]] && { print -r -- "${f//$'\r'/}"; return 0 }
+  done
+  return 1
+}
+
 # Sits out a dropped connection for `ds`: first until the provider host takes a
 # TCP connection again, then until a fresh snapshot says the container is still
 # running. 0 — go back in; 1 — Ctrl-C, or the container is no longer running.
@@ -321,23 +398,21 @@ ds() {
     _dp_log session 0 1 "id=$id" "reason=no-ssh-entry"
     return 1
   fi
-  # How long it takes to GET there, measured separately from how long the
-  # session then lasts — the wall clock of an interactive shell says how long
-  # somebody worked, which is not a number any timeout is set from.
-  # One extra round trip: milliseconds when the multiplexed connection is up,
-  # and when it is not, this is the handshake the login would have paid
-  # anyway — it just pays it here and leaves the master warm.
-  # NOTE: only for a container that is already up. On a stopped one the
-  # ProxyCommand has to start it first, which takes far longer than any
-  # connect timeout worth setting — measured: 5s spent, rc=255, and those
-  # five seconds were added to the wait before the real login even began.
-  # A start is not what this row is supposed to measure anyway.
-  if [[ $(_dp_snap_state "$id") == running ]]; then
-    local _tc=$EPOCHREALTIME
-    ssh -o BatchMode=yes -o ConnectTimeout=5 -T "${id}.devpod" true 2>/dev/null
-    rc=$?
-    (( ms = (EPOCHREALTIME - _tc) * 1000 ))
-    _dp_log connect $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc"
+  local _state=$(_dp_snap_state "$id")
+  # NOTE: a container that was just started gets 30s to answer instead of 5:
+  # devpod injects its agent on the first connection, and the 5s meant for a
+  # warm one failed there and logged a connect error for a login that worked.
+  local -i _patience=5
+  if [[ $_state == (exited|created) ]]; then
+    print -u2 -n "ds: $id is stopped — starting it… "
+    if _dp_start_container "$id"; then
+      print -u2 "up."
+      _state=running _patience=30
+      _dp_refresh_async
+    else
+      # Not fatal: devpod's own path still gets there, just the slow way.
+      print -u2 "could not; devpod will start it, which can take minutes."
+    fi
   fi
   # rc=255 alone does not say whether the network went, the server hung up or
   # the tab was closed — the one line ssh prints on the way out does. Its
@@ -361,7 +436,11 @@ ds() {
   # is reported rather than retried. After a reconnect, a fast failure is the
   # network flapping — retried, but only five times in a row.
   local -i _tries=0 _quick=0 _auto
+  local _cause
   while :; do
+    # NOTE: only for a container that is up. On a stopped one the ProxyCommand
+    # has to start it first, far longer than any connect timeout worth setting.
+    [[ $_state == running ]] && _dp_warm "$id" $_patience "$_master"
     { $_cmd 2>&1 1>&3 3>&- | tee -- $_err >&2; rc=${pipestatus[1]} } 3>&1
     (( ms = (EPOCHREALTIME - _t0) * 1000 ))
     # NOTE: tmux on the far side switches terminal reports on — focus, mouse,
@@ -372,7 +451,7 @@ ds() {
     # which brings back what was on screen before `ds`.
     (( rc != 0 )) && [[ -n $_enter && -t 1 ]] \
       && printf '\e[?2031l\e[?1004l\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[>4m\e[?25h\e[0m\e[?1049l'
-    _why=() _reason= _last=
+    _why=() _reason= _last= _cause=
     if (( rc == 255 )); then
       # NOTE: through an array. `local x=${${(f)…}[-1]}` evaluates in scalar
       # context, joins the lines first and hands back the last CHARACTER.
@@ -380,6 +459,10 @@ ds() {
       _last=${_lines[-1]}
       _reason=$(_dp_drop_reason "$_last")
       _why=("reason=$_reason" "msg=${${${_last//$'\r'/}//[[:space:]]/_}[1,120]}")
+      if [[ $_reason == master-lost ]]; then
+        _cause=$(_dp_master_cause "$id")
+        [[ -n $_cause ]] && _why+=("cause=${${${_cause//$'\r'/}//[[:space:]]/_}[1,120]}")
+      fi
     fi
     rm -f -- $_err
     _dp_log session $ms $(( rc == 0 ? 0 : 1 )) "id=$id" path=fast "master=$_master" "rc=$rc" "tmux=$_mode" "try=$_tries" $_why
@@ -391,10 +474,12 @@ ds() {
       elif (( _tries && _quick <= 5 )); then _auto=1; fi
     fi
     _dp_drop_verdict "$id" $ms "$_reason" "$_last" ${_auto:#0}
+    [[ -n $_cause ]] && print -u2 -r -- "    cause: $_cause"
     (( _auto )) || break
     _dp_await_workspace "$id" "$_reason" || break
     (( _tries++ ))
     _master=$(_dp_master_state "$id")
+    _state=running _patience=5
     _t0=$EPOCHREALTIME
   done
   # Detaching from tmux leaves the work running on the other side, so there is
@@ -755,9 +840,12 @@ _dp_rows() {
     c=(${(ps:\t:)line}); (( ${#c[1]} > w )) && w=${#c[1]}
   done
 
-  # NOTE: no "last used" column. The rows are already SORTED by it, so the date
-  # repeated an order the eye can see, and the preview shows it for the one row
-  # that is actually being looked at.
+  # NOTE: no "last used" column. Within each group below the rows keep the
+  # snapshot's order, which is last used first, so the date repeated an order
+  # the eye can see, and the preview shows it for the one row actually looked at.
+  # Groups, top to bottom: running, stopped, everything that needs a look (a job,
+  # a silent host, a missing container), and last the ones already open in a tab
+  # here — a second copy of an open workspace is the rare case, not the usual.
   # NOTE: the provider is set in faint (SGR 2) on top of the muted colour. It
   # matters only when workspaces live on different hosts, which is rare — this
   # keeps it readable when looked for and out of the way when not.
@@ -784,9 +872,11 @@ _dp_rows() {
     esac
   done
 
+  local -a out rank
+  local -i r
   for line in $lines; do
     c=(${(ps:\t:)line})
-    job=
+    job= r=3
     [[ -r $jobs/$c[1].status ]] && job=$(< $jobs/$c[1].status)
     if [[ -n $job ]]; then
       jverb=${job%%$'\t'*}; jstate=${job##*$'\t'}
@@ -808,18 +898,30 @@ _dp_rows() {
       esac
     else
       case $c[2] in
-        running) if (( open[$c[1]] > 1 )); then mark="◉ open ×${open[$c[1]]}"; colour=$_DP_CYAN
-                 elif (( open[$c[1]] )); then mark='◉ open';      colour=$_DP_CYAN
-                 else mark='● running';                           colour=$_DP_GREEN; fi ;;
-        exited)  mark='○ stopped';      colour=$_DP_BLUE ;;
+        running) if (( open[$c[1]] > 1 )); then mark="◉ open ×${open[$c[1]]}"; colour=$_DP_CYAN; r=4
+                 elif (( open[$c[1]] )); then mark='◉ open';      colour=$_DP_CYAN; r=4
+                 else mark='● running';                           colour=$_DP_GREEN; r=1; fi ;;
+        exited)  mark='○ stopped';      colour=$_DP_BLUE; r=2 ;;
         unknown) mark='? host silent';   colour=$_DP_YELLOW ;;
-        *)       mark='⚠ no container'; colour=$_DP_YELLOW ;;
+        absent)  mark='⚠ no container'; colour=$_DP_YELLOW ;;
+        # NOTE: docker's rarer states — created (an `up` that died before the
+        # start), paused, restarting, dead — used to fall into "no container",
+        # which is wrong about every one of them. The word itself is the label.
+        *)       mark="⚠ ${c[2]}";       colour=$_DP_YELLOW ;;
       esac
     fi
-    printf "%-${w}s  %s%-18s%s  %s%s%s%s\n" \
+    printf -v line "%-${w}s  %s%-18s%s  %s%s%s%s" \
       "$c[1]" "$colour" "$mark" "$_DP_OFF" \
       "$_DP_FAINT$_DP_MUTED" "${c[3]/#-/—}" "$_DP_OFF"
+    out+=("$line") rank+=($r)
   done
+  local -i i
+  for r in 1 2 3 4; do
+    for (( i = 1; i <= $#out; i++ )); do
+      (( rank[i] == r )) && print -r -- "$out[i]"
+    done
+  done
+  return 0
 }
 
 # Shared picker engine: padded rows on stdin, the first column of each chosen
@@ -986,21 +1088,29 @@ dpkey() {
   local errfile
   errfile=$(mktemp) || return 1
   print -r -- "$key" \
-    | devpod ssh "$id" --command \
-        'install -D -m600 /dev/stdin "$HOME/.config/sops/age/keys.txt"' 2>"$errfile" >/dev/null
+    | _dp_exec "$id" 'install -D -m600 /dev/stdin "$HOME/.config/sops/age/keys.txt"' \
+        2>"$errfile" >/dev/null
   local rc=$?
   unset key
 
   if (( rc != 0 )); then
     print -u2 "dpkey: key not delivered to $id"
-    # NOTE: devpod prints "Error tunneling to container" on successful runs too
-    # — its own noise, shown only when something actually failed.
-    grep -v 'Error tunneling to container' "$errfile" >&2
+    cat -- "$errfile" >&2
   else
     print "dpkey: zone key delivered to $id"
   fi
   rm -f "$errfile"
   return $rc
+}
+
+# One command inside a workspace, stdin passed through.
+# NOTE: through the <id>.devpod ssh entry and not `devpod ssh --command`: the
+# latter builds a tunnel from scratch every call — ~6s each, which is what made
+# restoring three secrets take as long as it did — while this rides the same
+# multiplexed connection `ds` keeps warm. It lands in the same place: devpod's
+# ssh-server starts the command in /workspaces/<id>, as the entry's user.
+_dp_exec() {
+  ssh -o BatchMode=yes -o ConnectTimeout=10 -T "${1}.devpod" "$2"
 }
 
 # Writes stdin to a 0600 file inside the workspace.
@@ -1010,10 +1120,9 @@ _dp_put_file() {
   local id=$1 dest=$2
   local errfile rc
   errfile=$(mktemp) || return 1
-  devpod ssh "$id" --command "install -D -m600 /dev/stdin \"$dest\"" \
-    2>"$errfile" >/dev/null
+  _dp_exec "$id" "install -D -m600 /dev/stdin \"$dest\"" 2>"$errfile" >/dev/null
   rc=$?
-  (( rc != 0 )) && grep -v 'Error tunneling to container' "$errfile" >&2
+  (( rc != 0 )) && cat -- "$errfile" >&2
   rm -f "$errfile"
   return $rc
 }
@@ -1049,10 +1158,10 @@ _dp_put_claude() {
   # token the CLI still opens its first-run setup and offers a subscription
   # login, which looks exactly like the token being ignored — while `claude -p`
   # answers fine at the same moment.
-  devpod ssh "$id" --command \
+  _dp_exec "$id" \
     'f=$HOME/.claude.json; [ -f "$f" ] || printf "{}" > "$f";
      t=$(mktemp) && jq ".hasCompletedOnboarding = true" "$f" > "$t" && mv "$t" "$f"' \
-    2>/dev/null >/dev/null \
+    < /dev/null 2>/dev/null >/dev/null \
     || print -u2 "claude: onboarding in $id not disabled — the CLI will ask to sign in"
 
   print "claude: token delivered to $id"
@@ -1584,7 +1693,7 @@ _dp_put_age() {
 
 # The secrets picker: every known secret with whether it is already in place.
 # NOTE: the state comes from the cached snapshot, not from a fresh look inside
-# the container — asking would cost a `devpod ssh` before a picker that exists
+# the container — asking would cost a round trip before a picker that exists
 # to save exactly that kind of wait.
 # One row per registered secret, with the state the last collection saw.
 # A function of its own because the picker RELOADS these after every delivery —
@@ -1674,8 +1783,6 @@ _dp_secrets() {
     $fn "$id"
     frc=$?
     (( ms = (EPOCHREALTIME - t0) * 1000 ))
-    # Every delivery opens its own `devpod ssh` tunnel, so this measures that
-    # tunnel — the reason restoring three secrets takes as long as it does.
     _dp_log secret $ms $frc "id=$id" "name=$name"
     # NOTE: 2 means "this one needs a person", not "this one broke" — it must
     # not be flattened into 1, and a real failure must not be downgraded by a 2
@@ -1695,7 +1802,7 @@ _dp_secrets() {
 }
 
 # What the doctor asks a live container about itself. One round trip, every
-# answer at once, because `devpod ssh` costs seconds and asking twice shows.
+# answer at once, because a round trip into a container is never free.
 : ${_DP_PROBE:='f=.devcontainer/devcontainer.json
 if [ -f "$f" ]; then grep -q remoteUser "$f" && dc=own || dc=root; else dc=none; fi
 [ -f "$HOME/.config/claude/token" ] && cl=1 || cl=0
@@ -1753,10 +1860,10 @@ _dp_doctor() {
     # Everything else lives inside the container, so it can only be asked of a
     # running one — a stopped workspace gets the image verdict and nothing more.
     [[ $state == running ]] || continue
-    # NOTE: </dev/null is not decoration. `devpod ssh` reads stdin, and stdin
-    # here IS the snapshot the loop is reading — without this it swallowed the
-    # remaining rows and the doctor silently checked only the first workspace.
-    answer=$(devpod ssh "$id" --command "$_DP_PROBE" < /dev/null 2>/dev/null | tr -d '\r')
+    # NOTE: </dev/null is not decoration. ssh reads stdin, and stdin here IS
+    # the snapshot the loop is reading — without this it swallowed the remaining
+    # rows and the doctor silently checked only the first workspace.
+    answer=$(_dp_exec "$id" "$_DP_PROBE" < /dev/null 2>/dev/null | tr -d '\r')
     [[ -z $answer ]] && { print -r -- "${_DP_MUTED}·${_DP_OFF} $id: container did not answer"; continue }
     read -r dc cl ag dirty dhead ddirty <<< "$answer"
 
