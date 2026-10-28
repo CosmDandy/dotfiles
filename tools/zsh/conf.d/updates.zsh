@@ -83,8 +83,8 @@ _upd_spawn() {
 # brew running behind the prompt. Restored, the lanes share the terminal's process group
 # and die with the rest of the run.
 # NOTE: stdin is /dev/null so a lane cannot steal keystrokes meant for the foreground
-# step. sudo reads /dev/tty, not stdin — that is handled by the caller's keepalive and by
-# SUDO_ASKPASS in the step itself.
+# step. That does not stop a password prompt — sudo reads /dev/tty — so nothing that can
+# reach sudo belongs in a lane.
 _upd_lane() {
   local num=$1 label=$2 log=$3; shift 3
   trap - INT QUIT
@@ -186,8 +186,10 @@ _upd_timing_mcp() {
   return 0
 }
 
-# NOTE: this step never fails the run — MCP is an auxiliary layer, and the network to
-# npm/PyPI drops more often than everything else in updm combined.
+# NOTE: every tool is tried even when one fails — the network to npm/PyPI drops more often
+# than everything else in updm combined. A partial failure still returns 1: run as a
+# background lane, a warning that only reached its log was deleted with it on an
+# otherwise clean run. Callers treat that as non-fatal (MCP is an auxiliary layer).
 _upd_mcp_tools() {
   local -i rc=0
   if command -v npm > /dev/null; then
@@ -202,5 +204,5 @@ _upd_mcp_tools() {
     fi
   fi
   (( rc )) && print -P "%F{yellow}  часть MCP-инструментов не обновилась%f" >&2
-  return 0
+  return $rc
 }
