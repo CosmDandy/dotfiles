@@ -90,9 +90,10 @@ export DOTFILES_DIR="${HOME}/.dotfiles"
 if [[ -n $_DP_ENV_FILE ]]; then
     source "$_DP_ENV_FILE"
     () {
-        # NOTE: GITLAB_HOST travels with GITLAB_TOKEN. Without it glab asks
-        # gitlab.com outside a work repo and gets a 401 for the work token.
-        local -a keep=(JIRA_URL JIRA_USERNAME JIRA_API_TOKEN TIMING_MCP_URL GITLAB_TOKEN GITLAB_HOST)
+        # NOTE: no GITLAB_TOKEN here on purpose. glab keeps token and default
+        # host in its own config (`dp secrets <id> gitlab` writes it in a
+        # container), and an exported GITLAB_TOKEN would override that token.
+        local -a keep=(JIRA_URL JIRA_USERNAME JIRA_API_TOKEN TIMING_MCP_URL)
         local -a found=()
         local line v
         # Parsed by hand rather than with sed: BSD and GNU differ in BRE.
@@ -113,11 +114,6 @@ fi
 # OAuth token written at workspace creation. The file never exists on the mac.
 if [[ -r "$HOME/.config/claude/token" ]]; then
     export CLAUDE_CODE_OAUTH_TOKEN="$(<"$HOME/.config/claude/token")"
-fi
-# Same for gh: a hosts.yml login lives in the container's home and is gone after
-# a recreate, while this file is restored by `dp secrets`.
-if [[ -r "$HOME/.config/dp/github.token" ]]; then
-    export GH_TOKEN="$(<"$HOME/.config/dp/github.token")"
 fi
 
 if [[ -r "$HOME/.atuin/bin/env" ]]; then

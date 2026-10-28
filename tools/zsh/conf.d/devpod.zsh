@@ -712,8 +712,8 @@ _dp_snapshot() {
       # DROPS empty fields and silently shifts every later column left — the
       # preview showed the profile under "repository" until this was a dash.
       # Column 11 is the secrets digits in DP_SECRETS order — claude, age, env,
-      # github: 1101 all but env; "--" nothing to ask because the container is
-      # not running.
+      # github, gitlab: 11011 all but env; "--" nothing to ask because the
+      # container is not running.
       # absent = the host said there is no such container; unknown = the host
       # said nothing at all. Only the first is a reason to recreate anything.
       local st_now=${state_of[$uid]}
@@ -1168,8 +1168,13 @@ _dp_put_claude() {
   return 0
 }
 
-# GitHub auth for the container: a PAT from Bitwarden, picked up by .zshrc as
-# GH_TOKEN — the same file route as the Claude token, for the same reason.
+# GitHub auth for the container: a PAT from Bitwarden, written by gh itself
+# into its own hosts.yml, so gh finds it without any env var — in VS Code tasks
+# and `devpod ssh --command` too, not only in an interactive zsh.
+# NOTE: hosts.yml and not GH_TOKEN — an exported GH_TOKEN overrides hosts.yml,
+# and `gh auth login` refuses to run at all while it is set. gh's help warns
+# about fine-grained tokens with --with-token; that is advisory: the scope check
+# is skipped when the token reports no OAuth scopes, and gh behaves the same.
 # NOTE: a token of its own, not `gh auth token` from the mac. The mac's OAuth
 # token carries admin:public_key, admin:ssh_signing_key and delete:packages,
 # which nothing inside a container needs and everything running there inherits.
@@ -1183,17 +1188,103 @@ _dp_put_github() {
     return 1
   }
   if [[ $token != (ghp_|github_pat_)* ]]; then
+    unset token
     print -u2 "github: «$DPGH_ITEM» is not a PAT (ghp_... or github_pat_... expected)"
     return 1
   fi
-  print -r -- "$token" | _dp_put_file "$id" '$HOME/.config/dp/github.token'
-  local rc=$?
+
+  # NOTE: the token travels on stdin only — on a command line it shows in `ps`.
+  # Explicit path and --insecure-storage for the same reasons as glab below.
+  # The old github.token file is removed here: the GH_TOKEN route left it
+  # behind, and a stray copy of a live token is worth nothing but a leak.
+  local errfile rc
+  errfile=$(mktemp) || { unset token; return 1 }
+  print -r -- "$token" | devpod ssh "$id" --command "
+unset GH_TOKEN GITHUB_TOKEN
+rm -f \"\$HOME/.config/dp/github.token\"
+g=\$HOME/.nix-profile/bin/gh
+[ -x \"\$g\" ] || g=\$(command -v gh) || { echo 'gh is not installed in the container' >&2; exit 3; }
+\"\$g\" auth login --hostname github.com --with-token --git-protocol ssh --insecure-storage &&
+chmod 600 \"\${GH_CONFIG_DIR:-\${XDG_CONFIG_HOME:-\$HOME/.config}/gh}/hosts.yml\"" \
+    2>"$errfile" >/dev/null
+  rc=$?
   unset token
   if (( rc != 0 )); then
-    print -u2 "github: token not delivered to $id"
+    grep -v 'Error tunneling to container' "$errfile" >&2
+    rm -f "$errfile"
+    print -u2 "github: gh not logged in to github.com in $id"
     return $rc
   fi
-  print "github: token delivered to $id"
+  rm -f "$errfile"
+  print "github: gh logged in to github.com in $id"
+}
+
+# GitLab auth for the container: a PAT and its host from Bitwarden, written by
+# glab itself into its own config, so glab finds both without any env var.
+# NOTE: glab's config and not GITLAB_TOKEN in work.env — an exported
+# GITLAB_TOKEN overrides the config token, and GITLAB_HOST had to travel with
+# it or glab asked gitlab.com outside a work repo. The config holds both.
+: ${DPGL_ITEM:=gitlab-token}
+
+_dp_put_gitlab() {
+  emulate -L zsh
+  local id=$1 token host
+  token=$(rbw get "$DPGL_ITEM" 2>/dev/null) || {
+    print -u2 "gitlab: entry «$DPGL_ITEM» cannot be read from Bitwarden"
+    return 1
+  }
+  if [[ $token != glpat-* ]]; then
+    unset token
+    print -u2 "gitlab: «$DPGL_ITEM» is not a PAT (glpat-... expected)"
+    return 1
+  fi
+  # The host comes from the entry's Website (URI) field, which every Login entry
+  # has: a token alone does not say which server it belongs to, and glab
+  # without one assumes gitlab.com.
+  # NOTE: an array, not ${${(f)…}[1]} — with a single line that subscripts the
+  # string and yields its first character.
+  local -a uris
+  uris=(${(f)"$(rbw get --field uris "$DPGL_ITEM" 2>/dev/null)"})
+  host=${${uris[1]#*://}%%[/:?#]*}
+  if [[ -z $host ]]; then
+    unset token
+    print -u2 "gitlab: «$DPGL_ITEM» has no Website (e.g. https://gitlab.example.com)"
+    return 1
+  fi
+  # NOTE: $host goes into the remote command line verbatim, so it must be a
+  # bare hostname — anything else would be shell text run inside the container.
+  if [[ ! $host =~ '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$' ]]; then
+    unset token
+    print -u2 "gitlab: Website of «$DPGL_ITEM» is not a hostname: $host"
+    return 1
+  fi
+
+  # NOTE: the token travels on stdin only — on a command line it shows in `ps`.
+  # `devpod ssh --command` runs a non-login sh without the nix profile on PATH,
+  # hence the explicit path. --insecure-storage because a container has no
+  # keyring, and should one appear, glab would put the token where neither the
+  # probe nor a recreate-and-restore can see it. git-protocol ssh: git goes over
+  # the forwarded agent, the token is for the API only.
+  local errfile rc
+  errfile=$(mktemp) || { unset token; return 1 }
+  print -r -- "$token" | devpod ssh "$id" --command "
+unset GITLAB_TOKEN GITLAB_HOST
+g=\$HOME/.nix-profile/bin/glab
+[ -x \"\$g\" ] || g=\$(command -v glab) || { echo 'glab is not installed in the container' >&2; exit 3; }
+\"\$g\" auth login --hostname $host --stdin --git-protocol ssh --insecure-storage &&
+\"\$g\" config set -g host $host &&
+chmod 600 \"\${GLAB_CONFIG_DIR:-\${XDG_CONFIG_HOME:-\$HOME/.config}/glab-cli}/config.yml\"" \
+    2>"$errfile" >/dev/null
+  rc=$?
+  unset token
+  if (( rc != 0 )); then
+    grep -v 'Error tunneling to container' "$errfile" >&2
+    rm -f "$errfile"
+    print -u2 "gitlab: glab not logged in to $host in $id"
+    return $rc
+  fi
+  rm -f "$errfile"
+  print "gitlab: glab logged in to $host in $id"
 }
 
 # The state the last collection saw for one workspace: running, exited, new,
@@ -1633,6 +1724,7 @@ typeset -ga DP_SECRETS=(
   "age|zone age key for sops|_dp_put_age|2"
   "env|work env file (jira, gitlab, nomad…)|_dp_put_workenv|3"
   "github|GitHub token for gh|_dp_put_github|4"
+  "gitlab|GitLab token and host for glab|_dp_put_gitlab|5"
 )
 
 # Where the work variables live inside a container.
@@ -1656,7 +1748,7 @@ _dp_secret_entry() {
 # four of the nine are real secrets. A 0600 file read by ~/.zshrc gives the same
 # variables to the same tools while keeping them out of everything else. It also
 # restores the whitelist: the env-file route exported all nine to every child
-# process, while .zshrc exports only the five that need it.
+# process, while .zshrc exports only the few that need it.
 _dp_put_workenv() {
   emulate -L zsh
   local id=$1

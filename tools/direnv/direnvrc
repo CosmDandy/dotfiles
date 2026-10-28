@@ -8,6 +8,25 @@ for _nd in /run/current-system/sw/share/nix-direnv/direnvrc \
 done
 unset _nd
 
+# GITLAB_TOKEN for a repo hosted on a GitLab that glab is logged in to, so the
+# repo's own .envrc finds it (kvt-platform builds TF_HTTP_* for the Terraform
+# state backend and the Ansible inventory from it). The token lives in glab's
+# config, not in the shell environment, and enters a process only here: inside
+# such a repo, and only when nothing has set GITLAB_TOKEN already.
+# NOTE: not the kind of function the note below forbids — no .envrc calls
+# anything from here; without this file it simply sees no GITLAB_TOKEN, which
+# is what any teammate gets who has not set one.
+if [[ -z ${GITLAB_TOKEN:-} ]] && command -v glab >/dev/null \
+   && _gl_host=$(git remote get-url origin 2>/dev/null); then
+  # ssh://git@host:port/…, git@host:path and https://host/… all reduce to host.
+  _gl_host=${_gl_host#*://}
+  _gl_host=${_gl_host#*@}
+  _gl_host=${_gl_host%%[:/]*}
+  _gl_token=$(glab config get token --host "$_gl_host" 2>/dev/null)
+  [[ -n $_gl_token ]] && export GITLAB_TOKEN=$_gl_token
+fi
+unset _gl_host _gl_token
+
 # Проектных функций (use_sops, use_cluster и подобных) здесь СОЗНАТЕЛЬНО нет.
 #
 # Этот файл есть только на моих машинах, а `.envrc` уезжают в git вместе с

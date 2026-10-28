@@ -2,9 +2,9 @@
 # What one docker host knows about its devpod containers, in one round trip:
 #   <workspace uid> <TAB> <state> <TAB> <image> <TAB> <secrets>
 #
-# `secrets` is four digits — claude, age, work env, github — or "----" when the
-# container is not running and cannot be asked. 1011 = everything but the age
-# key.
+# `secrets` is five digits — claude, age, work env, github, gitlab — or "-----"
+# when the container is not running and cannot be asked. 10111 = everything but
+# the age key.
 #
 # Runs on the provider host: locally as `sh probe-host.sh`, remotely as
 # `ssh host sh -s < probe-host.sh`. A FILE and not an inline command string
@@ -19,7 +19,7 @@ docker ps -a --filter label=dev.containers.id \
   --format "{{.ID}}${TAB}{{.Label \"dev.containers.id\"}}${TAB}{{.State}}${TAB}{{.Image}}" \
   2>/dev/null | while IFS="$TAB" read -r cid uid state image; do
     [ -n "$uid" ] || continue
-    sec='----'
+    sec='-----'
     if [ "$state" = running ]; then
       # One exec per container, not one per file: exec is the expensive part.
       # NOTE: every home, not just $HOME. `docker exec` runs as the image's
@@ -27,15 +27,20 @@ docker ps -a --filter label=dev.containers.id \
       # devcontainer.json — while the secrets went to the user you actually log
       # in as. Checking only $HOME reported everything missing on exactly those
       # workspaces, including immediately after a successful delivery.
-      sec=$(docker exec "$cid" sh -c 'c=0; a=0; e=0; g=0
+      # NOTE: glab's config exists from the first glab run with an empty
+      # `token:` placeholder, so the file alone means nothing — the line has to
+      # carry a value. Matched, never printed. gh's hosts.yml is held to the
+      # same test: the file can outlive a logout.
+      sec=$(docker exec "$cid" sh -c 'c=0; a=0; e=0; g=0; l=0
 for h in /root /home/*; do
   [ -f "$h/.config/claude/token" ] && c=1
   [ -f "$h/.config/dp/work.env" ] && e=1
   [ -f "$h/.config/sops/age/keys.txt" ] && a=1
-  [ -f "$h/.config/dp/github.token" ] && g=1
+  grep -qE "^[[:space:]]*oauth_token:[[:space:]]*[^[:space:]#]" "$h/.config/gh/hosts.yml" 2>/dev/null && g=1
+  grep -qE "^[[:space:]]*token:[[:space:]]*[^[:space:]#]" "$h/.config/glab-cli/config.yml" 2>/dev/null && l=1
 done
-printf "%s%s%s%s" "$c" "$a" "$e" "$g"' 2>/dev/null)
-      [ -n "$sec" ] || sec='????'
+printf "%s%s%s%s%s" "$c" "$a" "$e" "$g" "$l"' 2>/dev/null)
+      [ -n "$sec" ] || sec='?????'
     fi
     printf '%s%s%s%s%s%s%s\n' "$uid" "$TAB" "$state" "$TAB" "$image" "$TAB" "$sec"
   done
