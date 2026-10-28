@@ -224,6 +224,10 @@ else
   # into the else, where `nix run` is the only way. --inputs-from resolves
   # home-manager through the repo's flake.lock, not a fresh master; -b sends
   # files HM would refuse to overwrite to *.hm-backup.
+  # NOTE: the marker goes in before the switch, not only after it — the
+  # activation's mason step reads it through lsp.lua to pick the profile's tools.
+  # BAKED_PROFILE above has already been read, so the skip check is unaffected.
+  echo "$PROFILE" > "$HOME/.dotfiles-profile"
   if command -v home-manager &> /dev/null; then
     home-manager switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
   else
