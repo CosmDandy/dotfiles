@@ -5,24 +5,12 @@ palette = "solarized"
 # `node --version` on each prompt in any directory holding a .js file — 9 of
 # 14.6 ms in a devpod. Order follows starship's default; a new tool gets added
 # here on purpose, never by a starship upgrade.
-# ${env_var.STARSHIP_VM} opens the second line next to the container icon, and
-# $shlvl sits right before $character so nesting reads as extra arrows: ❯❯.
+# ${env_var.STARSHIP_VM} opens the second line next to the container icon.
 format = """\
 $username$hostname$kubernetes$directory$git_branch$git_commit$git_state\
 $docker_context$golang$helm$python$rust$terraform$nix_shell\
 $aws$gcloud$azure$direnv$cmd_duration$line_break\
-$jobs$battery$status$container${env_var.STARSHIP_VM}$shlvl$character"""
-
-# SHLVL counts from the tmux pane, not from the tmux server: .zshrc resets it to 1
-# in each pane's first shell, so threshold 2 means "a shell inside a shell".
-[shlvl]
-disabled = false
-threshold = 2
-repeat = true
-repeat_offset = 1
-symbol = '❯'
-style = 'bold yellow'
-format = '[$symbol]($style)'
+$jobs$battery$status$container${env_var.STARSHIP_VM}$character"""
 
 [git_branch]
 format = 'on [$branch(:$remote_branch)]($style) '

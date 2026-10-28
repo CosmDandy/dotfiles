@@ -479,13 +479,6 @@ _init_cached starship starship init zsh
 PROMPT=${PROMPT//'$('/'$(GIT_CONFIG_NOSYSTEM=1 '}
 RPROMPT=${RPROMPT//'$('/'$(GIT_CONFIG_NOSYSTEM=1 '}
 
-# tmux server env carries SHLVL=1, so every fresh pane starts at 2 and would
-# read as nested. Count from the pane's first shell instead; shells started
-# inside it inherit _SHLVL_PANE and increment as usual.
-if [[ -n $TMUX_PANE && $_SHLVL_PANE != $TMUX_PANE ]]; then
-    export _SHLVL_PANE=$TMUX_PANE SHLVL=1
-fi
-
 # Starship replaces the continuation prompt with a bare `∙`, which hides what
 # zsh is waiting for. %_ names it (dquote, for, cmdsubst); the right side says
 # how to get out.
