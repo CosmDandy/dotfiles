@@ -1238,17 +1238,24 @@ _dp_put_gitlab() {
     print -u2 "gitlab: «$DPGL_ITEM» is not a PAT (glpat-... expected)"
     return 1
   fi
-  host=$(rbw get --field host "$DPGL_ITEM" 2>/dev/null)
+  # The host comes from the entry's Website (URI) field, which every Login entry
+  # has: a token alone does not say which server it belongs to, and glab
+  # without one assumes gitlab.com.
+  # NOTE: an array, not ${${(f)…}[1]} — with a single line that subscripts the
+  # string and yields its first character.
+  local -a uris
+  uris=(${(f)"$(rbw get --field uris "$DPGL_ITEM" 2>/dev/null)"})
+  host=${${uris[1]#*://}%%[/:?#]*}
   if [[ -z $host ]]; then
     unset token
-    print -u2 "gitlab: «$DPGL_ITEM» has no custom field «host» (e.g. gitlab.example.com)"
+    print -u2 "gitlab: «$DPGL_ITEM» has no Website (e.g. https://gitlab.example.com)"
     return 1
   fi
   # NOTE: $host goes into the remote command line verbatim, so it must be a
   # bare hostname — anything else would be shell text run inside the container.
   if [[ ! $host =~ '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$' ]]; then
     unset token
-    print -u2 "gitlab: field «host» of «$DPGL_ITEM» is not a hostname: $host"
+    print -u2 "gitlab: Website of «$DPGL_ITEM» is not a hostname: $host"
     return 1
   fi
 
