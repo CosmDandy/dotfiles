@@ -169,7 +169,9 @@ return {
       },
     },
     indent = {
-      enabled = true,
+      -- NOTE: false only so snacks does not enable it itself; config below does,
+      -- one tick later.
+      enabled = false,
       indent = {
         char = '┊',
         hl = 'SnacksIndent',
@@ -202,4 +204,21 @@ return {
       end,
     },
   },
+  config = function(_, opts)
+    require('snacks').setup(opts)
+    -- snacks enables indent on the first BufReadPost, and enabling computes the
+    -- cursor scope at once: a treesitter parser plus the injections query compile,
+    -- ~25ms for bash (measured), synchronously before the file is first drawn.
+    -- Same trigger, one tick later: the buffer paints first, guides follow.
+    vim.api.nvim_create_autocmd('BufReadPost', {
+      group = vim.api.nvim_create_augroup('snacks-indent-deferred', { clear = true }),
+      once = true,
+      callback = function()
+        vim.schedule(function()
+          Snacks.config.indent.enabled = true
+          Snacks.indent.enable()
+        end)
+      end,
+    })
+  end,
 }
