@@ -64,11 +64,17 @@ _upd_gc_darwin() {
 # actually moving.
 # NOTE: one cask at a time, not in a batch — brew abandons the rest on the first
 # failure, so one broken recipe would eat the whole list. A failed cask does not
-# fail the run; zinit, GC and Command Line Tools come after it.
-# NOTE: `sudo -v` up front — pkg-based casks ask for a password from inside
-# brew, which mid-run is indistinguishable from a hung step. A running app is
-# updated on disk but keeps the old version in memory until restarted.
+# fail the step; it is listed and the run goes on.
+# NOTE: pkg-based casks run sudo from inside brew. This step runs as a background
+# lane, where a password prompt would land on the terminal in the middle of the
+# foreground step's output. updm keeps the sudo timestamp fresh for the whole
+# concurrent phase; if it lapses anyway, SUDO_ASKPASS makes brew call `sudo -A`
+# (system_command.rb adds -A whenever the variable is set), /usr/bin/false
+# supplies no password, and that cask fails into the list below instead of
+# prompting. A running app is updated on disk but keeps the old version in
+# memory until restarted.
 _upd_brew_casks() {
+  local -x SUDO_ASKPASS=/usr/bin/false
   local out cask
   local -a outdated failed
   # NOTE: NO_COLOR — the captured output becomes cask names, and ANSI inside a
@@ -80,7 +86,6 @@ _upd_brew_casks() {
     return 0
   fi
   echo "к обновлению (${#outdated}): ${outdated}"
-  sudo -v
   for cask in $outdated; do
     brew upgrade --cask --greedy "$cask" || failed+=("$cask")
   done
@@ -107,7 +112,15 @@ _upd_mas() {
 
 updm() {
   emulate -L zsh
+  # NOTE: no_monitor/no_notify — with job control on, every lane would print
+  # "[1] 12345" when started and "[1] + done …" when it ends, right into the
+  # output of the foreground step. Plain `&` (not `&!`) so `wait $pid` still
+  # returns each lane's exit code.
+  setopt no_monitor no_notify
   local -i _upd_i=0
+  local -F t_start=$EPOCHREALTIME
+  local -a _upd_report _upd_failed _upd_pids _upd_bg
+  local _upd_dir
 
   _upd_step "dotfiles: pull"        git -C ~/.dotfiles pull --ff-only --no-recurse-submodules || return
   _upd_step "сабмодули к пину"      upds || return
@@ -126,18 +139,54 @@ updm() {
   # NOTE: $HOME, not ~ — a tilde inside quotes is not expanded and would reach
   # nix literally.
   _upd_step "darwin-rebuild switch" sudo darwin-rebuild switch --option warn-dirty false --flake "$HOME/.dotfiles/platform/nix#macbook-cosmdandy" || return
-  _upd_step "каски (brew upgrade)"  _upd_brew_casks || return
-  _upd_step "App Store (mas)"       _upd_mas || return
-  # the custom installer places MCP tools once and never updates them
+
+  # Everything below is independent of everything else below, so it runs
+  # concurrently. A lane exists only to serialise what shares a resource:
+  #   background — каски: the only brew user (two brews fight over brew's lock);
+  #     Claude Code, MCP-инструменты (all of uv and npm: one uv cache), zinit —
+  #     network-bound, no terminal, no sudo of their own;
+  #   foreground — mas may ask for the Apple ID, GC and CLT call sudo: these keep
+  #     the terminal and run one after another while the lanes work.
+  # NOTE: one `sudo -v` here, in the foreground — darwin-rebuild has just used
+  # sudo, so it normally does not prompt. The keepalive then renews the timestamp
+  # every minute (the default lifetime is 5) for the pkg casks in the brew lane;
+  # `-n` makes it give up silently instead of prompting if the ticket is revoked.
+  # Should it lapse, the casks fail without a prompt (see _upd_brew_casks) and
+  # the foreground sudo steps prompt as they always did.
+  # NOTE: the keepalive's output goes to /dev/null — once it is killed, its
+  # orphaned `sleep` would otherwise hold the terminal (or a pipe) open for up
+  # to a minute. `&!`: nothing waits for it, and a job still in the table when
+  # it is killed is announced as "[2] + terminated" once updm returns.
+  sudo -v || return
+  { trap - INT QUIT; while sleep 60; do sudo -n -v || exit 0; done } &> /dev/null &!
+  local -i keepalive=$!
+  _upd_dir=$(mktemp -d -t updm) || { kill $keepalive; return 1 }
+
+  _upd_spawn "каски (brew upgrade)" _upd_brew_casks
   # NOTE: the only place claude updates on the mac — background updates are off in
   # managed settings (darwin-configuration.nix), so the new-version TCC dialogs
   # arrive here, when they are expected. DISABLE_AUTOUPDATER leaves `claude update`
   # working; DISABLE_UPDATES would not.
-  _upd_step "Claude Code"           claude update || return
-  _upd_step "MCP-инструменты"       _upd_mcp_tools || return
-  _upd_step "zinit"                 _upd_zinit || return
-  _upd_step "GC поколений"          _upd_gc_darwin || return
-  _upd_step "Command Line Tools"    clt-update || return
+  _upd_spawn "Claude Code"          claude update
+  # the custom installer places MCP tools once and never updates them
+  _upd_spawn "MCP-инструменты"      _upd_mcp_tools
+  # NOTE: in a subshell `zinit self-update` reloads zinit only there; this shell
+  # keeps the old copy in memory until the next one starts.
+  _upd_spawn "zinit"                _upd_zinit
 
+  _upd_fg "App Store (mas)"         _upd_mas
+  _upd_fg "GC поколений"            _upd_gc_darwin
+  _upd_fg "Command Line Tools"      clt-update
+
+  _upd_join
+  kill $keepalive 2> /dev/null
+  _upd_summary $(( EPOCHREALTIME - t_start ))
+
+  if (( ${#_upd_failed} )); then
+    print -P "%F{red}✗ упало шагов: ${#_upd_failed} из $_upd_i — ${(j:, :)_upd_failed}%f" >&2
+    print -P "%F{yellow}  остальные шаги применены; логи фоновых шагов: $_upd_dir%f" >&2
+    return 1
+  fi
+  rm -rf "$_upd_dir"
   print -P "%F{green}✓ обновление прошло целиком ($_upd_i шагов)%f"
 }
