@@ -15,13 +15,11 @@ let
     # Neovim deps
     python313
     nodejs_24
-    luarocks # for mason (luacheck); brings its own lua
     tree-sitter
     # NOTE: `cc` at runtime, not only during activation — nvim-treesitter
-    # compiles every parser and mason builds luacheck's luafilesystem. An
-    # ubuntu-minimal machine has no compiler in /usr/bin, and all ~40 parsers
-    # failed with "No such file or directory". (darwin has clang from the CLT
-    # and never imports this file.)
+    # compiles every parser. An ubuntu-minimal machine has no compiler in
+    # /usr/bin, and all ~40 parsers failed with "No such file or directory".
+    # (darwin has clang from the CLT and never imports this file.)
     gcc
     # CLI
     eza
@@ -46,12 +44,18 @@ let
     # and pre-push hooks run gitleaks and fail hard without the binary, by
     # design.
     gitleaks
-    # NOTE: not duplicates of mason. mason's copies live in a directory that is
-    # on PATH only inside Neovim, while posttooluse-lint.sh looks them up with a
-    # plain `command -v` — without these, linting .sh/.yaml silently stops in
-    # every project.
+    # NOTE: posttooluse-lint.sh looks these up with a plain `command -v`, so they
+    # must be on the shell PATH — without them, linting .sh/.yaml silently stops
+    # in every project. On Linux Neovim uses these same binaries: lsp.lua keeps
+    # mason from installing its own copies, which would shadow them (mason's bin
+    # comes first on Neovim's PATH).
     yamllint
     shellcheck
+    # NOTE: from nixpkgs, not mason. mason builds luacheck through luarocks,
+    # which bakes the store path of its own lua into the wrapper — the first
+    # nix-collect-garbage after a nixpkgs bump removed that lua and lua linting
+    # went silent, with the stale wrapper still shadowing anything on PATH.
+    luajitPackages.luacheck
     # NOTE: posttooluse-lint.sh falls back to `uvx ruff` when ruff is not on PATH, and
     # on the devpod that fallback costs 5.6 s of cold start per .py write — 711 writes
     # in one project's sessions, an hour of waiting. The binary starts in 50 ms.
