@@ -474,6 +474,36 @@ _init_cached() {
 
 _init_cached starship starship init zsh
 
+# Prompt behaviour on top of starship
+
+# tmux server env carries SHLVL=1, so every fresh pane starts at 2 and would
+# read as nested. Count from the pane's first shell instead; shells started
+# inside it inherit _SHLVL_PANE and increment as usual.
+if [[ -n $TMUX_PANE && $_SHLVL_PANE != $TMUX_PANE ]]; then
+    export _SHLVL_PANE=$TMUX_PANE SHLVL=1
+fi
+
+# Starship replaces the continuation prompt with a bare `∙`, which hides what
+# zsh is waiting for. %_ names it (dquote, for, cmdsubst); the right side says
+# how to get out.
+PROMPT2='%F{yellow}%_>%f '
+RPROMPT2='%F{8}^C cancel%f'
+
+# Transient prompt: once a line is accepted its prompt collapses to the bare
+# arrow, so the scrollback reads as a list of commands. precmd puts the full
+# prompt back before the next one is drawn.
+typeset -g _full_prompt=$PROMPT _full_rprompt=$RPROMPT
+_prompt_collapse() {
+    local c=green
+    (( ${STARSHIP_CMD_STATUS:-0} )) && c=red
+    PROMPT="%F{$c}❯%f " RPROMPT=
+    zle .reset-prompt
+}
+_prompt_restore() { PROMPT=$_full_prompt RPROMPT=$_full_rprompt }
+autoload -Uz add-zle-hook-widget add-zsh-hook
+add-zle-hook-widget line-finish _prompt_collapse
+add-zsh-hook precmd _prompt_restore
+
 # fzf is configured here but NOT wired into zle — see the note further down.
 # Its only callers are the pickers in conf.d, which pipe their own rows in.
 if (($+commands[fzf])); then
