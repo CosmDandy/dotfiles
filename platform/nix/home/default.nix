@@ -59,7 +59,6 @@ let
     claudeTools.guard
     claudeTools.cli
     gh
-    gh-dash
     glab
     # NOTE: the base image has neither dig nor host nor nslookup, while the
     # ops-net skill prescribes exactly those — 10 `command not found: dig` in 16

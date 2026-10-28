@@ -237,7 +237,6 @@ in
     btop
     git
     gh
-    gh-dash
     glab
     lazygit
     delta # diff renderer for lazygit
