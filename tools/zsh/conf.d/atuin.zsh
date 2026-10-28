@@ -80,6 +80,11 @@ _atuin_inline_height() {
             return $ret
         fi
         [[ -n $output ]] || return 0
+        # NOTE: the price of IGNORE_WIDGETS above. The plugin no longer touches
+        # this widget, so the suggestion shown for the old buffer stays on screen
+        # after the chosen command — `echo` + ` foo` becomes `echo foo foo` — and
+        # → or End appends it for real.
+        (( $+widgets[autosuggest-clear] )) && zle autosuggest-clear
         RBUFFER=""
         LBUFFER=${output#__atuin_accept__:}
         [[ $output == __atuin_accept__:* ]] && zle accept-line
