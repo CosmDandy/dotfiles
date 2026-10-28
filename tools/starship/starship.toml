@@ -1,9 +1,17 @@
 add_newline = false
 palette = "solarized"
-# $all is every module in default order; ${env_var.STARSHIP_VM} is pulled to the start of the second
-# line so the server icon sits like the container one instead of trailing on line one.
-# $shlvl sits right before $character so nesting reads as extra arrows: ❯❯ one shell deep.
-format = "$all${env_var.STARSHIP_VM}$shlvl$character"
+# An explicit list instead of $all: a module not named here is never even
+# probed. $all ran every language module, and nodejs alone spawned
+# `node --version` on each prompt in any directory holding a .js file — 9 of
+# 14.6 ms in a devpod. Order follows starship's default; a new tool gets added
+# here on purpose, never by a starship upgrade.
+# ${env_var.STARSHIP_VM} opens the second line next to the container icon, and
+# $shlvl sits right before $character so nesting reads as extra arrows: ❯❯.
+format = """\
+$username$hostname$kubernetes$directory$git_branch$git_commit$git_state\
+$docker_context$golang$helm$python$rust$terraform$nix_shell\
+$aws$gcloud$azure$direnv$cmd_duration$line_break\
+$jobs$battery$status$container${env_var.STARSHIP_VM}$shlvl$character"""
 
 # SHLVL counts from the tmux pane, not from the tmux server: .zshrc resets it to 1
 # in each pane's first shell, so threshold 2 means "a shell inside a shell".
