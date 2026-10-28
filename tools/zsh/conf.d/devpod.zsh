@@ -1151,6 +1151,29 @@ dpkey() {
   return $rc
 }
 
+# Brings a stopped workspace up before anything is run inside it, the way `ds`
+# does on entry.
+# NOTE: left to devpod, a stopped container is started by the ssh entry's
+# ProxyCommand, which first runs initializeCommand and pulls the image tag —
+# minutes, in silence. Through `devpod ssh --command` that looked like a hang
+# with no end (6.5 min observed on kvt-wallpaper-main); through _dp_exec it
+# dies on ConnectTimeout with "timed out during banner exchange", which says
+# nothing about the real cause either.
+_dp_ensure_running() {
+  emulate -L zsh
+  local id=$1
+  [[ $(_dp_snap_state "$id") == (exited|created) ]] || return 0
+  print -u2 -n "$id is stopped — starting it… "
+  if ! _dp_start_container "$id"; then
+    print -u2 "could not; \`ds $id\` lets devpod start it, which can take minutes."
+    return 1
+  fi
+  print -u2 "up."
+  _dp_refresh_async
+  # 30s for the first connection, as in `ds`: devpod injects its agent there.
+  _dp_warm "$id" 30 "$(_dp_master_state "$id")"
+}
+
 # One command inside a workspace, stdin passed through.
 # NOTE: through the <id>.devpod ssh entry and not `devpod ssh --command`: the
 # latter builds a tunnel from scratch every call — ~6s each, which is what made
@@ -1247,7 +1270,7 @@ _dp_put_github() {
   # behind, and a stray copy of a live token is worth nothing but a leak.
   local errfile rc
   errfile=$(mktemp) || { unset token; return 1 }
-  print -r -- "$token" | devpod ssh "$id" --command "
+  print -r -- "$token" | _dp_exec "$id" "
 unset GH_TOKEN GITHUB_TOKEN
 rm -f \"\$HOME/.config/dp/github.token\"
 g=\$HOME/.nix-profile/bin/gh
@@ -1308,14 +1331,14 @@ _dp_put_gitlab() {
   fi
 
   # NOTE: the token travels on stdin only — on a command line it shows in `ps`.
-  # `devpod ssh --command` runs a non-login sh without the nix profile on PATH,
+  # A remote command runs in a non-login sh without the nix profile on PATH,
   # hence the explicit path. --insecure-storage because a container has no
   # keyring, and should one appear, glab would put the token where neither the
   # probe nor a recreate-and-restore can see it. git-protocol ssh: git goes over
   # the forwarded agent, the token is for the API only.
   local errfile rc
   errfile=$(mktemp) || { unset token; return 1 }
-  print -r -- "$token" | devpod ssh "$id" --command "
+  print -r -- "$token" | _dp_exec "$id" "
 unset GITLAB_TOKEN GITLAB_HOST
 g=\$HOME/.nix-profile/bin/glab
 [ -x \"\$g\" ] || g=\$(command -v glab) || { echo 'glab is not installed in the container' >&2; exit 3; }
@@ -1897,6 +1920,7 @@ _dp_secrets() {
   local id=$1
   if [[ -n $id ]]; then shift; else id=$(_dp_pick) || return 1; fi
   [[ -z $id ]] && return 1
+  _dp_ensure_running "$id" || return 1
   # Which secrets, asked rather than assumed. Named on the command line they are
   # delivered as given; without names the picker opens and shows what is already
   # in place, so the usual answer — "the one that is missing" — is one Tab away.
