@@ -523,6 +523,15 @@ typeset -g _DP_RED=$'\e[38;2;220;50;47m'
 # for a column that should recede without disappearing.
 typeset -g _DP_FAINT=$'\e[2m'
 typeset -g _DP_OFF=$'\e[0m'
+# The workspace pickers' search line: no "workspace>" label, just an indent and
+# a hint that fades the moment something is typed, with the prompt in cyan. No
+# pointer either: the bg+ band already marks the current row. A row picked with
+# Tab gets a red dot. The two-column indent lines the hint and the names up with
+# the text typed after starship's prompt.
+# NOTE: the hint keeps fzf's own dimmed colour on purpose. Given an explicit
+# one, it read as plain white on the light background — indistinguishable from
+# text already typed.
+typeset -g _DP_FZF_SEARCH=(--prompt='  ' --ghost='filter workspaces' --pointer='' --marker='• ' --color='marker:#dc322f')
 
 # ── the prepared snapshot ─────────────────────────────────────────────────────
 #
@@ -766,6 +775,32 @@ _dp_snapshot_refresh() {
   (( ms = (EPOCHREALTIME - t0) * 1000 ))
   _dp_log snapshot $ms 0 "rows=$rows"
   mv -f -- $part $DP_SNAPSHOT
+  _dp_opens_refresh
+}
+
+# How often each workspace was entered over the last 30 days, so the pickers can
+# put the habitual ones first inside a state group. One `ds` is one visit: its
+# session row with try=0 — the retries after a drop are the same visit. A
+# rolling window, so last month's project sinks once it is no longer opened.
+# NOTE: computed here, behind the picker, and handed over as a small file: the
+# log runs to megabytes, and an awk over it on every opening would double what
+# drawing the picker costs.
+_dp_opens_refresh() {
+  emulate -L zsh
+  # NOTE: the temp name is fixed here, not written inline in the redirection: a
+  # redirection is expanded in the forked child, where sysparams[pid] is the
+  # child's pid, so awk wrote one file and mv looked for another.
+  local since out=$DP_CACHE_DIR/opens.tsv
+  local part=$out.${sysparams[pid]:-$$}
+  local -a logs=( $DP_LOG(N) $DP_LOG.1(N) )
+  (( $#logs )) || return 0
+  strftime -s since '%Y-%m-%d' $(( EPOCHSECONDS - 30 * 86400 ))
+  awk -F'\t' -v since=$since '
+    $2 == "session" && $1 >= since && $5 !~ /try=[1-9]|reason=no-ssh-entry/ {
+      n = split($5, a, " ")
+      for (i = 1; i <= n; i++) if (a[i] ~ /^id=/) c[substr(a[i], 4)]++
+    }
+    END { for (k in c) print k "\t" c[k] }' $logs > $part && mv -f -- $part $out
 }
 
 # Make sure $DP_SNAPSHOT is worth reading, rebuilding it only when it is missing
@@ -846,6 +881,8 @@ _dp_rows() {
   # Groups, top to bottom: running, stopped, everything that needs a look (a job,
   # a silent host, a missing container), and last the ones already open in a tab
   # here — a second copy of an open workspace is the rare case, not the usual.
+  # Inside a group the most often entered comes first (opens.tsv, 30 days), and
+  # the snapshot's last-used order breaks ties.
   # NOTE: the provider is set in faint (SGR 2) on top of the muted colour. It
   # matters only when workspaces live on different hosts, which is rare — this
   # keeps it readable when looked for and out of the way when not.
@@ -872,7 +909,14 @@ _dp_rows() {
     esac
   done
 
-  local -a out rank
+  local -A opens
+  local oid on
+  [[ -r $DP_CACHE_DIR/opens.tsv ]] && while IFS=$'\t' read -r oid on; do
+    opens[$oid]=$on
+  done < $DP_CACHE_DIR/opens.tsv
+
+  local -a out keys
+  local key
   local -i r
   for line in $lines; do
     c=(${(ps:\t:)line})
@@ -913,13 +957,14 @@ _dp_rows() {
     printf -v line "%-${w}s  %s%-18s%s  %s%s%s%s" \
       "$c[1]" "$colour" "$mark" "$_DP_OFF" \
       "$_DP_FAINT$_DP_MUTED" "${c[3]/#-/—}" "$_DP_OFF"
-    out+=("$line") rank+=($r)
+    out+=("$line")
+    # One sortable key per row: group, then opens descending, then the
+    # snapshot's position — fixed widths, so a plain lexical sort is the order.
+    printf -v key '%d%05d%04d' $r $(( 99999 - ${opens[$c[1]]:-0} )) $#out
+    keys+=("$key")
   done
-  local -i i
-  for r in 1 2 3 4; do
-    for (( i = 1; i <= $#out; i++ )); do
-      (( rank[i] == r )) && print -r -- "$out[i]"
-    done
+  for key in ${(o)keys}; do
+    print -r -- "$out[$(( 10#${key[-4,-1]} ))]"
   done
   return 0
 }
@@ -930,10 +975,12 @@ _dp_rows() {
 # exist in three copies.
 _dp_choose() {
   emulate -L zsh
-  local multi=0 tmux_footer=0
+  local multi=0 tmux_footer=0 search=0
   while [[ $1 == -* ]]; do
     case $1 in
       -m) multi=1 ;;
+      # A workspace list: the shared search line overrides the prompt label.
+      -s) search=1 ;;
       # The chooser `ds` opens: it gets the keys spelled out at the bottom and
       # the tmux flag, because where you land is decided here and nowhere else.
       -t) tmux_footer=1 ;;
@@ -961,6 +1008,7 @@ _dp_choose() {
     # NOTE: no --header at all when there is nothing to say. An empty one still
     # takes a line and a separator — a blank band over the list.
     args=(--ansi --nth=1 --accept-nth=1 --prompt="$prompt" ${header:+--header=$header})
+    (( search )) && args+=($_DP_FZF_SEARCH)
     (( multi )) && args+=(--multi --bind 'ctrl-a:select-all,ctrl-d:deselect-all')
     if (( tmux_footer )); then
       local fdot=${DOTFILES_DIR:-$HOME/.dotfiles}
@@ -1004,7 +1052,7 @@ _dp_pick() {
   (( ${#rows} )) || { print -u2 "no workspaces found"; return 1; }
   local hdr=$(${DOTFILES_DIR:-$HOME/.dotfiles}/tools/devpod/status.zsh $DP_SNAPSHOT)
   [[ $1 == -m ]] && hdr="Tab — mark, Ctrl-A — all${hdr:+  $hdr}"
-  print -rl -- $rows | _dp_choose ${1:+-m} -t 'workspace> ' "$hdr"
+  print -rl -- $rows | _dp_choose ${1:+-m} -s -t 'workspace> ' "$hdr"
 }
 
 # Which image a new workspace gets. Two profiles, and the choice is made once
@@ -1539,7 +1587,7 @@ _dp_pick_action() {
   local out
   out=$(fzf --ansi --nth=1 --accept-nth=1 --multi --id-nth=1 \
       --print-query --expect=ctrl-n,ctrl-s \
-      --prompt='workspace> ' \
+      $_DP_FZF_SEARCH \
       --info='inline-right: ' \
       ${_hdr:+--header=$_hdr} \
       --bind="load:transform-header($dot/tools/devpod/status.zsh $DP_SNAPSHOT)+reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \

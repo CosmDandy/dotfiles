@@ -470,6 +470,50 @@ _init_cached() {
 
 _init_cached starship starship init zsh
 
+# Prompt behaviour on top of starship
+
+# NOTE: starship's git engine (gitoxide) spawns `git config --show-origin …` on
+# every prompt only to locate the system gitconfig — 6 of 20 ms. The variable
+# skips that lookup and is set for starship's own process alone, so the git you
+# run still reads the system config (credential.helper lives there).
+PROMPT=${PROMPT//'$('/'$(GIT_CONFIG_NOSYSTEM=1 '}
+RPROMPT=${RPROMPT//'$('/'$(GIT_CONFIG_NOSYSTEM=1 '}
+
+# tmux server env carries SHLVL=1, so every fresh pane starts at 2 and would
+# read as nested. Count from the pane's first shell instead; shells started
+# inside it inherit _SHLVL_PANE and increment as usual.
+if [[ -n $TMUX_PANE && $_SHLVL_PANE != $TMUX_PANE ]]; then
+    export _SHLVL_PANE=$TMUX_PANE SHLVL=1
+fi
+
+# Starship replaces the continuation prompt with a bare `∙`, which hides what
+# zsh is waiting for. %_ names it (dquote, for, cmdsubst); the right side says
+# how to get out.
+PROMPT2='%F{yellow}%_>%f '
+RPROMPT2='%F{8}^C cancel%f'
+
+# Transient prompt: once a line is accepted its prompt collapses to the bare
+# arrow, so the scrollback reads as a list of commands. precmd puts the full
+# prompt back before the next one is drawn.
+#
+# Both prompts open with OSC 133;A, the mark tmux copy-mode jumps between with
+# [ and ]. Ghostty's own shell integration emits it only for shells it launched
+# itself, never inside a tmux pane or over devpod ssh.
+# NOTE: the mark must live inside PROMPT, not be printed from precmd: the
+# collapse redraws the line, and tmux drops the mark of a line that is erased.
+typeset -g _prompt_mark=$'%{\e]133;A\e\\%}'
+typeset -g _full_prompt=$_prompt_mark$PROMPT _full_rprompt=$RPROMPT
+_prompt_collapse() {
+    local c=green
+    (( ${STARSHIP_CMD_STATUS:-0} )) && c=red
+    PROMPT="$_prompt_mark%F{$c}❯%f " RPROMPT=
+    zle .reset-prompt
+}
+_prompt_restore() { PROMPT=$_full_prompt RPROMPT=$_full_rprompt }
+autoload -Uz add-zle-hook-widget add-zsh-hook
+add-zle-hook-widget line-finish _prompt_collapse
+add-zsh-hook precmd _prompt_restore
+
 # fzf is configured here but NOT wired into zle — see the note further down.
 # Its only callers are the pickers in conf.d, which pipe their own rows in.
 if (($+commands[fzf])); then
