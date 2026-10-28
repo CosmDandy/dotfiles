@@ -476,6 +476,13 @@ _init_cached starship starship init zsh
 
 # Prompt behaviour on top of starship
 
+# NOTE: starship's git engine (gitoxide) spawns `git config --show-origin …` on
+# every prompt only to locate the system gitconfig — 6 of 20 ms. The variable
+# skips that lookup and is set for starship's own process alone, so the git you
+# run still reads the system config (credential.helper lives there).
+PROMPT=${PROMPT//'$('/'$(GIT_CONFIG_NOSYSTEM=1 '}
+RPROMPT=${RPROMPT//'$('/'$(GIT_CONFIG_NOSYSTEM=1 '}
+
 # tmux server env carries SHLVL=1, so every fresh pane starts at 2 and would
 # read as nested. Count from the pane's first shell instead; shells started
 # inside it inherit _SHLVL_PANE and increment as usual.
