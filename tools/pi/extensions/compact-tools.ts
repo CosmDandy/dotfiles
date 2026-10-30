@@ -66,7 +66,7 @@ export default function compactTools(pi: ExtensionAPI) {
           ? running ? frames[Math.floor(Date.now() / 100) % frames.length] : "○"
           : context.isError ? "✕" : "✓";
         const color = context.isPartial ? running ? "warning" : "muted" : context.isError ? "error" : "success";
-        const prefix = theme.fg("dim", "├─ ") + theme.fg(color, mark) + " "
+        const prefix = theme.fg(color, mark) + " "
           + theme.fg("toolTitle", theme.bold(clean(toolName))) + " ";
         const expanded = toolName === "bash" ? !context.expanded : context.expanded;
         const suffix = " " + theme.fg("dim", expanded ? "▾" : "▸");
@@ -83,7 +83,7 @@ export default function compactTools(pi: ExtensionAPI) {
             if (!expanded || toolName === "bash") return [header];
             const body = new Text(theme.fg("muted", argumentsText), 0, 0)
               .render(Math.max(1, width - padding.length - 3));
-            return [header, ...body.map(row => truncateToWidth(padding + theme.fg("dim", "│  ") + row, width))];
+            return [header, ...body.map(row => truncateToWidth(padding + "   " + row, width))];
           },
           invalidate() {},
         };
@@ -114,7 +114,7 @@ export default function compactTools(pi: ExtensionAPI) {
         return {
           render(width) {
             return content.render(Math.max(1, width - padding.length - 3))
-              .map(row => truncateToWidth(padding + theme.fg("dim", "│  ") + row, width));
+              .map(row => truncateToWidth(padding + "   " + row, width));
           },
           invalidate() { content.invalidate(); },
         };

@@ -49,7 +49,8 @@ try {
   await emit("agent_start");
   const read = tool("read", { path: "src/app.ts", offset: 2, limit: 30 });
   assert.equal(rows(read).length, 1);
-  assert.match(body(read), /├─ ○ read src\/app.ts ▸/);
+  assert.match(body(read), /○ read src\/app.ts ▸/);
+  assert.doesNotMatch(body(read), /[├│]/);
   assert.equal(timers.size, 0, "argument streaming must not start a timer");
   read.markExecutionStarted();
   assert.match(body(read), /⠋ read/);
@@ -89,6 +90,7 @@ try {
   assert.equal(click?.handled, true);
   assert.match(body(read), /PRIVATE OUTPUT/);
   assert.match(body(read), /"offset": 2/);
+  assert.doesNotMatch(body(read), /[├│]/);
   read.setExpanded(false);
 
   const edit = tool("edit", { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] });
@@ -98,6 +100,7 @@ try {
   edit.setExpanded(true);
   assert.match(body(edit), /-1 old/);
   assert.match(body(edit), /\+1 new/);
+  assert.doesNotMatch(body(edit), /[├│]/);
   assert.ok(edit.render(100).join("").includes(themes.theme.fg("success", "+1 new")));
   const write = tool("write", { path: "new.ts", content: "line one\nline two" });
   finish(write, "Written");
