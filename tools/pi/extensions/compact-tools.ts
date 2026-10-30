@@ -68,16 +68,19 @@ export default function compactTools(pi: ExtensionAPI) {
         const color = context.isPartial ? running ? "warning" : "muted" : context.isError ? "error" : "success";
         const prefix = theme.fg("dim", "├─ ") + theme.fg(color, mark) + " "
           + theme.fg("toolTitle", theme.bold(clean(toolName))) + " ";
-        const suffix = " " + theme.fg("dim", context.expanded ? "▾" : "▸");
-        const summary = theme.fg("toolOutput", preview(args ?? {}));
+        const expanded = toolName === "bash" ? !context.expanded : context.expanded;
+        const suffix = " " + theme.fg("dim", expanded ? "▾" : "▸");
+        const stats = toolName === "edit" && !context.isPartial && !context.isError
+          ? context.state.diffStats as { added: number; removed: number } | undefined : undefined;
+        const summary = theme.fg("toolOutput", preview(args ?? {})) + (stats
+          ? ` ${theme.fg("success", `+${stats.added}`)} ${theme.fg("error", `−${stats.removed}`)}` : "");
         const padding = " ".repeat(context.outputPad);
-        const expanded = context.expanded;
         const argumentsText = expanded ? clean(JSON.stringify(args ?? {}, null, 2)) : "";
         return {
           render(width) {
             const line = truncateToWidth(padding + prefix + summary, Math.max(0, width - 2));
             const header = truncateToWidth(line + suffix, width);
-            if (!expanded) return [header];
+            if (!expanded || toolName === "bash") return [header];
             const body = new Text(theme.fg("muted", argumentsText), 0, 0)
               .render(Math.max(1, width - padding.length - 3));
             return [header, ...body.map(row => truncateToWidth(padding + theme.fg("dim", "│  ") + row, width))];
@@ -85,10 +88,19 @@ export default function compactTools(pi: ExtensionAPI) {
           invalidate() {},
         };
       },
-      renderResult(result, { expanded }, theme, context) {
-        if (!expanded) return new Text("", 0, 0);
+      renderResult(result, { expanded, isPartial }, theme, context) {
         const details = result.details as { diff?: unknown } | undefined;
         const diff = typeof details?.diff === "string" ? clean(details.diff) : undefined;
+        if (toolName === "edit" && !isPartial && !context.isError && diff && context.state.statsDiff !== diff) {
+          const lines = diff.split("\n");
+          context.state.diffStats = {
+            added: lines.filter(line => /^\+\s*\d+\s/.test(line)).length,
+            removed: lines.filter(line => /^-\s*\d+\s/.test(line)).length,
+          };
+          context.state.statsDiff = diff;
+          queueMicrotask(context.invalidate);
+        }
+        if (!(toolName === "bash" ? !expanded : expanded)) return new Text("", 0, 0);
         const output = result.content.map(block => {
           if (block.type === "text") return clean(block.text);
           if (block.type === "image") return `[image: ${clean(block.mimeType)}]`;

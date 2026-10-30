@@ -71,17 +71,18 @@ try {
   assert.equal(timers.size, 1, "the other tool is still running");
   bash.updateResult({ content: [{ type: "text", text: "still running" }], details: undefined }, true);
   assert.match(body(bash), /⠹ bash/);
-  assert.doesNotMatch(body(bash), /still running/);
+  assert.match(body(bash), /still running/);
   finish(bash, "FAIL: expected 200, received 500", true);
   assert.match(body(bash), /✕ bash/);
   assert.ok(bash.render(100).join("").includes(themes.theme.fg("error", "✕")));
   assert.equal(timers.size, 0);
-  bash.setExpanded(true);
   assert.match(body(bash), /▾/);
   assert.match(body(bash), /FAIL: expected 200/);
-  assert.match(body(bash), /"command":/);
-  bash.setExpanded(false);
+  bash.setExpanded(true);
   assert.equal(rows(bash).length, 1);
+  assert.match(body(bash), /▸/);
+  bash.setExpanded(false);
+  assert.match(body(bash), /FAIL: expected 200/);
 
   // Exercise Pi's own MouseRegion wrapper, not a simulated expansion callback.
   const click = read.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 100, height: 3 });
@@ -91,7 +92,9 @@ try {
   read.setExpanded(false);
 
   const edit = tool("edit", { path: "src/app.ts", edits: [{ oldText: "old", newText: "new" }] });
-  finish(edit, "Applied", false, { diff: "-1 old\n+1 new" });
+  finish(edit, "Applied", false, { diff: "-1 old\n+1 new\n+2 extra" });
+  await Promise.resolve();
+  assert.match(body(edit), /\+2 −1/);
   edit.setExpanded(true);
   assert.match(body(edit), /-1 old/);
   assert.match(body(edit), /\+1 new/);
