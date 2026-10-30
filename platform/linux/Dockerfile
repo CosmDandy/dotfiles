@@ -98,6 +98,8 @@ COPY --chown=cosmdandy:cosmdandy platform/nix /opt/dotfiles/platform/nix
 # plain path, not a git checkout, so nothing outside what is COPYed exists for it.
 COPY --chown=cosmdandy:cosmdandy tools/claude/guard /opt/dotfiles/tools/claude/guard
 COPY --chown=cosmdandy:cosmdandy tools/claude/cli /opt/dotfiles/tools/claude/cli
+# Pi's renderer is built by the flake; its public resources seed the live config.
+COPY --chown=cosmdandy:cosmdandy tools/pi /opt/dotfiles/tools/pi
 
 # NOTE: the nvim config has to exist for the activation hooks — home-manager
 # links ~/.config/nvim into ~/dotfiles, and with a dangling symlink the `-e
@@ -147,7 +149,7 @@ COPY --chown=root:root platform/linux/dotfiles-provision /usr/local/bin/dotfiles
 # writes lazy-lock.json into tools/nvim during the core stage, so a hash taken
 # afterwards described a tree no clone can reproduce and the skip silently never
 # fired.
-RUN (cd /opt/dotfiles && find platform/nix tools/nvim tools/claude/guard tools/claude/cli -type f \
+RUN (cd /opt/dotfiles && find platform/nix tools/nvim tools/claude/guard tools/claude/cli tools/pi -type f \
        ! -path platform/nix/darwin-configuration.nix \
        ! -path platform/nix/home/darwin.nix \
        ! -name lazy-lock.json -print0 \
