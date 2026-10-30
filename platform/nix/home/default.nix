@@ -147,6 +147,7 @@ in
   imports = [
     ./files.nix # dotfiles symlinks
     ./hooks.nix # imperative installers (claude, zinit, …)
+    ./pi.nix # Linux-only agent and resources; macOS imports darwin.nix instead
   ];
 
   home.packages = corePackages ++ lib.optionals (profile == "devops") devopsPackages;

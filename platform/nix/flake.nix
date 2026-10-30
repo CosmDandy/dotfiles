@@ -2,6 +2,10 @@
   description = "Cross-platform configuration with nix-darwin and NixOS";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    pi-source = {
+      url = "github:earendil-works/pi/v1.4.0";
+      flake = false;
+    };
     darwin = {
       url = "github:nix-darwin/nix-darwin";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,6 +26,7 @@
       darwin,
       home-manager,
       disko,
+      pi-source,
       ...
     }:
     let
@@ -51,6 +56,7 @@
           extraSpecialArgs = {
             inherit profile;
             claudeTools = mkClaudeTools system;
+            piTools = mkPiTools system;
           };
           modules = [
             ./home
@@ -118,6 +124,24 @@
         guard = mkGuard system;
         cli = mkCli system;
       };
+      mkPiTools =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+        in
+        {
+          agent = pkgs.callPackage "${pi-source}/nix/package.nix" { source = pi-source; };
+          statusline = pkgs.buildGoModule {
+            pname = "pi-statusline";
+            version = "0.1.0";
+            src = ../../tools/pi/statusline;
+            vendorHash = null;
+            postInstall = ''
+              mv $out/bin/statusline $out/bin/pi-statusline
+            '';
+            meta.mainProgram = "pi-statusline";
+          };
+        };
       # NOTE: cpuCores/memoryGiB are DECLARED, not detected — eval must be reproducible
       # and compute the same on any machine, so the current host's specs are invisible to
       # it (getEnv needs --impure). The daemon's max-jobs/cores are derived from them.
@@ -187,6 +211,7 @@
                 extraSpecialArgs = {
                   inherit profile;
                   claudeTools = mkClaudeTools system;
+                  piTools = mkPiTools system;
                 };
                 users.${user}.imports = [ ./home ];
               };
@@ -226,10 +251,17 @@
         ) linuxSystems
       );
 
-      packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (system: {
-        claude-guard = mkGuard system;
-        claude-cli = mkCli system;
-      });
+      packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (
+        system:
+        {
+          claude-guard = mkGuard system;
+          claude-cli = mkCli system;
+        }
+        // lib.optionalAttrs (lib.elem system linuxSystems) {
+          pi = (mkPiTools system).agent;
+          pi-statusline = (mkPiTools system).statusline;
+        }
+      );
 
       # NOTE: without formatter.<system> the `nix fmt` command does not work at all.
       # nixfmt (RFC 166), not nixfmt-classic — the same one the rules and CI call.

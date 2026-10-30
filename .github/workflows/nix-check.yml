@@ -12,6 +12,7 @@ on:
       # the Go hooks are built by the flake into every home profile
       - 'tools/claude/guard/**'
       - 'tools/claude/cli/**'
+      - 'tools/pi/**'
       - '.github/workflows/nix-check.yml'
   workflow_dispatch:
 
@@ -93,3 +94,19 @@ jobs:
         run: |
           nix build --no-link --print-out-paths \
             ".#homeConfigurations.\"${{ matrix.config }}-x86_64-linux\".activationPackage"
+      - name: Check Pi UI integration
+        if: matrix.config == 'vscode-core'
+        working-directory: platform/nix
+        run: |
+          pi_store=$(nix build .#pi --no-link --print-out-paths)
+          statusline_store=$(nix build .#pi-statusline \
+            --no-link --print-out-paths)
+          mkdir -p "$HOME/.pi/agent/bin"
+          ln -s "$statusline_store/bin/pi-statusline" \
+            "$HOME/.pi/agent/bin/solarized-statusline"
+          PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_24 --command \
+            node ../../tools/pi/tests/frame.test.mjs
+          PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_24 --command \
+            node ../../tools/pi/tests/compact-tools.test.mjs
