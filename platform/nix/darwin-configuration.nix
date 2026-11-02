@@ -7,6 +7,8 @@
   cpuCores,
   memoryGiB,
   claudeTools,
+  piTools,
+  opencodePackage,
   ...
 }:
 
@@ -209,6 +211,9 @@ in
     # PATH through this (see home/default.nix for the Linux side).
     claudeTools.guard
     claudeTools.cli
+    piTools.agent
+    piTools.statusline
+    opencodePackage
     uv
     luarocks # for mason (luacheck); brings its own lua
     eza

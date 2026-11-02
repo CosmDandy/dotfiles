@@ -6,7 +6,9 @@
   ...
 }:
 let
-  dotfiles = "${config.home.homeDirectory}/dotfiles";
+  dotfiles = "${config.home.homeDirectory}/${
+    if pkgs.stdenv.hostPlatform.isDarwin then ".dotfiles" else "dotfiles"
+  }";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dotfiles}/${path}";
   # Keep private skill bodies private. This allowlist deliberately excludes personal
   # journals, time tracking, Claude history, and project knowledge bases.
@@ -27,7 +29,7 @@ let
   });
 in
 {
-  home.packages = [
+  home.packages = lib.optionals (!pkgs.stdenv.hostPlatform.isDarwin) [
     piTools.agent
     piTools.statusline
   ];

@@ -30,6 +30,7 @@ in
   imports = [
     ./files.nix
     ./hooks.nix
+    ./pi.nix
   ];
 
   # NOTE: duplicated from default.nix, which the mac does not import — without

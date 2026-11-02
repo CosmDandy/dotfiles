@@ -7,6 +7,7 @@
   # claude-cli on PATH through this; the mac gets the same pair via
   # systemPackages in darwin-configuration.nix.
   claudeTools,
+  opencodePackage,
   ...
 }:
 let
@@ -62,6 +63,7 @@ let
     ruff
     claudeTools.guard
     claudeTools.cli
+    opencodePackage
     gh
     glab
     # NOTE: the base image has neither dig nor host nor nslookup, while the
