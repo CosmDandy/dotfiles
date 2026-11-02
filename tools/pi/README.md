@@ -1,4 +1,4 @@
-# Pi в Linux-конфигурации
+# Pi в Linux- и macOS-конфигурации
 
 Pi закреплён на `v1.4.0` отдельным source-input в `platform/nix/flake.nix` и точной
 ревизией в `flake.lock`. Используется официальный `nix/package.nix` этого релиза,
@@ -8,13 +8,17 @@ Pi закреплён на `v1.4.0` отдельным source-input в `platform
 
 - `home/default.nix` импортирует `home/pi.nix`: оба Linux-профиля, `core` и `devops`.
 - Этот же Home Manager-модуль используется в NixOS-конфигурации.
-- macOS импортирует `home/darwin.nix`, поэтому Pi там не устанавливается.
+- macOS импортирует тот же `home/pi.nix` через `home/darwin.nix`; `pi` и
+  `pi-statusline` устанавливаются через `environment.systemPackages`.
+- Ссылки используют `~/dotfiles` на Linux и `~/.dotfiles` на macOS.
 - Установка, настройки и приватный сабмодуль Claude Code не изменяются.
-- `pi` и `pi-statusline` входят в Linux-профиль; `.local/bin/pi` указывает на Nix,
+- `pi` и `pi-statusline` входят в Linux-профиль; на обеих платформах `.local/bin/pi` указывает на Nix,
   чтобы старый shim установщика не перекрывал закреплённый пакет.
 
 `updl` остаётся штатной точкой обновления Linux. На NixOS применяется системная
 конфигурация через её штатный rebuild, не отдельный home-manager switch.
+На macOS штатная точка обновления — `updm`; перед активацией проверить сборку
+`darwin-rebuild build`. Сборка macOS требует Mac или соответствующего Nix builder.
 `pi update` не обновляет Nix-пакет: версия меняется через flake и lock.
 
 ## Файлы и состояние

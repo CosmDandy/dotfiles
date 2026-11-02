@@ -50,6 +50,13 @@ in
     # Shared by both platforms: it wires up nix-direnv, which is needed in the container
     # too. Project-specific functions deliberately live in the repository's own .envrc.
     "direnv/direnvrc".source = link "tools/direnv/direnvrc";
+    "opencode/opencode.jsonc".source = link "tools/opencode/opencode.jsonc";
+    "opencode/agents/code-reviewer.md".source = link "tools/opencode/agents/code-reviewer.md";
+    "opencode/agents/compliance-audit.md".source = link "tools/opencode/agents/compliance-audit.md";
+    "opencode/agents/devils-advocate.md".source = link "tools/opencode/agents/devils-advocate.md";
+    "opencode/agents/performance-audit.md".source = link "tools/opencode/agents/performance-audit.md";
+    "opencode/agents/skeptic.md".source = link "tools/opencode/agents/skeptic.md";
+    "opencode/agents/ux-audit.md".source = link "tools/opencode/agents/ux-audit.md";
     "lazygit/config.yml".source = link "tools/lazygit/config.yml";
     "lazygit/theme-light.yml".source = link "tools/lazygit/theme-light.yml";
     "lazygit/theme-dark.yml".source = link "tools/lazygit/theme-dark.yml";

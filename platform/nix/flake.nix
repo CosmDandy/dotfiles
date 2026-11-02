@@ -2,6 +2,8 @@
   description = "Cross-platform configuration with nix-darwin and NixOS";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # The main pin still contains OpenCode V1. Keep V2 independent of system updates.
+    nixpkgs-opencode.url = "github:NixOS/nixpkgs/e62746b0b472753ef019baceab6f1e2e52014980";
     pi-source = {
       url = "github:earendil-works/pi/v1.4.0";
       flake = false;
@@ -23,6 +25,7 @@
   outputs =
     {
       nixpkgs,
+      nixpkgs-opencode,
       darwin,
       home-manager,
       disko,
@@ -57,6 +60,7 @@
             inherit profile;
             claudeTools = mkClaudeTools system;
             piTools = mkPiTools system;
+            opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
           };
           modules = [
             ./home
@@ -163,6 +167,8 @@
               memoryGiB
               ;
             claudeTools = mkClaudeTools system;
+            piTools = mkPiTools system;
+            opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
           };
           modules = [
             ./darwin-configuration.nix
@@ -173,6 +179,7 @@
               home-manager = {
                 useGlobalPkgs = true;
                 useUserPackages = true;
+                extraSpecialArgs.piTools = mkPiTools system;
                 # NOTE: existing files and foreign symlinks are moved to *.hm-backup
                 # instead of failing the activation, and overwriteBackup covers a file
                 # reappearing (ssh recreating one) onto an occupied *.hm-backup.
@@ -212,6 +219,7 @@
                   inherit profile;
                   claudeTools = mkClaudeTools system;
                   piTools = mkPiTools system;
+                  opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
                 };
                 users.${user}.imports = [ ./home ];
               };
@@ -251,17 +259,12 @@
         ) linuxSystems
       );
 
-      packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (
-        system:
-        {
-          claude-guard = mkGuard system;
-          claude-cli = mkCli system;
-        }
-        // lib.optionalAttrs (lib.elem system linuxSystems) {
-          pi = (mkPiTools system).agent;
-          pi-statusline = (mkPiTools system).statusline;
-        }
-      );
+      packages = lib.genAttrs ([ "aarch64-darwin" ] ++ linuxSystems) (system: {
+        claude-guard = mkGuard system;
+        claude-cli = mkCli system;
+        pi = (mkPiTools system).agent;
+        pi-statusline = (mkPiTools system).statusline;
+      });
 
       # NOTE: without formatter.<system> the `nix fmt` command does not work at all.
       # nixfmt (RFC 166), not nixfmt-classic — the same one the rules and CI call.
