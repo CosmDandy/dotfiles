@@ -2,6 +2,8 @@
   description = "Cross-platform configuration with nix-darwin and NixOS";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # TODO: Remove this pin when Atuin's Darwin tests pass on unstable.
+    nixpkgs-atuin.url = "github:NixOS/nixpkgs/682ba80136e2c8dacd6b8900f578a72329458901";
     # The main pin still contains OpenCode V1. Keep V2 independent of system updates.
     nixpkgs-opencode.url = "github:NixOS/nixpkgs/e62746b0b472753ef019baceab6f1e2e52014980";
     pi-source = {
@@ -25,6 +27,7 @@
   outputs =
     {
       nixpkgs,
+      nixpkgs-atuin,
       nixpkgs-opencode,
       darwin,
       home-manager,
@@ -169,6 +172,7 @@
             claudeTools = mkClaudeTools system;
             piTools = mkPiTools system;
             opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
+            atuinPackage = nixpkgs-atuin.legacyPackages.${system}.atuin;
           };
           modules = [
             ./darwin-configuration.nix

@@ -9,6 +9,7 @@
   claudeTools,
   piTools,
   opencodePackage,
+  atuinPackage,
   ...
 }:
 
@@ -238,7 +239,7 @@ in
     # NOTE: declared for macOS too — .tmux.conf is shared and loads the plugin
     # by file existence, so without it prefix+f silently did nothing here.
     tmuxPlugins.tmux-thumbs
-    atuin
+    atuinPackage
     btop
     git
     gh
