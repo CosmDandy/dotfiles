@@ -358,10 +358,8 @@ tn() {
     tmux new-session -d -s "$name" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
     tmux new-window -t "${name}:" -c "$PWD"
-    local lock_count
-    lock_count=$(find ~/.claude/ide -maxdepth 1 -name '*.lock' 2> /dev/null | wc -l)
     tmux send-keys -t "${name}:1" 'nvim' C-m
-    tmux send-keys -t "${name}:2" "while [ \$(find ~/.claude/ide -maxdepth 1 -name '*.lock' 2>/dev/null | wc -l) -le $lock_count ]; do sleep 0.3; done && cl" C-m
+    tmux send-keys -t "${name}:2" 'opencode' C-m
     tmux select-window -t "${name}:1"
     if [[ -n "$TMUX" ]]; then
         tmux switch-client -t "$name"
