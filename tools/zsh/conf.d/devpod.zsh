@@ -385,7 +385,7 @@ ds() {
     # the correction sat in the fallback branch that an existing script skips.
     _enter+='infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color; '
     local _script='$HOME/dotfiles/tools/devpod/tmux-enter.sh'
-    _enter+="if [ -x $_script ]; then exec $_script $id; fi; "
+    _enter+="if [ -x $_script ]; then exec $_script $id '' ${WORKSPACE_AGENT:-claude}; fi; "
     # NOTE: a container without tmux is not an error — the flag means "tmux
     # when there is tmux". Without this the entry died with "command not found:
     # tmux" and dropped the user back on the mac, which is a worse outcome than

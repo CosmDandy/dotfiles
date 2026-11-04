@@ -354,22 +354,15 @@ tw() {
 t3() { tw 3 "$1"; }
 t6() { tw 6 "$1"; }
 
+# The agent in window 2 of `tn` and `ds` sessions: claude | opencode | pi.
+# One-off: `WORKSPACE_AGENT=pi tn`.
+export WORKSPACE_AGENT=${WORKSPACE_AGENT:-claude}
+
 tn() {
     local name="${1:-$(basename "$PWD")}"
     name="${name#.}"
     name="${name//./-}"
-    tmux new-session -d -s "$name" -c "$PWD"
-    tmux new-window -t "${name}:" -c "$PWD"
-    tmux new-window -t "${name}:" -c "$PWD"
-    tmux send-keys -t "${name}:1" 'nvim' C-m
-    tmux send-keys -t "${name}:2" 'opencode' C-m
-    tmux select-window -t "${name}:1"
-    if [[ -n "$TMUX" ]]; then
-        tmux switch-client -t "$name"
-        tmux refresh-client -S
-    else
-        tmux attach -t "$name"
-    fi
+    "$DOTFILES_DIR/tools/devpod/tmux-enter.sh" "$name" "$PWD"
 }
 
 # Plugin manager
