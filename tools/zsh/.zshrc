@@ -137,6 +137,9 @@ fi
 # zsh options
 
 set -o vi
+# Backspace may cross the point where insert mode was entered.
+bindkey -M viins '^?' backward-delete-char
+bindkey -M viins '^H' backward-delete-char
 KEYTIMEOUT=1 # default 40 = 0.4s of lag on every Esc
 
 # Cursor shape as the mode indicator: block for normal, bar for insert.
