@@ -42,10 +42,9 @@ both are on cold, rare paths (no bridge, most panes aren't running `node`).
 
 - `main.go` — subcommand dispatch.
 - `statusline.go` — the statusline: JSON payload parsing (replacing the
-  script's single jq call and IFS=0x1F/`read` decoding), the context bar,
-  the five-hour/weekly rate-limit deviation math (replacing the script's
-  awk block), money/session aggregation, and the four column-width render
-  branches.
+  script's single jq call and IFS=0x1F/`read` decoding), the five-hour/
+  weekly rate-limit deviation math (replacing the script's awk block), and
+  the four column-width render branches.
 - `sessions.go` — the session counter shared by `sessions` and by
   statusline's own badge segment (called in-process, not forked).
 - `panetitle.go` — the tmux window title.
@@ -80,6 +79,11 @@ clean environment with `TZ=UTC` and a pinned clock. On a mismatch the
 failure prints the new output as a Go literal; paste it into the table when
 the change is intended. The bashhint hook has its own suite,
 `tools/claude/hooks/posttooluse-bashhint.test.sh` (`BASHHINT_HOOK="claude-cli bashhint"`).
+
+Statusline setting: `CLAUDE_STATUSLINE_CTX=bar` brings back the 10-cell
+context bar; unset, context is the percentage alone.
+Export it in the environment `claude` starts from, or put it in
+`settings.json` `env`.
 
 Test seams (env vars that exist ONLY for testing — unset, behaviour is
 identical to the scripts):

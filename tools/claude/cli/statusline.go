@@ -1,15 +1,15 @@
 package main
 
 // Port of tools/claude/statusline.sh: session JSON on stdin, one line on
-// stdout. Identity and context on the left, spend and subscription limits
-// on the right.
+// stdout. Identity and context on the left, sessions and subscription
+// limits on the right.
 //
 // The original forked jq once (still ~130ms saved over per-field forks) plus
 // python for the session badge, awk for the rate-limit history and a
 // handful of date/stat/readlink calls — around 30 subshells per render, on
 // every statusline update and every refreshInterval tick in every live
 // session. This binary decodes the same stdin JSON directly and keeps the
-// rate-limit and session-cost state in memory-backed file reads, at the
+// rate-limit state in memory-backed file reads, at the
 // cost of re-implementing jq's default-and-floor semantics by hand — see
 // the comments below wherever a Go type does not obviously match a jq
 // expression.
@@ -68,7 +68,7 @@ var (
 )
 
 // NOTE: the red threshold must equal CLAUDE_AUTOCOMPACT_PCT_OVERRIDE —
-// change them as a pair, or the bar turns red only after the compact and
+// change them as a pair, or the percentage turns red only after the compact and
 // warns about nothing. Yellow sits 15pp below to leave room to wrap up.
 const (
 	ctxYellow = 30
@@ -111,8 +111,6 @@ const (
 	sampleEvery = 60
 	// Nothing older is ever read (the trend's baseline is the oldest sample).
 	historyKeep = trendLag + 2*limitWindow
-
-	sessionTTL = 90
 )
 
 // --- glyphs --------------------------------------------------------------
@@ -163,24 +161,21 @@ func asciiTerm(term string) bool {
 	return asciiTermRe.MatchString(term)
 }
 
-// Effort marks exactly as Claude Code's own /effort menu shows them. Plain
-// Unicode, one column, so they are outside the width correction above.
-// NOTE: ultracode (✦) does not arrive as its own level — it reports as
-// xhigh.
-func effortParts(level string) (glyph, label, color string) {
+// NOTE: ultracode does not arrive as its own level — it reports as xhigh.
+func effortParts(level string) (label, color string) {
 	switch level {
 	case "low":
-		return "○", "Low", gray
+		return "Low", gray
 	case "medium":
-		return "◐", "Medium", gray
+		return "Medium", gray
 	case "high":
-		return "●", "High", gray
+		return "High", gray
 	case "xhigh":
-		return "◉", "xHigh", yellow
+		return "xHigh", yellow
 	case "max":
-		return "◈", "Max", red
+		return "Max", red
 	default:
-		return "", level, gray
+		return level, ""
 	}
 }
 
@@ -212,9 +207,6 @@ type statuslinePayload struct {
 	Agent struct {
 		Name *string `json:"name"`
 	} `json:"agent"`
-	Cost struct {
-		TotalCostUSD *float64 `json:"total_cost_usd"`
-	} `json:"cost"`
 	RateLimits struct {
 		FiveHour struct {
 			UsedPercentage *float64 `json:"used_percentage"`
@@ -239,7 +231,6 @@ type statuslineFields struct {
 	effort        string
 	thinking      string
 	agent         string
-	costCents     int64
 	fivePct100    *int64
 	fiveReset     *int64
 	weekPct       *int64
@@ -286,9 +277,6 @@ func parseFields(p *statuslinePayload) statuslineFields {
 	if p.Agent.Name != nil {
 		f.agent = *p.Agent.Name
 	}
-	if p.Cost.TotalCostUSD != nil {
-		f.costCents = int64(math.Floor(*p.Cost.TotalCostUSD * 100))
-	}
 	if v := p.RateLimits.FiveHour.UsedPercentage; v != nil {
 		n := int64(math.Floor(*v * 100))
 		f.fivePct100 = &n
@@ -318,10 +306,9 @@ func parseFields(p *statuslinePayload) statuslineFields {
 
 var eighths = [8]string{" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉"}
 
-// renderBar draws the block bar in theme colours; the last occupied cell is
-// filled with an eighth block, giving 1/8-cell precision at the same width.
-// NOTE: the CAP_L/CAP_R wrapping branch of the shell version is dead code —
-// both glyph modes set them empty — and is not ported.
+// renderBar is opt-in via CLAUDE_STATUSLINE_CTX=bar — by default the
+// percentage alone, whose colour already carries the thresholds. Theme
+// colours per zone, the last occupied cell filled with an eighth block.
 func renderBar(pct, length int64) string {
 	e := pct * length * 8 / 100
 	full := e / 8
@@ -849,15 +836,6 @@ func parentPID(pid int) int {
 	return n
 }
 
-// --- money ---------------------------------------------------------------
-
-// fmtMoney renders whole dollars: cents cost four columns and decide
-// nothing. Rounded, not truncated, so a session at 90 cents reads $1
-// rather than $0.
-func fmtMoney(cents int64) string {
-	return fmt.Sprintf("$%d", (cents+50)/100)
-}
-
 // --- entry point -----------------------------------------------------------
 
 func runStatusline(_ []string) {
@@ -904,15 +882,12 @@ func runStatusline(_ []string) {
 		modelStr = modelStr[:i]
 	}
 	// Fable costs several times what the others do, and the name alone
-	// does not say so after a week of reading it. Orange on the name and
-	// on the spend below — the two places that say this session is the
-	// expensive kind. Matched on the id and on the display name both:
-	// Anthropic renames one or the other, not both at once.
+	// does not say so after a week of reading it. Matched on the id and on
+	// the display name both: Anthropic renames one or the other, not both
+	// at once.
 	modelColour := blue
-	fable := false
 	if fableRe.MatchString(fields.modelID + " " + fields.model) {
 		modelColour = orange
-		fable = true
 	}
 	ctxMark := ""
 	if fields.ctxSize >= 1000000 {
@@ -924,12 +899,8 @@ func runStatusline(_ []string) {
 	}
 	modelSegSlim := modelSeg
 	if fields.effort != "" {
-		glyph, label, color := effortParts(fields.effort)
-		if glyph != "" {
-			modelSeg += sep + " · " + reset + color + glyph + " " + label + reset
-		} else {
-			modelSeg += sep + " · " + reset + label + reset
-		}
+		label, color := effortParts(fields.effort)
+		modelSeg += sep + " · " + reset + color + label + reset
 	}
 	// the base agent is called "claude" — not information, so only custom
 	// ones are shown
@@ -948,8 +919,11 @@ func runStatusline(_ []string) {
 	if fields.usedPct >= ctxRed {
 		ctxColor = red
 	}
-	bar := renderBar(fields.usedPct, barLen)
-	ctxSeg := bar + " " + ctxColor + strconv.FormatInt(fields.usedPct, 10) + "%" + reset
+	ctxSeg := ""
+	if os.Getenv("CLAUDE_STATUSLINE_CTX") == "bar" {
+		ctxSeg = renderBar(fields.usedPct, barLen) + " "
+	}
+	ctxSeg += ctxColor + strconv.FormatInt(fields.usedPct, 10) + "%" + reset
 
 	// --- cache ----------------------------------------------------------
 	// only when it dipped, and only when there is something to divide
@@ -970,64 +944,13 @@ func runStatusline(_ []string) {
 		}
 	}
 
-	// --- money and sessions -------------------------------------------
-	// how many of us, my share, everyone's total. NOTE: the 5h/7d limits
-	// are per-account but the cost in the payload is per-session, so with
-	// several windows open only one share is visible. Each session writes
-	// its own file; alive means touched within sessionTTL.
-	total := int64(0)
-	if fields.sid != "" {
-		tmpdir := os.Getenv("TMPDIR")
-		if tmpdir == "" {
-			tmpdir = "/tmp"
-		}
-		sdir := filepath.Join(tmpdir, "claude-sessions")
-		if err := os.MkdirAll(sdir, 0o755); err == nil {
-			_ = os.WriteFile(filepath.Join(sdir, fields.sid), []byte(fmt.Sprintf("%d\n", fields.costCents)), 0o644)
-			entries, _ := os.ReadDir(sdir)
-			for _, e := range entries {
-				if e.IsDir() {
-					continue
-				}
-				path := filepath.Join(sdir, e.Name())
-				info, err := os.Stat(path)
-				if err != nil {
-					continue
-				}
-				if now-info.ModTime().Unix() > sessionTTL {
-					_ = os.Remove(path) // session closed or long silent
-					continue
-				}
-				data, err := os.ReadFile(path)
-				c := int64(0)
-				if err == nil {
-					fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &c)
-				}
-				total += c
-			}
-		}
-	}
-
 	// What the other sessions are doing, not how many exist: running,
 	// waiting for an answer, waiting for permission. Read from
 	// ~/.claude/sessions/*.json.
 	sidPtr := &fields.sid
 	claudeBadge := sessionBadge(true, sidPtr)
 
-	money := sep
-	if fable {
-		// same orange as the name, full weight, not faint — one colour
-		// says "Fable" twice
-		money = orange
-	}
-
 	badgeSeg := claudeBadge
-	moneySeg := ""
-	if claudeBadge != "" {
-		moneySeg = money + fmtMoney(fields.costCents) + "/" + fmtMoney(total) + reset
-	} else if fields.costCents > 0 {
-		moneySeg = money + fmtMoney(fields.costCents) + reset
-	}
 
 	styleSeg := ""
 	if fields.styleName != "default" {
@@ -1048,8 +971,7 @@ func runStatusline(_ []string) {
 	case cols < 100:
 		limits := computeLimits(g, now, false, true, fields, debugAll)
 		left := add(modelSegSlim, ctxSeg)
-		right := add(badgeSeg, moneySeg)
-		right = add(right, limits)
+		right := add(badgeSeg, limits)
 		out = joinEdges(left, right, cols, margin, g)
 	default:
 		limits := computeLimits(g, now, true, true, fields, debugAll)
@@ -1058,7 +980,6 @@ func runStatusline(_ []string) {
 			left = add(left, styleSeg)
 		}
 		right := add(cacheSeg, badgeSeg)
-		right = add(right, moneySeg)
 		right = add(right, limits)
 		out = joinEdges(left, right, cols, margin, g)
 	}
