@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # Reusable, non-sudo macOS cache cleanup. Safe to run by hand (alias: clean) or from
-# launchd. System nix generations are pruned by `updm` instead — they need sudo.
+# launchd. System nix generations are retained — pruning them requires explicit sudo.
 #
 # Usage: ./cleanup-mac.sh [--dry-run] [--deep]
 #   --dry-run  show what would be removed, touch nothing
@@ -94,7 +94,7 @@ command -v bun >/dev/null && run_tool "bun" bun pm cache rm
 # NOTE: --force gets past the lock held by the always-running timing-mcp. prune only
 # removes unused archives, which is safe for a running server.
 UV_LOCK_TIMEOUT=10 run_tool "uv" uv cache prune --force
-# NOTE: the GC policy is defined once, in updm, and repeated here rather than overridden.
+# NOTE: upd keeps generations; this separate cleanup expires only user profiles.
 # This used to be `-d`, which removes every old generation of every profile ("makes
 # rollbacks impossible"). Harmless today — without root the system profile is out of reach
 # — but the moment this script moves into a launchd daemon that `-d` would silently

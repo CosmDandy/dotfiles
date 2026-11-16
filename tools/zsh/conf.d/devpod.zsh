@@ -2060,7 +2060,7 @@ _dp_doctor() {
     else
       behind=$(git -C "$DOTFILES_DIR" rev-list --count "${dhead}..HEAD" 2>/dev/null)
       (( behind )) && {
-        print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: dotfiles clone $behind commits behind — updl in the container"
+        print -r -- "${_DP_YELLOW}⚠${_DP_OFF} $id: dotfiles clone $behind commits behind — pull the repo, then run upd in the container"
         (( findings++ ))
       }
     fi
