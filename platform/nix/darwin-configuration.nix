@@ -127,7 +127,7 @@ in
       "postico"
       "utm"
       # AI
-      # "chatgpt"
+      "chatgpt"
       "claude"
       # "lm-studio"
       # Productivity
@@ -221,9 +221,9 @@ in
     luarocks # for mason (luacheck); brings its own lua
     eza
     fd
-    claudeIsolationScript # `claude-isolation off|on|status` from the shell
     ripgrep
     fzf # interactive pickers: dpkey, kubectx/kubens
+    claudeIsolationScript # `claude-isolation off|on|status` from the shell
     ipmitool # BMC access: power, SOL console, sensors
     arp-scan # answers even from hosts with every port closed; needs root and own L2 segment
     unzip
@@ -271,6 +271,8 @@ in
     nixfmt # official formatter (RFC 166), called by rules and CI
     statix # anti-patterns
     deadnix # unused args and let-bindings
+    yt-dlp
+    ffmpeg
   ];
 
   system = {
