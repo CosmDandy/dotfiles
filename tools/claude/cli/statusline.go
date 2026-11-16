@@ -116,9 +116,9 @@ const (
 // --- glyphs --------------------------------------------------------------
 
 type glyphSet struct {
-	think, fiveHour, week, approve, dead, arrow string
-	capL, capR                                  string
-	cols                                        int
+	think, fiveHour, week, approve, refresh, arrow string
+	capL, capR                                     string
+	cols                                           int
 }
 
 func pickGlyphs() glyphSet {
@@ -137,7 +137,7 @@ func pickGlyphs() glyphSet {
 	}
 	if mode == "ascii" {
 		return glyphSet{
-			think: "*", fiveHour: "5h", week: "7d", approve: "", dead: "!!", arrow: "->",
+			think: "*", fiveHour: "5h", week: "7d", approve: "", refresh: "reset", arrow: "->",
 			cols: 1,
 		}
 	}
@@ -149,7 +149,7 @@ func pickGlyphs() glyphSet {
 		fiveHour: "\U000F0996", // md-progress_clock
 		week:     "\U000F0A33", // md-calendar_week
 		approve:  "\U000F033E", // md-lock — waiting for permission
-		dead:     "\U0001F480", // window fully spent
+		refresh:  "\U000F0450", // md-refresh
 		arrow:    "⟶",
 		cols:     2,
 	}
@@ -643,9 +643,9 @@ func computeLimits(g glyphSet, now int64, wantETA, wantWeek bool, fields statusl
 			}
 			if fivePct >= 100 {
 				// Window fully spent: only the release time still matters.
-				fiveSeg = red + g.dead + " you lose"
+				fiveSeg = red + g.refresh
 				if res.reset != nil {
-					fiveSeg += " (" + fmtClock(*res.reset) + ")"
+					fiveSeg += " " + fmtClock(*res.reset)
 				}
 				fiveSeg += reset
 			} else {
@@ -726,7 +726,7 @@ func visWidth(s string, g glyphSet) int {
 	stripped := ansiRe.ReplaceAllString(s, "")
 	n := len([]rune(stripped))
 	if g.cols > 1 {
-		for _, gl := range []string{g.think, g.fiveHour, g.week, g.approve, g.dead} {
+		for _, gl := range []string{g.think, g.fiveHour, g.week, g.approve, g.refresh} {
 			if gl == "" {
 				continue
 			}
