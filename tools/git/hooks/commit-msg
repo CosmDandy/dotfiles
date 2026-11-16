@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# commit-msg: the message is read by machines and strangers, so it is English and
+# conventional. A hook rather than a line of prose: 41 of 101 commits in the custom
+# submodule were Russian before the rule existed, and a hook does not forget.
+#
+# Subject: <type>(<scope>)?!?: <summary>, type from TYPES. Subjects git writes itself
+# (Merge, Revert, fixup!/squash!/amend!) pass. Body: no Cyrillic outside comments.
+# Skip once, visibly: COMMIT_MSG_SKIP=1 git commit ...
+# NOTE: no `set -e` — a grep with no match is the normal path here.
+set -uo pipefail
+
+[[ "${COMMIT_MSG_SKIP:-}" == 1 ]] && exit 0
+msg_file=$1
+
+# NOTE: hooksPath is global, so this runs in every repository on the machine — including
+# the throwaway repos that six test suites create with mktemp and commit "init" into.
+# A temp repo is never a product: skip them, or `go test ./...` in guard/ turns red.
+case "$(git rev-parse --show-toplevel 2>/dev/null)" in
+  /tmp/*|/private/tmp/*|/private/var/folders/*|/var/folders/*|"${TMPDIR:-/nonexistent}"*) exit 0 ;;
+esac
+
+TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|wip'
+
+# Drop comment lines and everything after the scissors line (`commit --verbose`).
+body="$(sed -e '/^# ------------------------ >8 ------------------------$/,$d' -e '/^#/d' "$msg_file")"
+subject="$(printf '%s\n' "$body" | sed -n '/[^[:space:]]/{p;q;}')"
+[[ -n "$subject" ]] || exit 0  # git rejects an empty message on its own
+
+conventional="^(($TYPES)(\([^)]+\))?!?: .+|Merge .+|Revert \".+|(fixup|squash|amend)! .+)\$"
+if ! [[ "$subject" =~ $conventional ]]; then
+  {
+    echo "commit-msg: subject is not a conventional commit: '$subject'"
+    echo "  <type>(<scope>): <summary>   type: ${TYPES//|/, }"
+    echo "  skip once: COMMIT_MSG_SKIP=1 git commit ..."
+  } >&2
+  exit 1
+fi
+
+# NOTE: Cyrillic is matched by UTF-8 byte ranges under LC_ALL=C, not by [А-я]: a hook
+# runs with whatever locale git inherited, and a multibyte bracket range under the C
+# locale is undefined on BSD grep and silently wrong on GNU.
+cyrillic="$(printf '\xd0[\x80-\xbf]|\xd1[\x80-\xbf]')"
+if LC_ALL=C grep -q -E "$cyrillic" <<<"$body"; then
+  {
+    echo "commit-msg: Cyrillic in the commit message — commits are English (CLAUDE.md: Language)."
+    LC_ALL=C grep -n -E "$cyrillic" <<<"$body" | head -3 | sed 's/^/  /'
+    echo "  skip once: COMMIT_MSG_SKIP=1 git commit ..."
+  } >&2
+  exit 1
+fi
+exit 0
