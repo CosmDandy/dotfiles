@@ -52,6 +52,9 @@ in
     # too. Project-specific functions deliberately live in the repository's own .envrc.
     "direnv/direnvrc".source = link "tools/direnv/direnvrc";
     "opencode/opencode.jsonc".source = link "tools/opencode/opencode.jsonc";
+    "opencode/cli.json".source = link "tools/opencode/cli.json";
+    "opencode/themes/solarized-transparent.json".source =
+      link "tools/opencode/themes/solarized-transparent.json";
     "opencode/agents/code-reviewer.md".source = link "tools/opencode/agents/code-reviewer.md";
     "opencode/agents/compliance-audit.md".source = link "tools/opencode/agents/compliance-audit.md";
     "opencode/agents/devils-advocate.md".source = link "tools/opencode/agents/devils-advocate.md";
