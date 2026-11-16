@@ -68,11 +68,15 @@ tmux new-window -t "$name:"
 if [ "$agent" = claude ]; then
   # NOTE: nvim registers itself as an IDE by dropping a lock into ~/.claude/ide,
   # and a claude started before that file exists comes up with no editor
-  # attached. The count is taken BEFORE nvim is sent, so the loop waits for a
-  # NEW lock and not for one an earlier session left behind.
-  locks=$(find "$HOME/.claude/ide" -maxdepth 1 -name '*.lock' 2>/dev/null | wc -l)
+  # attached. The marker is touched BEFORE nvim is sent, so the loop waits for a
+  # lock NEWER than it — not for one an earlier session left behind, and not for
+  # a count another nvim can lower by exiting meanwhile.
+  # NOTE: capped at 3s (10 × 0.3), then claude starts regardless: the lock
+  # normally lands within a second, and a nvim that never writes one (plugin
+  # not installed yet in a fresh container) must not leave window 2 empty.
+  marker=$(mktemp)
   tmux send-keys -t "$name:1" 'nvim' C-m
-  tmux send-keys -t "$name:2" "while [ \$(find \"\$HOME/.claude/ide\" -maxdepth 1 -name '*.lock' 2>/dev/null | wc -l) -le $locks ]; do sleep 0.3; done && cl" C-m
+  tmux send-keys -t "$name:2" "i=0; while [ \$i -lt 10 ] && [ -z \"\$(find \"\$HOME/.claude/ide\" -maxdepth 1 -name '*.lock' -newer '$marker' 2>/dev/null)\" ]; do sleep 0.3; i=\$((i+1)); done; rm -f '$marker'; cl" C-m
 else
   tmux send-keys -t "$name:1" 'nvim' C-m
   tmux send-keys -t "$name:2" "$agent" C-m

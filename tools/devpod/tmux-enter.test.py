@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -30,6 +31,7 @@ class TmuxEnterTest(unittest.TestCase):
                 TMUX=tmux_env,
                 TMUX_TEST_EXISTS="0" if exists else "1",
                 HOME=directory,
+                TMPDIR=directory,
             )
             env.pop("WORKSPACE_AGENT", None)
             if agent_env is not None:
@@ -58,11 +60,25 @@ class TmuxEnterTest(unittest.TestCase):
         self.assertIn("select-window -t test:1", commands)
         self.assertEqual(commands[-1], "attach -t test")
 
-    def test_default_agent_is_claude_after_ide_lock(self):
+    def test_default_agent_is_claude_after_ide_lock_or_timeout(self):
         _, commands = self.run_script("test")
         agent = [c for c in commands if c.startswith("send-keys -t test:2 ")][0]
-        self.assertIn(".claude/ide", agent)
-        self.assertTrue(agent.endswith("&& cl C-m"), agent)
+        line = agent.removeprefix("send-keys -t test:2 ").removesuffix(" C-m")
+        with tempfile.TemporaryDirectory() as home:
+            (Path(home) / ".claude/ide").mkdir(parents=True)
+            (Path(home) / "cl").write_text("#!/bin/sh\necho started\n")
+            (Path(home) / "cl").chmod(0o700)
+            env = dict(
+                os.environ, HOME=home, PATH=home + os.pathsep + os.environ["PATH"]
+            )
+            # No nvim writes a lock here, so this is the timeout path.
+            start = time.monotonic()
+            result = subprocess.run(
+                ["sh", "-c", line], env=env, capture_output=True, text=True
+            )
+            elapsed = time.monotonic() - start
+        self.assertEqual(result.stdout, "started\n", result.stderr)
+        self.assertTrue(2.5 < elapsed < 5, elapsed)
 
     def test_agent_from_env_and_argument(self):
         for args, env, expected in (
