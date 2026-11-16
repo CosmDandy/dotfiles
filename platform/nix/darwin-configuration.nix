@@ -102,11 +102,9 @@ in
     onActivation = {
       # autoUpdate/upgrade off: otherwise one commit gives different results on
       # different days and `--rollback` cannot roll casks back. Updates go
-      # through updm.
-      # NOTE: cleanup = "zap" means dropping a cask from this list — even
-      # commenting it out — uninstalls the app WITH ITS DATA on the next switch.
+      # through upd. Removing a declaration must not uninstall apps or their data.
       autoUpdate = false;
-      cleanup = "zap";
+      cleanup = "none";
       upgrade = false;
     };
     casks = [
