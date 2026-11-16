@@ -56,7 +56,7 @@ let
   );
   claudeIsolationDns = ../../automation/launchd/scripts/claude-isolation-dns.py;
 
-  # Claude Code updates only from updm, never in the background. TCC records the
+  # Claude Code updates only from upd, never in the background. TCC records the
   # binary by its absolute path under ~/.local/share/claude/versions/<N>, so every
   # new version re-asks for Desktop, Documents and the rest — with the latest
   # channel that was a dialog almost daily.
