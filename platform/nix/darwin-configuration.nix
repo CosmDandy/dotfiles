@@ -51,6 +51,10 @@ let
   sshSignKeyScript = pkgs.writeShellScriptBin "ssh-sign-key" (
     builtins.readFile ../../automation/launchd/scripts/ssh-sign-key.sh
   );
+  claudeIsolationScript = pkgs.writeShellScriptBin "claude-isolation" (
+    builtins.readFile ../../automation/launchd/scripts/claude-isolation.sh
+  );
+  claudeIsolationDns = ../../automation/launchd/scripts/claude-isolation-dns.py;
 
   # Claude Code updates only from updm, never in the background. TCC records the
   # binary by its absolute path under ~/.local/share/claude/versions/<N>, so every
@@ -219,6 +223,7 @@ in
     luarocks # for mason (luacheck); brings its own lua
     eza
     fd
+    claudeIsolationScript # `claude-isolation off|on|status` from the shell
     ripgrep
     fzf # interactive pickers: dpkey, kubectx/kubens
     ipmitool # BMC access: power, SOL console, sensors
@@ -437,6 +442,32 @@ in
       RunAtLoad = false;
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/meeting-summary.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/meeting-summary.log";
+    };
+  };
+
+  # Root daemons: pf and /etc/resolver need root. Claude is reachable only through
+  # the Happ tunnel; details in the script header. `claude-isolation off` is the
+  # emergency valve.
+  # NOTE: both go through awaitNix — /nix mounts late, so until then there is no
+  # isolation; the daemons start the moment the volume appears.
+  launchd.daemons = {
+    claude-isolation.serviceConfig = {
+      ProgramArguments = awaitNix "${claudeIsolationScript}/bin/claude-isolation";
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/usr/sbin:/usr/bin:/bin:/sbin";
+      };
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/var/log/claude-isolation.log";
+      StandardErrorPath = "/var/log/claude-isolation.log";
+    };
+
+    claude-isolation-dns.serviceConfig = {
+      ProgramArguments = awaitNix "${pkgs.python3}/bin/python3 ${claudeIsolationDns}";
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/var/log/claude-isolation.log";
+      StandardErrorPath = "/var/log/claude-isolation.log";
     };
   };
 
