@@ -77,7 +77,7 @@
       # primaryUser used to be a hardcoded string that install-nix.sh rewrote in place with
       # sed, leaving the working tree permanently dirty. hostname is its own parameter
       # rather than derived from user, because the attribute name (macbook-cosmdandy, used
-      # by install-nix.sh and updm) and networking.hostName were linked only through
+      # by install-nix.sh and upd) and networking.hostName were linked only through
       # primaryUser and would drift on another user.
       # The PreToolUse guard hook (tools/claude/guard), a Go port of the bash version,
       # exposed as a package so `nix build .#claude-guard` builds it without anyone
@@ -232,7 +232,7 @@
         };
     in
     {
-      # macOS (M1). The attribute name is referenced by updm, install-nix.sh and the docs.
+      # macOS (M1). The attribute name is referenced by upd, install-nix.sh and the docs.
       darwinConfigurations.macbook-cosmdandy = mkDarwin {
         hostname = "macbook-cosmdandy";
         user = "cosmdandy";

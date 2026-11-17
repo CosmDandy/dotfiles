@@ -93,6 +93,32 @@ type statuslineCase struct {
 	wantState map[string]string // files under TMPDIR after the run
 }
 
+func TestStatuslineExhaustedReset(t *testing.T) {
+	for _, c := range []struct {
+		name, mode, resetJSON, want string
+		width                       int
+	}{
+		{"nerd", "nerd", `,"resets_at":1790556600`, "\U000F0450 0:50", 7},
+		{"ascii", "ascii", `,"resets_at":1790556600`, "reset 0:50", 10},
+		{"unknown reset", "nerd", "", "\U000F0450", 7},
+		{"invalid reset", "nerd", `,"resets_at":1893456000`, "\U000F0450", 7},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("CLAUDE_STATUSLINE_GLYPHS", c.mode)
+			g := pickGlyphs()
+			got := run(t, runOpts{
+				home: t.TempDir(), tmp: t.TempDir(),
+				stdin: `{"rate_limits":{"five_hour":{"used_percentage":100` + c.resetJSON + `}}}`,
+				env:   []string{"COLUMNS=80", "CLAUDE_STATUSLINE_GLYPHS=" + c.mode},
+			}, "statusline")
+			if !strings.HasSuffix(got, red+c.want+reset) {
+				t.Errorf("got %q, want reset segment %q", got, c.want)
+			}
+			check(t, "reset segment width", fmt.Sprint(visWidth(g.refresh+" 0:50", g)), fmt.Sprint(c.width))
+		})
+	}
+}
+
 func TestStatusline(t *testing.T) {
 	home := t.TempDir()
 	writeFiles(t, filepath.Join(home, ".claude", "sessions"), sessionFixture)

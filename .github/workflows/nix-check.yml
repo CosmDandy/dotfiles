@@ -1,5 +1,5 @@
 # Checks the nix configurations before they reach a live machine. A broken commit used to
-# surface at updm/updl — mid-work, on the device you needed at that moment.
+# surface at upd — mid-work, on the device you needed at that moment.
 #
 # No private cache (cachix/attic): there are no local derivations, everything comes ready
 # from cache.nixos.org, so "building" here is downloading.

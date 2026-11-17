@@ -51,8 +51,12 @@ let
   sshSignKeyScript = pkgs.writeShellScriptBin "ssh-sign-key" (
     builtins.readFile ../../automation/launchd/scripts/ssh-sign-key.sh
   );
+  claudeIsolationScript = pkgs.writeShellScriptBin "claude-isolation" (
+    builtins.readFile ../../automation/launchd/scripts/claude-isolation.sh
+  );
+  claudeIsolationDns = ../../automation/launchd/scripts/claude-isolation-dns.py;
 
-  # Claude Code updates only from updm, never in the background. TCC records the
+  # Claude Code updates only from upd, never in the background. TCC records the
   # binary by its absolute path under ~/.local/share/claude/versions/<N>, so every
   # new version re-asks for Desktop, Documents and the rest — with the latest
   # channel that was a dialog almost daily.
@@ -98,11 +102,9 @@ in
     onActivation = {
       # autoUpdate/upgrade off: otherwise one commit gives different results on
       # different days and `--rollback` cannot roll casks back. Updates go
-      # through updm.
-      # NOTE: cleanup = "zap" means dropping a cask from this list — even
-      # commenting it out — uninstalls the app WITH ITS DATA on the next switch.
+      # through upd. Removing a declaration must not uninstall apps or their data.
       autoUpdate = false;
-      cleanup = "zap";
+      cleanup = "none";
       upgrade = false;
     };
     casks = [
@@ -125,7 +127,7 @@ in
       "postico"
       "utm"
       # AI
-      # "chatgpt"
+      "chatgpt"
       "claude"
       # "lm-studio"
       # Productivity
@@ -221,6 +223,7 @@ in
     fd
     ripgrep
     fzf # interactive pickers: dpkey, kubectx/kubens
+    claudeIsolationScript # `claude-isolation off|on|status` from the shell
     ipmitool # BMC access: power, SOL console, sensors
     arp-scan # answers even from hosts with every port closed; needs root and own L2 segment
     unzip
@@ -268,6 +271,8 @@ in
     nixfmt # official formatter (RFC 166), called by rules and CI
     statix # anti-patterns
     deadnix # unused args and let-bindings
+    yt-dlp
+    ffmpeg
   ];
 
   system = {
@@ -437,6 +442,32 @@ in
       RunAtLoad = false;
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/meeting-summary.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/meeting-summary.log";
+    };
+  };
+
+  # Root daemons: pf and /etc/resolver need root. Claude is reachable only through
+  # the Happ tunnel; details in the script header. `claude-isolation off` is the
+  # emergency valve.
+  # NOTE: both go through awaitNix — /nix mounts late, so until then there is no
+  # isolation; the daemons start the moment the volume appears.
+  launchd.daemons = {
+    claude-isolation.serviceConfig = {
+      ProgramArguments = awaitNix "${claudeIsolationScript}/bin/claude-isolation";
+      EnvironmentVariables = {
+        PATH = "/run/current-system/sw/bin:/usr/sbin:/usr/bin:/bin:/sbin";
+      };
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/var/log/claude-isolation.log";
+      StandardErrorPath = "/var/log/claude-isolation.log";
+    };
+
+    claude-isolation-dns.serviceConfig = {
+      ProgramArguments = awaitNix "${pkgs.python3}/bin/python3 ${claudeIsolationDns}";
+      RunAtLoad = true;
+      KeepAlive = true;
+      StandardOutPath = "/var/log/claude-isolation.log";
+      StandardErrorPath = "/var/log/claude-isolation.log";
     };
   };
 

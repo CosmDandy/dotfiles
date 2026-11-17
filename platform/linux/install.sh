@@ -149,7 +149,7 @@ HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 # to the same value the baked generation is already what a switch would produce
 # — out-of-store symlinks resolve through ~/dotfiles and start pointing into the
 # fresh clone by themselves — so the switch and every activation hook are
-# skipped. Freshness is not this script's job: updl and the nightly
+# skipped. Freshness is not this script's job: upd and the nightly
 # devpod-update.sh still switch unconditionally.
 #
 # NOTE: the hash must be computed identically here and in

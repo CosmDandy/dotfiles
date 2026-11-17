@@ -1,0 +1,12 @@
+{
+  "name": "dotfiles-chatgpt-limits",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./tui": "./tui.tsx"
+  },
+  "scripts": {
+    "test": "node --test *.test.mjs"
+  }
+}

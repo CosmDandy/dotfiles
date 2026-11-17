@@ -136,12 +136,7 @@ in
 
     # NOTE: the init.lua guard is what skips this during an image build before
     # COPY tools/nvim — without the config the ~/.config/nvim symlink dangles.
-    # NOTE: no guard on the lazy directory. `Lazy! sync` is install + clean +
-    # update, it is idempotent and must run on every activation, or a newly
-    # added plugin would never arrive through updl/updm because the directory
-    # already exists. Plugins are deliberately unpinned: lazy-lock.json is
-    # gitignored, so versions are always fresh — the same contract as zinit
-    # update in updl.
+    # Install missing plugins on activation; updates belong to upd.
     # NOTE: nvim from pkgs — on darwin it lives in the system profile, not
     # ~/.nix-profile.
     syncNvimPlugins = after ''
@@ -162,18 +157,8 @@ in
         }:$PATH:/usr/bin:/bin"
         export PATH
 
-        run nvim --headless "+Lazy! sync" +qa \
-          || ${warn "nvim Lazy sync failed (offline?)"}
-
-        # NOTE: parsers need their own step. ts.install() installs only MISSING
-        # parsers and silently skips one already present, even when the plugin
-        # has moved on and its queries no longer match the grammar — that is how
-        # jinja, diff and nix drifted and .j2 highlighting disappeared with no
-        # error. `build = ':TSUpdate'` does not help: it fires only when the
-        # plugin itself updates. update() compares revisions and takes ~6s with
-        # fresh parsers, hence no guard.
-        run nvim --headless -c 'lua local h = require("nvim-treesitter").update(); if h then h:wait(600000) end' +qa \
-          || ${warn "treesitter update failed (offline?)"}
+        run nvim --headless "+Lazy! install" +qa \
+          || ${warn "nvim Lazy install failed (offline?)"}
       ); fi
     '';
 
@@ -239,7 +224,7 @@ in
         #      the old lib/pythonX.Y and the import fails — mypy, yamllint and
         #      ansible-lint went that way silently;
         #   2. the venv was built against a store-path python that nix-collect-garbage
-        #      (the tail of updm) then removed — there the interpreter itself is gone.
+        #      then removed — there the interpreter itself is gone.
         # The first is invisible by running it, the second invisible by version, so both
         # are checked.
         MASON_BIN="$HOME/.local/share/nvim/mason/bin"
@@ -308,23 +293,12 @@ in
       ); fi
     '';
 
-    # Private submodule (over ssh) plus the MCP servers; a soft skip without
-    # keys.
+    # Apply only the checked-out custom configuration; bootstrap owns submodule init.
     # NOTE: PATH must carry claude (~/.local/bin), uv and npm explicitly — the
     # activation PATH has none of them, and context7 was silently skipped
     # without this.
     installClaudeCustom = after ''
       if [ -d "${dotfiles}/.git" ]; then
-        if [ ! -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
-          # NOTE: /usr/bin first on purpose — git only looks up `ssh` in PATH,
-          # and the system build understands GSSAPIAuthentication from
-          # /etc/ssh/ssh_config while nix-openssh is built without GSSAPI and
-          # prints "Unsupported option". nix-openssh stays as the fallback for
-          # images with no system ssh.
-          PATH="/usr/bin:/bin:${lib.makeBinPath [ pkgs.openssh ]}:$PATH" \
-            run ${pkgs.git}/bin/git -C "${dotfiles}" submodule update --init tools/claude/custom \
-            || ${warn "claude custom submodule skipped (нет ssh-агента или ключа)"}
-        fi
         if [ -f "${dotfiles}/tools/claude/custom/install.sh" ]; then
           PATH="$HOME/.local/bin:${
             lib.makeBinPath [
@@ -333,8 +307,10 @@ in
               pkgs.nodejs_24
             ]
           }:$PATH:/usr/bin:/bin" \
-            run "${dotfiles}/tools/claude/custom/install.sh" \
+            run "${dotfiles}/tools/claude/custom/install.sh" --install-only \
             || ${warn "MCP install failed"}
+        else
+          ${warn "claude custom submodule is missing; initialize it explicitly"}
         fi
       fi
     '';

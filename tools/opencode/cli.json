@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "theme": {
+    "name": "solarized-transparent",
+    "mode": "system"
+  },
+  "tabs": {
+    "mode": "off"
+  },
+  "plugins": ["-opencode.prompt.footer"],
+  "session": {
+    "scrollbar": false,
+    "sidebar": "hide"
+  }
+}
