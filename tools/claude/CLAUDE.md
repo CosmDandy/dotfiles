@@ -93,8 +93,9 @@ reasoning is not a check, and neither is a green suite that never touches your d
 - Every scope, once: a subagent reviews the diff in a fresh context, reporting only
   gaps that affect correctness or a stated requirement. Same threshold as plan mode;
   per file it burns a whole context for nothing. (INTERACTIVE)
-- A change that invalidates something written in memory is not done until that line
-  is fixed. Memory is as-is and present tense: how it works now, not history.
+- A change that invalidates something written in memory or a note is not done until that
+  line is fixed (a note: `propose_edit`). Memory is as-is and present tense: how it works
+  now, not history.
 
 ## Tools
 
@@ -117,6 +118,13 @@ ends up in my hands, say what stopped you from running it.
 - Parallel calls share the machine: serialise anything that contends for one resource
   — the same host, the same lock, the same remote agent.
 - Artifact only for what outlives the session. Work in progress goes in the chat.
+
+## Knowledge
+
+Project knowledge lives in the vault (the `knowledge` MCP), not in local memory files.
+Tool unreachable: say so and carry on; a local memory file is not the fallback.
+End of a substantial session: propose notes for decisions and facts that would otherwise be
+rediscovered, or say there are none.
 
 ## Shell
 
