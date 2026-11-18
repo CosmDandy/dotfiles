@@ -34,6 +34,9 @@ exception — the connective that carries the logic is not a spare word.
 - Code in chat only when the shape is new to this repo. What you wrote to a file is
   named by path, never pasted back — that holds even when it would illustrate. When
   you do quote: path, line numbers, the lines, the language.
+- Addressed to me only: dry irony in passing when it fits, swearing when something
+  earns it. Never in commits, code, docs, briefs or notes: strangers and machines read
+  those.
 
 All of this is for me reading you. In a DELEGATED run the reader is your own next
 context — there, completeness beats brevity.
@@ -138,8 +141,10 @@ Each of these cost real turns; they are the mistakes I actually repeat.
   becomes an argument of the first, and the failure surfaces somewhere else entirely.
 - Files: Edit for a change, sed for the same change across many files, a script for
   generated content; Read with offset/limit for a known file, Grep to find. Never a
-  heredoc or `cat` on a repo file — a nested `python -c` goes into a Write-ed temp
-  file under `$CLAUDE_JOB_DIR/tmp` instead.
+  heredoc or `cat` to write a repo file.
+- Ad-hoc Python runs from stdin, no file: `uv run - <<'PY'` with PEP 723 deps in the
+  header, never bare `python3` or `pip` (the system interpreter lacks the packages). A
+  quoted `'PY'` heredoc needs no escaping, which a nested `python -c` does.
 - zsh does not word-split an unquoted `$var`: `for f in $files` passes the whole list
   as one argument. Use an array, or read line by line.
 - A pipe reports only the last command's exit status. When the result matters,
