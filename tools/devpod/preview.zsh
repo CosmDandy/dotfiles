@@ -92,14 +92,15 @@ esac
 # get a line of their own rather than a pointer to the doctor.
 if [[ $state == running ]]; then
   local cl=${secrets[1]} ag=${secrets[2]} ev=${secrets[3]} gh=${secrets[4]} \
-        gl=${secrets[5]} mark
+        gl=${secrets[5]} kn=${secrets[6]} mark
   [[ $cl == 1 ]] && mark="${G}✓${O} Claude token" || mark="${Y}✗${O} Claude token"
   [[ $ag == 1 ]] && mark="$mark   ${G}✓${O} age key" || mark="$mark   ${Y}✗${O} age key"
   [[ $ev == 1 ]] && mark="$mark   ${G}✓${O} work env" || mark="$mark   ${Y}✗${O} work env"
   [[ $gh == 1 ]] && mark="$mark   ${G}✓${O} GitHub token" || mark="$mark   ${Y}✗${O} GitHub token"
   [[ $gl == 1 ]] && mark="$mark   ${G}✓${O} GitLab token" || mark="$mark   ${Y}✗${O} GitLab token"
+  [[ $kn == 1 ]] && mark="$mark   ${G}✓${O} knowledge token" || mark="$mark   ${Y}✗${O} knowledge token"
   print -r -- "$mark"
-  [[ $cl == 1 && $ag == 1 && $ev == 1 && $gh == 1 && $gl == 1 ]] || \
+  [[ $cl == 1 && $ag == 1 && $ev == 1 && $gh == 1 && $gl == 1 && $kn == 1 ]] || \
     print -r -- "${M}restore: dp secrets $id (Ctrl-S)${O}"
   print -r -- "${M}git state — dp doctor $id${O}"
 elif [[ $state != new ]]; then

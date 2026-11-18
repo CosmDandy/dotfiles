@@ -721,8 +721,8 @@ _dp_snapshot() {
       # DROPS empty fields and silently shifts every later column left — the
       # preview showed the profile under "repository" until this was a dash.
       # Column 11 is the secrets digits in DP_SECRETS order — claude, age, env,
-      # github, gitlab: 11011 all but env; "--" nothing to ask because the
-      # container is not running.
+      # github, gitlab, knowledge: 110111 all but env; "--" nothing to ask because
+      # the container is not running.
       # absent = the host said there is no such container; unknown = the host
       # said nothing at all. Only the first is a reason to recreate anything.
       local st_now=${state_of[$uid]}
@@ -1796,11 +1796,17 @@ typeset -ga DP_SECRETS=(
   "env|work env file (jira, gitlab, nomad…)|_dp_put_workenv|3"
   "github|GitHub token for gh|_dp_put_github|4"
   "gitlab|GitLab token and host for glab|_dp_put_gitlab|5"
+  "knowledge|knowledge MCP bearer token|_dp_put_knowledge|6"
 )
 
 # Where the work variables live inside a container.
 : ${DP_ENV_DEST:='$HOME/.config/dp/work.env'}
 : ${DP_ENV_SRC:=$HOME/.dotfiles/.env}
+
+# The knowledge MCP bearer token: a file on the Mac, a 0600 file in the container.
+# The headersHelper in custom/mcp/knowledge reads it at connect time.
+: ${DP_KNOWLEDGE_DEST:='$HOME/.config/knowledge-platform/token'}
+: ${DP_KNOWLEDGE_SRC:=$HOME/.config/knowledge-platform/token}
 
 _dp_secret_entry() {
   emulate -L zsh
@@ -1831,6 +1837,21 @@ _dp_put_workenv() {
     print "env: переменные доставлены в $id"
   else
     print -u2 "env: файл не доставлен в $id"
+    return 1
+  fi
+}
+
+_dp_put_knowledge() {
+  emulate -L zsh
+  local id=$1
+  if [[ ! -s $DP_KNOWLEDGE_SRC ]]; then
+    print -u2 "knowledge: $DP_KNOWLEDGE_SRC is missing or empty — nothing to deliver"
+    return 1
+  fi
+  if _dp_put_file "$id" "$DP_KNOWLEDGE_DEST" < $DP_KNOWLEDGE_SRC; then
+    print "knowledge: token delivered to $id"
+  else
+    print -u2 "knowledge: token not delivered to $id"
     return 1
   fi
 }
