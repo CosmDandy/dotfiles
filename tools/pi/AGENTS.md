@@ -177,18 +177,6 @@ not happened; a fix touches only what is broken.
 - All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`, nothing that can prompt —
   this must hold from the first command, so it lives here, not in the skill.
 
-## Compact Instructions
-
-Preserve in my words, not a paraphrase:
-- the task, what "done" means, and what was still open;
-- every decision with the reason for it and the option not taken;
-- what failed and the symptom it actually produced — a summary drops this first,
-  and it is the most expensive thing to rediscover;
-- what worked — the exact invocation, not a description of it;
-- files touched and what changed in each.
-
-Drop: file contents, tool output, search results, superseded reasoning.
-
 ## Git
 
 - Conventional commits. Show status after.

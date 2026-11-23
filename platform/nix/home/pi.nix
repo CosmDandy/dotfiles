@@ -35,6 +35,7 @@ in
     ".local/bin/pi".source = "${piTools.agent}/bin/pi";
     ".pi/agent/keybindings.json".source = link "tools/pi/keybindings.json";
     ".pi/agent/extensions/solarized-status.ts".source = link "tools/pi/extensions/solarized-status.ts";
+    ".pi/agent/extensions/compaction.ts".source = link "tools/pi/extensions/compaction.ts";
     ".pi/agent/extensions/compact-tools.ts".source = link "tools/pi/extensions/compact-tools.ts";
     ".pi/agent/extensions/work-mode.ts".source = link "tools/pi/extensions/work-mode.ts";
     ".pi/agent/themes/solarized-dark.json".source = link "tools/pi/themes/solarized-dark.json";
