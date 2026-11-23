@@ -13,11 +13,13 @@ const load = path => import(pathToFileURL(join(modules, path)).href);
 const { loadExtensions } = await load("@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
 const { ToolExecutionComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js");
 const themes = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js");
-const { mixColors, rgbColor, visibleWidth } = await load("@earendil-works/pi-tui/dist/index.js");
+const { mixColors, rgbColor, visibleWidth, wrapTextWithAnsi } = await load("@earendil-works/pi-tui/dist/index.js");
 const { generateDiffString, generateUnifiedPatch } = await load("@earendil-works/pi-coding-agent/dist/core/tools/edit-diff.js");
 themes.initTheme("dark", false);
 const extensionPath = fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url));
-const loaded = await loadExtensions([extensionPath], "/tmp");
+const { createEventBus } = await load("@earendil-works/pi-coding-agent/dist/core/event-bus.js");
+const events = createEventBus();
+const loaded = await loadExtensions([extensionPath], "/tmp", events);
 assert.deepEqual(loaded.errors, []);
 const extension = loaded.extensions[0];
 assert.equal(extension.tools.size, 0, "rendering must not replace tool execution");
@@ -70,6 +72,13 @@ try {
   assert.equal(plain(animated), plain(old), "animation does not add characters or cells");
   assert.ok(animated.includes(themes.theme.style(":2-31", darkMetadata)), "read range stays quiet during animation");
   assert.ok(redraws > 0);
+  events.emit("dotfiles:pane-hidden", true);
+  const beforeHidden = redraws;
+  for (let i = 0; i < 8; i++) for (const tick of timers.values()) tick();
+  assert.equal(redraws, beforeHidden);
+  events.emit("dotfiles:animation-tick", undefined);
+  assert.ok(redraws > beforeHidden);
+  events.emit("dotfiles:pane-hidden", false);
   const shortPulse = tool("bash", { command: "sleep 1" }, "pulse-short");
   const longPulse = tool("bash", { command: "printf 'a much longer command header for comparison'" }, "pulse-long");
   shortPulse.markExecutionStarted();
@@ -318,6 +327,58 @@ try {
   note.setExpanded(true);
   assert.match(body(note), /Some bold text\./);
   assert.doesNotMatch(body(note), /"text"|\*\*bold\*\*/);
+  for (const [action, created] of [["propose_note", true], ["propose_edit", false]]) {
+    const args = { topic: "devpod", body: "## Policy\n\nUse **pinned** images.", ...(created ? { title: "DevPod policy", parent: ["Dotfiles"] } : { path: "Ops/DevPod policy.md", reason: "Match runtime" }) };
+    const component = tool(`mcp__knowledge__${action}`, args);
+    assert.match(body(component), /knowledge DevPod policy/);
+    const pr = { pr: "https://github.com/org/vault/pull/42", path: "Ops/DevPod policy.md", new_pr: created, branch: "knowledge/devpod" };
+    if (created) component.updateResult({ content: [{ type: "text", text: JSON.stringify(pr) }], structuredContent: { result: JSON.stringify(pr) }, isError: false, durationMs: 250 }, false);
+    else finish(component, JSON.stringify(pr), false, undefined, 250);
+    await Promise.resolve();
+    assert.match(body(component), new RegExp(`${created ? "Opened" : "Updated"} PR #42 · 250 ms`));
+    assert.doesNotMatch(body(component), /pinned|https:|new_pr/);
+    component.setExpanded(true);
+    assert.match(body(component), /Note: Ops\/DevPod policy\.md/);
+    assert.match(body(component), /Pull request: https:\/\/github.com\/org\/vault\/pull\/42/);
+    assert.match(body(component), created ? /Parent: Dotfiles/ : /Reason: Match runtime/);
+    assert.match(body(component), /Use pinned images/);
+    assert.doesNotMatch(body(component), /new_pr|\*\*pinned\*\*/);
+    assert.ok(component.render(20).every(line => visibleWidth(line) <= 20));
+  }
+  for (const [action, payload, count, detail] of [
+    ["status", { notes: 7, unresolved_links: 2, parent_cycles: [] }, "7 notes", "Unresolved links: 2"],
+    ["related", { parents: [], children: [{ path: "Notes/child.md" }], links_out: [], backlinks: [] }, "1 relation", "Children: Notes/child.md"],
+    ["list_proposals", [{ topic: "devpod", pr: "https://github.com/org/vault/pull/42" }], "1 open PR", "devpod: https://github.com/org/vault/pull/42"],
+  ]) {
+    const component = tool(`mcp__knowledge__${action}`, {});
+    finish(component, JSON.stringify({ result: JSON.stringify(payload) }));
+    await Promise.resolve();
+    assert.ok(body(component).includes(count));
+    component.setExpanded(true);
+    assert.ok(body(component).includes(detail));
+  }
+  for (const [name, args, data, details, summary, expanded] of [
+    ["tool_search", { query: "docs" }, undefined, { loaded: ["lookup"] }, "1 tool", "lookup"],
+    ["list_mcp_resources", {}, { resources: [], errors: [{ server: "docs", error: "offline" }] }, {}, "0 resources · 1 failed", "docs: offline"],
+    ["list_mcp_resource_templates", { server: "docs" }, { resourceTemplates: [{ server: "docs", name: "Guide", uriTemplate: "doc://{id}" }], nextCursor: "next" }, {}, "1 template", "Next cursor: next"],
+    ["read_mcp_resource", { server: "docs", uri: "doc://42" }, { contents: [{ text: "Guide contents" }] }, {}, "1 part", "Guide contents"],
+  ]) {
+    const c = tool(name, args);
+    c.updateResult({ content: [{ type: "text", text: name === "tool_search" ? "lookup" : name === "read_mcp_resource" ? "Guide contents" : JSON.stringify(data) }], details, structuredContent: data, durationMs: 50 }, false);
+    await Promise.resolve();
+    assert.ok(body(c).includes(summary));
+    c.setExpanded(true);
+    assert.ok(body(c).includes(expanded));
+    assert.ok(c.render(18).every(row => visibleWidth(row) <= 18));
+  }
+  const failedProposal = tool("mcp__knowledge__propose_note", { title: "Missing" });
+  finish(failedProposal, "Permission denied", true);
+  assert.match(body(failedProposal), /Permission denied/);
+  assert.doesNotMatch(body(failedProposal), /Opened PR|Updated PR/);
+  const unknownProposal = tool("mcp__knowledge__propose_edit", { path: "Notes/X.md" });
+  finish(unknownProposal, "Unrecognized server response");
+  unknownProposal.setExpanded(true);
+  assert.match(body(unknownProposal), /Unrecognized server response/);
   const exa = tool("mcp__exa__web_search_exa", { query: "Pi docs" }, "exa-search");
   finish(exa, "Title: Pi docs\nURL: https://pi.dev/\nPublished: N/A\nHighlights:\nOverview\n---\n\nTitle: Packages\nURL: https://pi.dev/packages\nHighlights:\nDetails");
   await Promise.resolve();
@@ -596,6 +657,10 @@ try {
   live.updateResult({ content: [{ type: "text", text: "first line" }] }, true);
   assert.equal(live.render(100).length, idleHeight + 1, "the tail grows with the output");
   assert.ok(live.render(100)[idleHeight].includes(themes.theme.style("first line", darkMetadata)));
+  const mixedLog = "ascii\n".repeat(2000) + "長い行".repeat(80) + "\n\tindented\n\n1\n2\n3\n4\n5\n";
+  live.updateResult({ content: [{ type: "text", text: mixedLog }] }, true);
+  const reference = wrapTextWithAnsi(mixedLog.trimEnd(), 98);
+  assert.deepEqual(rows(live).slice(1).map(line => line.trim()), [`… ${reference.length - 4} earlier lines`, "2", "3", "4", "5"]);
   live.updateResult({ content: [{ type: "text", text: "1\n2\n3\n4\n5" }] }, true);
   assert.deepEqual(rows(live).slice(1).map(line => line.trim()), ["1", "2", "3", "4", "5"]);
   live.updateResult({ content: [{ type: "text", text: "1\n2\n3\n4\n5\n6" }] }, true);

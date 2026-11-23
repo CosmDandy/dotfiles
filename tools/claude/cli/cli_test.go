@@ -160,6 +160,33 @@ type paneTitleCase struct {
 	want           string
 }
 
+func TestPiSessionBadge(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".pi", "agent", "cache", "statusline", "sessions")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	pid := os.Getpid()
+	for _, tc := range []struct {
+		state string
+		age   int64
+		want  string
+	}{{"idle", 0, ""}, {"running", 0, ""}, {"waiting", 0, "○ 1"}, {"waiting", 91000, ""}} {
+		data := fmt.Sprintf(`{"pid":%d,"at":%d,"state":%q}`, pid, time.Now().UnixMilli()-tc.age, tc.state)
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%d.json", pid)), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if got := sessionBadge(false, nil); got != tc.want {
+			t.Fatalf("%s: %q != %q", tc.state, got, tc.want)
+		}
+	}
+	t.Setenv("CLAUDE_CLI_PANE_TITLE_ARGS", "-zsh\npi\n")
+	if ttyAgent("fixture") != "pi" {
+		t.Fatal("Pi not recognized")
+	}
+}
+
 func TestPaneTitle(t *testing.T) {
 	for _, c := range paneTitleCases {
 		t.Run(c.name, func(t *testing.T) {

@@ -247,6 +247,11 @@ try {
   assert.equal(ownSession().state, "idle");
   assert.equal(hiddenThinkingLabel, "", "collapsed reasoning has no label");
   assert.equal(footer.render(151).length, 1);
+  const cachedRibbon = footer.render(151);
+  assert.strictEqual(footer.render(151), cachedRibbon);
+  footer.invalidate();
+  assert.notStrictEqual(footer.render(151), cachedRibbon);
+  assert.deepEqual(footer.render(151), cachedRibbon);
   assert.equal(widgets.size, 0, "no panel edges or padding widgets");
   assert.match(top().trim(), /Ready$/);
   await waitForRibbon(/^ {3}GPT-6\.1 SOL · medium · 24% +$/);

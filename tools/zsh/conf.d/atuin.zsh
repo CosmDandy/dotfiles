@@ -1,3 +1,6 @@
+# Prefer the managed config even when Atuin creates ~/.atuin/config.toml.
+export ATUIN_CONFIG_DIR="${ATUIN_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/atuin}"
+
 # Keep zsh-autosuggestions away from atuin's widgets.
 #
 # The plugin wraps every widget that exists when it starts, and its wrapper

@@ -1,6 +1,6 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Marked, mixColors, rgbColor, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type TuiMouseEvent } from "@earendil-works/pi-tui";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -325,9 +325,37 @@ export default function (pi: ExtensionAPI) {
       redraw = requestRender;
       // Queue state can change without a model or tool event.
       let queued = ctx.hasPendingMessages();
+      const pane = process.env.TMUX && process.env.TMUX_PANE;
+      let hidden = false, checking = false, nextProbe = 0, nextFrame = 0;
       const clock = setInterval(() => {
         const nextQueued = ctx.hasPendingMessages();
-        if (busy || generatingSince !== undefined || queued !== nextQueued) requestRender();
+        const animating = busy || generatingSince !== undefined;
+        const now = Date.now();
+        if (animating && pane && /^%\d+$/.test(pane) && !checking && now >= nextProbe) {
+          checking = true;
+          nextProbe = now + 2000;
+          execFile("tmux", ["display-message", "-p", "-t", pane, "#{window_id}", ";", "list-clients", "-F", "#{window_id} #{window_zoomed_flag} #{pane_id}"], { timeout: 800 }, (error, stdout) => {
+            checking = false;
+            if (disposed) return;
+            const [win, ...clients] = stdout.trim().split("\n");
+            const nextHidden = !error && /^@\d+$/.test(win) && clients.every(row => {
+              const match = /^(@\d+) ([01]) (%\d+)$/.exec(row);
+              return match && (match[1] !== win || (match[2] === "1" && match[3] !== pane));
+            });
+            if (hidden !== nextHidden) {
+              hidden = nextHidden;
+              pi.events.emit("dotfiles:pane-hidden", hidden);
+              if (!hidden) requestRender();
+            }
+          });
+        }
+        if (queued !== nextQueued || (animating && (!hidden || now >= nextFrame))) {
+          if (hidden) {
+            nextFrame = now + 1000;
+            pi.events.emit("dotfiles:animation-tick", undefined);
+          }
+          requestRender();
+        }
         queued = nextQueued;
       }, 100);
       ctx.ui.setEditorComponent((editorTui, editorTheme, keybindings) => {
@@ -413,8 +441,9 @@ export default function (pi: ExtensionAPI) {
         return new StatusEditor(editorTui, editorTheme, keybindings);
       });
       update();
+      let layout: { line: string; columns: number; lightColor?: string; rows: string[] } | undefined;
       return {
-        invalidate() {},
+        invalidate() { layout = undefined; },
         render(columns: number) {
           const margin = frameInset(columns);
           const inset = " ".repeat(margin);
@@ -422,8 +451,10 @@ export default function (pi: ExtensionAPI) {
           if (width !== innerWidth) { width = innerWidth; update(); }
           const theme = ctx.ui.theme;
           // On light backgrounds the ribbon's ANSI gray plus faint loses too much contrast.
-          const output = theme.appearance === "light"
-            ? line.replaceAll("\x1b[2;38;5;11m", theme.getFgAnsi("thinkingText")).replaceAll("\x1b[2;", "\x1b[")
+          const lightColor = theme.appearance === "light" ? theme.getFgAnsi("thinkingText") : undefined;
+          if (layout && layout.line === line && layout.columns === columns && layout.lightColor === lightColor) return layout.rows;
+          const output = lightColor !== undefined
+            ? line.replaceAll("\x1b[2;38;5;11m", lightColor).replaceAll("\x1b[2;", "\x1b[")
             : line;
           const rows = output.split("\n");
           if (rows.length === 1) {
@@ -436,11 +467,14 @@ export default function (pi: ExtensionAPI) {
               if (size > 0) rows[0] = row.slice(0, gap.index) + " ".repeat(size) + row.slice(gap.index + gap[0].length);
             }
           }
-          return rows.flatMap(row => wrapTextWithAnsi(row, innerWidth))
+          const rendered = rows.flatMap(row => wrapTextWithAnsi(row, innerWidth))
             .map(row => inset + truncateToWidth(row, innerWidth, "", true) + inset);
+          layout = { line, columns, lightColor, rows: rendered };
+          return rendered;
         },
         dispose() {
           disposed = true;
+          if (hidden) pi.events.emit("dotfiles:pane-hidden", false);
           clearInterval(clock);
           child?.kill();
           if (refresh === update) refresh = undefined;

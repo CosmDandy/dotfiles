@@ -219,6 +219,65 @@ function knowledgeResponse(output: string, structured: unknown): Record<string, 
   return result && typeof result === "object" ? result as Record<string, unknown> : undefined;
 }
 
+type KnowledgeCard = { summary: string; fields: [string, string][] };
+
+function knowledgeCard(action: string, data: Record<string, unknown> | undefined): KnowledgeCard | undefined {
+  if (!data) return undefined;
+  if (action === "propose_note" || action === "propose_edit") {
+    if (typeof data.pr !== "string" || typeof data.path !== "string") return undefined;
+    const number = /\/pull\/(\d+)\/?$/.exec(data.pr)?.[1];
+    const state = data.new_pr === true ? "Opened" : data.new_pr === false ? "Updated" : "";
+    const fields: KnowledgeCard["fields"] = [["Note", data.path], ["Pull request", data.pr]];
+    if (typeof data.branch === "string") fields.push(["Branch", data.branch]);
+    return { summary: `${state} PR${number ? ` #${number}` : ""}`.trim(), fields };
+  }
+  if (action === "list_proposals" && Array.isArray(data)) {
+    const fields: KnowledgeCard["fields"] = [];
+    for (const item of data) {
+      if (typeof item?.topic !== "string" || typeof item.pr !== "string") return undefined;
+      fields.push([item.topic, item.pr]);
+    }
+    return { summary: `${data.length} open ${data.length === 1 ? "PR" : "PRs"}`, fields };
+  }
+  if (action === "related") {
+    const fields: KnowledgeCard["fields"] = [];
+    let total = 0;
+    for (const [key, label] of [["parents", "Parents"], ["children", "Children"], ["links_out", "Outgoing"], ["backlinks", "Backlinks"]]) {
+      const items = data[key];
+      if (!Array.isArray(items)) return undefined;
+      const paths = items.map(item => item?.path ?? item?.name);
+      if (!paths.every(path => typeof path === "string")) return undefined;
+      total += items.length;
+      if (paths.length) fields.push([label, paths.join("\n")]);
+    }
+    return { summary: `${total} ${total === 1 ? "relation" : "relations"}`, fields };
+  }
+  if (action === "status" && typeof data.notes === "number") {
+    const fields: KnowledgeCard["fields"] = [];
+    for (const [key, label] of [["notes", "Notes"], ["chunks", "Chunks"], ["edges", "Edges"], ["unresolved_links", "Unresolved links"], ["multi_parent_notes", "Multi-parent notes"], ["last_sync", "Last sync"]]) {
+      const value = data[key];
+      if (typeof value === "number" || typeof value === "string") fields.push([label, String(value)]);
+    }
+    if (Array.isArray(data.parent_cycles)) fields.push(["Parent cycles", data.parent_cycles.length ? JSON.stringify(data.parent_cycles) : "None"]);
+    return { summary: `${data.notes} ${data.notes === 1 ? "note" : "notes"}`, fields };
+  }
+  return undefined;
+}
+
+const services = new Map([["tool_search", "find tools"], ["list_mcp_resources", "list resources"], ["list_mcp_resource_templates", "list templates"], ["read_mcp_resource", "read resource"]]);
+
+function serviceItems(tool: string, result: { content: readonly { type: string; text?: string }[]; details?: unknown; structuredContent?: unknown }) {
+  let data = result.structuredContent as Record<string, unknown> | undefined;
+  if (!data && tool.startsWith("list_") && result.content[0]?.type === "text") {
+    try { data = JSON.parse(result.content[0].text ?? ""); } catch { return undefined; }
+  }
+  const items = tool === "tool_search" ? (result.details as { loaded?: unknown })?.loaded : tool === "list_mcp_resources" ? data?.resources : tool === "read_mcp_resource" ? result.content : data?.resourceTemplates;
+  if (!Array.isArray(items)) return undefined;
+  const noun = tool === "tool_search" ? "tool" : tool === "list_mcp_resources" ? "resource" : tool === "read_mcp_resource" ? "part" : "template";
+  const errors = Array.isArray(data?.errors) ? data.errors : [];
+  return { items, errors, cursor: data?.nextCursor, summary: `${items.length} ${noun}${items.length === 1 ? "" : "s"}${errors.length ? ` · ${errors.length} failed` : ""}` };
+}
+
 function exaMatches(output: string) {
   if (!output.startsWith("Title: ")) return undefined;
   const hits = output.split(/\n---\n(?=\s*Title: )/).map(block => {
@@ -559,7 +618,16 @@ export default function compactTools(pi: ExtensionAPI) {
     pending.clear();
   }
 
+  let paneHidden = false;
+  let unsubscribe: (() => void)[] = [];
+  const invalidatePending = () => { for (const invalidate of pending.values()) invalidate(); };
   pi.on("session_start", (_event, ctx) => {
+    for (const off of unsubscribe) off();
+    paneHidden = false;
+    unsubscribe = [
+      pi.events.on("dotfiles:pane-hidden", value => { paneHidden = value === true; }),
+      pi.events.on("dotfiles:animation-tick", invalidatePending),
+    ];
     stop();
     active = false;
     projectRoots.clear();
@@ -579,6 +647,8 @@ export default function compactTools(pi: ExtensionAPI) {
     stop();
   });
   pi.on("session_shutdown", () => {
+    for (const off of unsubscribe) off();
+    unsubscribe = [];
     clearFinishedRows();
     interactive = false;
     active = false;
@@ -600,7 +670,10 @@ export default function compactTools(pi: ExtensionAPI) {
     const knowledge = server === "knowledge" && (action === "search" || action === "read");
     const exa = server === "exa" && (action === "web_search_exa" || action === "web_fetch_exa");
     const searchMcp = action === "search" || action === "web_search_exa";
-    const friendlyMcp = knowledge || exa;
+    const proposal = server === "knowledge" && (action === "propose_note" || action === "propose_edit");
+    const cardTool = proposal || (server === "knowledge" && ["list_proposals", "related", "status"].includes(action));
+    const service = services.get(toolName);
+    const friendlyMcp = knowledge || exa || cardTool || service;
     const matchesFor = (output: string, structured: unknown) => knowledge
       ? knowledgeResponse(output, structured)?.results : exaMatches(output);
     const renderers: ToolRenderers = {
@@ -612,7 +685,7 @@ export default function compactTools(pi: ExtensionAPI) {
           context.state.pulseStartedAt ??= Date.now();
           pending.set(context.toolCallId, context.invalidate);
           timer ??= setInterval(() => {
-            for (const invalidate of pending.values()) invalidate();
+            if (!paneHidden) invalidatePending();
           }, pulseInterval);
           timer.unref();
         } else {
@@ -635,12 +708,14 @@ export default function compactTools(pi: ExtensionAPI) {
           removed: compactStats.removed + compactStats.modified,
           modified: 0,
         } : compactStats;
-        const label = exa ? `${searchMcp ? "search" : "fetch"} · exa`
+        const label = service ? service : exa ? `${searchMcp ? "search" : "fetch"} · exa`
           : clean(action ? `${action.replaceAll("_", " ")} · ${server}` : toolName);
-        const target = knowledge ? searchMcp ? args?.text : args?.path : args?.query;
+        const target = action === "propose_note" && proposal ? args?.title
+          : cardTool ? args?.path : knowledge ? searchMcp ? args?.text : args?.path : args?.query;
         const urls = exa && !searchMcp && Array.isArray(args?.urls) ? args.urls : [];
-        const argsPreview = friendlyMcp
+        const argsPreview = service ? clean([args?.query, args?.server, args?.uri].filter(x => typeof x === "string").join(" · ") || (toolName.startsWith("list_") ? "all servers" : "")).replace(/\s+/g, " ") : friendlyMcp
           ? searchMcp && typeof target === "string" ? preview({ query: JSON.stringify(target) })
+            : cardTool && typeof target === "string" ? clean(proposal && action === "propose_note" ? target : basename(target, ".md")).replace(/\s+/g, " ")
             : knowledge && typeof target === "string"
               ? clean(basename(target, ".md") + (typeof args?.heading === "string" ? ` › ${args.heading}` : "")).replace(/\s+/g, " ")
               : typeof urls[0] === "string" ? clean(urls[0]) + (urls.length > 1 ? ` +${urls.length - 1}` : "") : ""
@@ -798,7 +873,7 @@ export default function compactTools(pi: ExtensionAPI) {
           });
         }
         const deltaOutput = interactive ? delta?.output : undefined;
-        const summarize = !isPartial && !context.isError && (list || mcp || search) && context.state.outcome === undefined;
+        const summarize = !isPartial && !context.isError && (list || mcp || search || service) && context.state.outcome === undefined;
         if (!summarize && !expanded && !showDiff && !context.isError && !tailRows) return new Text("", 0, 0);
         const first = result.content[0];
         const content = codemode && first?.type === "text" && /^Script (?:completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/.test(first.text)
@@ -809,7 +884,7 @@ export default function compactTools(pi: ExtensionAPI) {
           return `[${clean(block.type)}]`;
         }).join("\n") || (mcp && result.structuredContent !== undefined ? clean(JSON.stringify(result.structuredContent, null, 2)) : "");
         if (summarize) {
-          const output = readOutput();
+          const output = service ? "" : readOutput();
           if (search) {
             const record = result.structuredContent as { output?: unknown; truncated?: boolean } | undefined;
             const text = clean(typeof record?.output === "string" ? record.output : output.split("\n\n[Showing ")[0]);
@@ -818,7 +893,10 @@ export default function compactTools(pi: ExtensionAPI) {
             context.state.outcome = `${clean(search.scope)} · ${count} ${search.noun}${count === 1 ? "" : "s"}${limited ? " (shown)" : ""}`;
           } else {
             const matches = friendlyMcp && searchMcp ? matchesFor(output, result.structuredContent) : undefined;
-            context.state.outcome = friendlyMcp ? (Array.isArray(matches)
+            const page = service ? serviceItems(toolName, result) : undefined;
+            if (page) context.state.servicePage = page;
+            context.state.outcome = service ? page?.summary ?? "" : cardTool ? knowledgeCard(action, knowledgeResponse(output, result.structuredContent))?.summary ?? ""
+              : friendlyMcp ? (Array.isArray(matches)
               ? `${matches.length} ${matches.length === 1 ? "result" : "results"}` : "")
               : list ? listSummary(toolName, output, details as Record<string, unknown> | undefined)
                 : mcpSummary(output, result.structuredContent);
@@ -848,8 +926,39 @@ export default function compactTools(pi: ExtensionAPI) {
             const remaining = rows.length - shown.length;
             return paint(indentedLines(text + (remaining ? `\n${quietMetadata(theme, `… ${remaining} more lines`, expanded)}` : ""), padding, width));
           }
+          if (service && toolName.startsWith("list_") && !isPartial && !context.isError) {
+            const page = context.state.servicePage as ReturnType<typeof serviceItems>;
+            if (page && page.items.every(i => typeof (i?.uri ?? i?.uriTemplate) === "string")) {
+              const lines = page.items.map(i => theme.fg("accent", clean([i.server, i.name].filter(Boolean).join(" · "))) + "  " + clean(i.uri ?? i.uriTemplate));
+              for (const e of page.errors) lines.push(theme.fg("error", clean(`${e?.server}: ${e?.error}`)));
+              if (typeof page.cursor === "string") lines.push(theme.fg("muted", "Next cursor: " + clean(page.cursor)));
+              return paint(indentedLines(lines.join("\n") || "No entries", padding, width));
+            }
+          }
           const output = readOutput();
-          if (friendlyMcp && !isPartial && !context.isError) {
+          if (cardTool && !isPartial && !context.isError) {
+            const card = knowledgeCard(action, knowledgeResponse(output, result.structuredContent));
+            if (card) {
+              const fields = [...card.fields];
+              if (proposal) {
+                for (const key of ["topic", "reason", "parent", "aliases", "links"]) {
+                  const value = context.args?.[key];
+                  const text = Array.isArray(value) ? value.filter(item => typeof item === "string").join(", ") : value;
+                  if (typeof text === "string" && text) fields.push([key[0].toUpperCase() + key.slice(1), text]);
+                }
+              }
+              const rows = fields.flatMap(([label, value]) => indentedLines(
+                quietMetadata(theme, clean(label) + ": ", expanded) + theme.fg("toolOutput", clean(value)), padding, width));
+              const body = proposal && context.args?.body;
+              if (typeof body === "string" && body.trim()) {
+                const indent = padding + " ";
+                const note = new Markdown(clean(body), 0, 0, getMarkdownTheme());
+                rows.push("", ...note.render(Math.max(1, width - indent.length)).map(row => truncateToWidth(indent + row, width)));
+              }
+              return paint(rows);
+            }
+          }
+          if (!service && !cardTool && friendlyMcp && !isPartial && !context.isError) {
             const noteText = searchMcp ? undefined : knowledge ? knowledgeResponse(output, result.structuredContent)?.text : output;
             if (typeof noteText === "string") {
               const indent = padding + " ";
@@ -888,12 +997,21 @@ export default function compactTools(pi: ExtensionAPI) {
           if (tailRows) {
             if (!output.trim()) return [];
             const indent = padding + " ";
-            const rows = wrapTextWithAnsi(output.replace(/\n+$/, ""), Math.max(1, width - indent.length));
-            const overflow = rows.length > tailRows;
+            const columns = Math.max(1, width - indent.length);
+            const lines = output.replace(/\n+$/, "").split("\n");
+            const start = Math.max(0, lines.length - tailRows);
+            let earlier = 0;
+            // The collapsed log is sanitized. Short printable ASCII lines occupy exactly one row.
+            for (let i = 0; i < start; i++) {
+              const line = lines[i];
+              earlier += line.length <= columns && !/[^ -~]/.test(line) ? 1 : wrapTextWithAnsi(line, columns).length;
+            }
+            const rows = wrapTextWithAnsi(lines.slice(start).join("\n"), columns);
+            const overflow = earlier + rows.length > tailRows;
             const visible = overflow ? tailRows - 1 : tailRows;
             const tail = rows.slice(-visible).map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
             if (!overflow) return tail;
-            const hint = quietMetadata(theme, `… ${rows.length - visible} earlier lines`);
+            const hint = quietMetadata(theme, `… ${earlier + rows.length - visible} earlier lines`);
             return [truncateToWidth(indent + hint, width), ...tail];
           }
           if (toolName === "bash" || codemode) {
