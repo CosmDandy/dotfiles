@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "knowledge": {
+      "url": "http://100.64.0.1:7234/mcp",
+      "headers": {
+        "Authorization": "!token=$(tr -d '[:space:]' < \"${KNOWLEDGE_TOKEN_FILE:-$HOME/.config/knowledge-platform/token}\") && test -n \"$token\" && printf 'Bearer %s' \"$token\""
+      },
+      "description": "Authoritative engineering knowledge in the Obsidian vault: search and read established facts; propose knowledge updates for review.",
+      "exposure": "deferred"
+    },
+    "exa": {
+      "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa",
+      "exposure": "direct",
+      "description": "Search the public web and fetch readable content from URLs."
+    }
+  }
+}

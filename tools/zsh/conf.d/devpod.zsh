@@ -1796,7 +1796,7 @@ typeset -ga DP_SECRETS=(
   "env|work env file (jira, gitlab, nomad…)|_dp_put_workenv|3"
   "github|GitHub token for gh|_dp_put_github|4"
   "gitlab|GitLab token and host for glab|_dp_put_gitlab|5"
-  "knowledge|knowledge MCP bearer token|_dp_put_knowledge|6"
+  "knowledge|MCP Knowledge bearer token|_dp_put_knowledge|6"
 )
 
 # Where the work variables live inside a container.
