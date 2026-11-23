@@ -39,6 +39,8 @@ in
     ".pi/agent/extensions/compaction.ts".source = link "tools/pi/extensions/compaction.ts";
     ".pi/agent/extensions/compact-tools.ts".source = link "tools/pi/extensions/compact-tools.ts";
     ".pi/agent/extensions/work-mode.ts".source = link "tools/pi/extensions/work-mode.ts";
+    ".pi/agent/prompts/commit.md".source = link "tools/pi/prompts/commit.md";
+    ".pi/agent/prompts/recap.md".source = link "tools/pi/prompts/recap.md";
     ".pi/agent/themes/solarized-dark.json".source = link "tools/pi/themes/solarized-dark.json";
     ".pi/agent/themes/solarized-light.json".source = link "tools/pi/themes/solarized-light.json";
     ".pi/agent/bin/solarized-statusline".source = "${piTools.statusline}/bin/pi-statusline";
