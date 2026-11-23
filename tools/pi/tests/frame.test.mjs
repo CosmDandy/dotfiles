@@ -24,6 +24,7 @@ const load = path => import(pathToFileURL(join(modules, path)).href);
 const { loadExtensions } = await load("@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
 const { CustomEditor } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
 const { AssistantMessageComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/assistant-message.js");
+const { UserMessageComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/user-message.js");
 const { FooterComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/footer.js");
 const { KeybindingsManager } = await load("@earendil-works/pi-coding-agent/dist/core/keybindings.js");
 const themes = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js");
@@ -390,9 +391,22 @@ try {
     for (const [text, messageType, isStreaming] of [[untouched, "assistant", false], [source, "user", false], [source, "assistant", true]]) {
       assert.equal(renderer(text, { messageType, isStreaming, availableWidth: 80 }), text);
     }
+    const userText = "User message sample";
+    const userRow = new UserMessageComponent(userText).render(80).find(row => plain(row).includes(userText));
+    assert.ok(userRow?.includes(themes.theme.getBgAnsi("userMessageBg")));
+    assert.ok(userRow.includes(themes.theme.getFgAnsi("userMessageText")));
     const messageBg = colorToRgb(themes.theme.colors.userMessageBg);
-    const terminalBg = appearance === "light" ? { r: 253, g: 246, b: 227 } : { r: 0, g: 43, b: 54 };
-    assert.ok(messageBg.r <= terminalBg.r && messageBg.g < terminalBg.g && messageBg.b < terminalBg.b);
+    if (appearance === "light") {
+      assert.ok(messageBg.r <= 253 && messageBg.g < 246 && messageBg.b < 227);
+    } else {
+      const luminance = ({ r, g, b }) => [r, g, b].map(value => value / 255)
+        .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+        .reduce((total, value, channel) => total + value * [0.2126, 0.7152, 0.0722][channel], 0);
+      const background = luminance(messageBg);
+      const foreground = luminance(colorToRgb(themes.theme.colors.userMessageText));
+      assert.ok(background > luminance({ r: 10, g: 51, b: 62 }), "dark user card must stand out at least as much as an expanded tool");
+      assert.ok((foreground + 0.05) / (background + 0.05) >= 4.5, "dark user text must have at least 4.5:1 contrast");
+    }
     const borderGray = palette.vars.borderGray;
     assert.ok(/^#([0-9a-f]{2})\1\1$/i.test(borderGray), `${appearance}: border must be neutral gray, not teal`);
     for (const token of ["border", "borderAccent", "borderMuted"]) assert.equal(palette.colors[token], "borderGray");
