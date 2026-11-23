@@ -1559,19 +1559,10 @@ _dp_pick_action() {
   # on that host is recorded as missing.
   rm -f -- $DP_CACHE_DIR/state.*(N.mm+60)
 
-  # Only the very first run has nothing at all to draw. -s and not -f: an empty
-  # file passes -f, renders no rows, and there is no path from here back to a
-  # collection — `dp` would report "no workspaces" forever.
-  # Whether this opening waited for a collection is the difference between 40ms
-  # and a second and a half, so the row says which of the two it was.
+  # An empty snapshot is valid: Ctrl-N creates from the query, not a selected row.
   local _cached=yes
-  [[ -s $DP_SNAPSHOT ]] || { _cached=no; _dp_snapshot_refresh || return 1 }
-  _dp_rows "$DP_SNAPSHOT" > $base
-  if [[ ! -s $base ]]; then
-    rm -f -- $base
-    print -u2 "dp: no workspaces and an empty catalog"
-    return 1
-  fi
+  [[ -f $DP_SNAPSHOT ]] || { _cached=no; _dp_snapshot_refresh || return 1 }
+  _dp_rows "$DP_SNAPSHOT" > $base || return 1
   # The states on screen are as old as the cache; this is what corrects them.
   _dp_refresh_async "$fresh"
 
@@ -1611,10 +1602,12 @@ _dp_pick_action() {
   _dp_log picker $_ms 0 "cached=$_cached" "rows=$_rows"
   local _hdr=$($dot/tools/devpod/status.zsh $DP_SNAPSHOT)
   local _t_open=$EPOCHREALTIME
+  local -a search=("${_DP_FZF_SEARCH[@]}")
+  [[ -s $base ]] || search+=(--ghost='type a workspace name, then Ctrl-N')
   local out
   out=$(fzf --ansi --nth=1 --accept-nth=1 --multi --id-nth=1 \
       --print-query --expect=ctrl-n,ctrl-s \
-      $_DP_FZF_SEARCH \
+      "${search[@]}" \
       --info='inline-right: ' \
       ${_hdr:+--header=$_hdr} \
       --bind="load:transform-header($dot/tools/devpod/status.zsh $DP_SNAPSHOT)+reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \
