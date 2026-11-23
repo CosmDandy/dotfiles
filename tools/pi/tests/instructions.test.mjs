@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,13 +23,13 @@ try {
   mkdirSync(agentDir);
   mkdirSync(cwd);
   const globalPath = join(agentDir, "AGENTS.md");
-  copyFileSync(sourcePath, globalPath);
+  const repoFile = join(sandbox, "repo-AGENTS.md");
+  writeFileSync(repoFile, source);
+  symlinkSync(repoFile, globalPath);
   let contexts = loadProjectContextFiles({ cwd, agentDir });
   assert.deepEqual(contexts, [{ path: globalPath, content: source }]);
-  assert.equal(lstatSync(globalPath).isSymbolicLink(), false);
-  writeFileSync(globalPath, source + "\nLocal Pi instructions only.\n");
-  assert.equal(readFileSync(sourcePath, "utf8"), source, "local edits must not change the template");
-  assert.match(loadProjectContextFiles({ cwd, agentDir })[0].content, /Local Pi instructions only/);
+  writeFileSync(repoFile, source + "\nUpdated in dotfiles.\n");
+  assert.match(loadProjectContextFiles({ cwd, agentDir })[0].content, /Updated in dotfiles/);
 
   const claudePath = join(agentDir, "CLAUDE.md");
   renameSync(globalPath, claudePath);
@@ -59,7 +59,8 @@ try {
   if (process.argv.includes("--live")) {
     const liveContexts = loadProjectContextFiles({ cwd: process.cwd(), agentDir: liveAgentDir });
     assert.equal(liveContexts[0].path, join(liveAgentDir, "AGENTS.md"));
-    assert.equal(lstatSync(liveContexts[0].path).isSymbolicLink(), false);
+    assert.equal(realpathSync(liveContexts[0].path), realpathSync(sourcePath));
+    assert.equal(liveContexts[0].content, source);
     const live = loadSkills({ cwd: process.cwd(), agentDir: liveAgentDir, skillPaths: [], includeDefaults: true });
     for (const name of skillNames) assert.ok(live.skills.some(skill => skill.name === name), `missing skill: ${name}`);
     for (const name of ["CLAUDE.md", "APPEND_SYSTEM.md", "SYSTEM.md", "claude-rules"]) {

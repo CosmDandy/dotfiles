@@ -340,9 +340,18 @@ export default function (pi: ExtensionAPI) {
             const lines = super.render(innerWidth);
             const bottom = lines.indexOf(this.bottomBorder, 1);
             const theme = ctx.ui.theme;
-            const mode = data.getExtensionStatuses().get("work-mode");
-            const modeColor = mode === "EXPLORE" ? theme.colors.thinkingLow : mode === "EXECUTE" ? theme.colors.success : undefined;
-            const borderColor = modeColor ? mixColors(theme.colors.borderMuted, modeColor, 0.35, "srgb") : undefined;
+            const [mode, profile, agents] = (data.getExtensionStatuses().get("work-mode") ?? "").split(" · ");
+            const light = theme.appearance === "light";
+            const coral = light ? rgbColor(170, 72, 66) : rgbColor(217, 126, 116);
+            const blue = light ? rgbColor(43, 108, 150) : rgbColor(111, 172, 207);
+            const modeColor = mode === "EXPLORE" ? blue : mode === "EXECUTE" ? coral : undefined;
+            const profileColor = profile === "AUTONOMOUS" ? coral : mixColors(theme.colors.muted, theme.colors.dim, 0.65, "srgb");
+            const modeLabel = modeColor ? [
+              theme.style(mode, { fg: modeColor }),
+              profile ? theme.style(profile, { fg: profileColor }) : "",
+              agents ? theme.fg("accent", agents) : "",
+            ].filter(Boolean).join(theme.fg("dim", " · ")) : "";
+            const borderColor = modeColor ? mixColors(theme.colors.borderMuted, modeColor, 0.5, "srgb") : undefined;
             const border = (text: string) => borderColor ? theme.style(text, { fg: borderColor }) : theme.fg("borderMuted", text);
             const frame = lines.map((line, i) => {
               if (i === 0) return margin ? ` ${border(`╭─${line}─╮`)} ` : border(line);
@@ -350,7 +359,7 @@ export default function (pi: ExtensionAPI) {
               if (!margin) return line;
               return i < bottom ? ` ${border("│")} ${line} ${border("│")} ` : inset + line + inset;
             });
-            return [inset + this.renderStatus(innerWidth, modeColor && mode ? border(mode) : "") + inset, ...frame];
+            return [inset + this.renderStatus(innerWidth, modeLabel) + inset, ...frame];
           }
 
           handleMouse(event: TuiMouseEvent) {

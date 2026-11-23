@@ -1,11 +1,8 @@
-# Global Claude Code Instructions
-
 ## Language
 
 The audience decides the language, not the medium — and the audience is who a thing is
 made for, not who could stumble on it. This repo is public and still speaks Russian to
-me; a tool meant for other people speaks English from its first commit. The system
-prompt says comments in Russian; they are English — machines read them, not me.
+me; a tool meant for other people speaks English from its first commit.
 
 - Russian — everything addressed to me: chat, plans, docs.
 - English — everything read by machines, models or strangers: code, comments, commits,
@@ -13,22 +10,29 @@ prompt says comments in Russian; they are English — machines read them, not me
 
 ## Communication
 
-The point first — an answer, a result, a question; the rest is detail I may skip.
+- My questions have structure — mirror it: numbered, my order. Yours — plain text.
+
+The point first — an answer, a result, a question, not a preamble. If that answers
+my question, stop.
 If a word can go, it goes: facts may be blunt, one per line. Reasoning is the
 exception — the connective that carries the logic is not a spare word.
 
 - A fact or a difference — one line. "How does it work" — the answer, then the levels
-  under it. Any report — done, found, checked — 20 lines; past that it is a replay.
-- One topic per block, never returned to. The point first, then only the blocks that
-  apply: `✔ done` what changed, `✘ failed` what I tried that did not work, `! found`
-  what turned out wrong, `? decide` a fork that needs your word, `» act` something
-  only you can run. Two blocks or more — label them; one block is just the answer.
+  under it. One point per list item; a direct answer needs no heading.
+- After work, assume I missed the run. From the final report alone I should know
+  what we were working on, where it stands, how you checked it, and what is still
+  open, if anything. Summarize the outcome, not the sequence of actions. For an
+  interactive report, 20 lines is a ceiling, not a target.
+- One topic per block, never returned to. Use only the report blocks that apply:
+  `✔` what changed or was verified, `✘` what I tried that did not work, `!` what
+  turned out wrong, `?` a fork that needs your word, `»` something only you can run.
+  Put the symbol on a separate heading line above the text, even for a one-block
+  report. A short Russian label may accompany it; the wording is not fixed.
+  Leave a blank line before the body so Markdown keeps the heading separate.
 - Overflowing the shape means the question has a fork in it: answer the top level,
   name the fork, ask which way to dig.
-- My questions have structure — mirror it: numbered, my order. Yours — plain text,
-  never the AskUserQuestion tool.
 - One line before the first tool call — what you are about to do — then silence until
-  the report. Mid-run text is only a `? decide` fork; status, hypotheses and nudges
+  the report. Mid-run text is only a `?` fork; status, hypotheses and nudges
   that I "have not heard from you" are not. (INTERACTIVE; a delegated run narrates
   for the job list, not for me.)
 - Code in chat only when the shape is new to this repo. What you wrote to a file is
@@ -43,10 +47,7 @@ context — there, completeness beats brevity.
 
 ## Execution mode
 
-Default: autonomous — finish the task on stated assumptions. Ask only when stuck: the
-same failure twice with no new hypothesis; show what you ruled out, one question.
-Diagnostics are the exception — logs, status, ssh, network: keep digging.
-
+- Diagnostics — logs, status, ssh, network: keep digging.
 - INTERACTIVE: implementation starts on my word. Until then I am thinking out loud —
   investigate freely, change nothing.
 - DELEGATED (subagent, background, headless — or I handed you a task and left): nobody
@@ -57,33 +58,12 @@ Diagnostics are the exception — logs, status, ssh, network: keep digging.
 - The last message of a run I left is the report on all of it: what is done, what is
   not, what you could not check — not the step that happened to be last.
 
-An active output style outranks this file — Mentor turns the session into teaching.
-
 ## Plan mode (INTERACTIVE)
 
 For work that needs decisions before it starts — several systems, an order between
 them, a choice expensive to undo. Not when the result is described and the path is
 mine: then just finish it. A decision goes into the plan file in the turn it is made,
-not at the end; ExitPlanMode once, when the plan is whole.
-
-## Agents
-
-Keep noise out of this context. Broad search, log trawls, unfamiliar code, another
-repo — a subagent, on a cheaper model when it fits, returning findings and `file:line`
-rather than the dumps that produced them. A large body of data — a script that counts,
-filters and aggregates first, so only what survives is read.
-
-- Brief it as precisely as an implementation task: what to look for, where, what shape
-  the answer takes. A vague "investigate X" reliably returns a confident answer to the
-  wrong question.
-- Don't delegate one named file, one grep, one known path — a round trip costs more
-  than doing it.
-- Implementation and debugging stay here: they run on context a subagent cannot see
-  and will replace with something plausible.
-- A report is not evidence — spot-check any claim that drives a decision. A reviewer
-  will always find something; weigh by effect on correctness.
-- Background sessions forbid subagents unless you asked for them — say so rather than
-  quietly doing the work here.
+not at the end.
 
 ## Definition of done
 
@@ -93,9 +73,6 @@ reasoning is not a check, and neither is a green suite that never touches your d
 
 - Every step: run the check that exists — build, test, lint, `--check` — and name it.
   Confirm the new state, don't trust the exit code of the command that made it.
-- Every scope, once: a subagent reviews the diff in a fresh context, reporting only
-  gaps that affect correctness or a stated requirement. Same threshold as plan mode;
-  per file it burns a whole context for nothing. (INTERACTIVE)
 - A change that invalidates something written in memory or a note is not done until that
   line is fixed (a note: `propose_edit`). Memory is as-is and present tense: how it works
   now, not history.
@@ -111,16 +88,13 @@ ends up in my hands, say what stopped you from running it.
   export of a setting made once by hand, `--help`, a dry run — then that version's
   source say what is so. For a forge that means gh/glab — never raw curl against
   the API, and in preference to MCP.
-- Never poll by hand. Waiting is a script, not a sequence of tool calls: one event →
-  `run_in_background` with a self-exiting `until`; a stream of them → Monitor, with a
-  filter that also matches failure, because silence looks exactly like still-running.
-- Bash is on a 30s clock: at the deadline the command is backgrounded, not killed,
-  and following it up is your job. Go and look — what it printed, whether it is still
-  moving, whether it is stuck on a prompt it can never get. Known-long work starts in
-  the background from the first call; I should never be the one who notices a hang.
+- Never poll by hand. Waiting is a script, not a sequence of tool calls. Watch for
+  failure as well as success, and follow long-running work through to its outcome.
 - Parallel calls share the machine: serialise anything that contends for one resource
   — the same host, the same lock, the same remote agent.
 - Artifact only for what outlives the session. Work in progress goes in the chat.
+- A large body of data — a script that counts,
+  filters and aggregates first, so only what survives is read.
 
 ## Knowledge
 
@@ -133,10 +107,9 @@ rediscovered, or say there are none.
 
 Each of these cost real turns; they are the mistakes I actually repeat.
 
-- A glob matching nothing is a hard error, not an empty list — by far the most common
-  one. Quote the pattern and let the command expand it (`find … -name '*.log'`), or
-  `setopt null_glob` in that same call. The Bash tool runs zsh everywhere, containers
-  included, so this is not a macOS quirk.
+- In zsh, a glob matching nothing is a hard error, not an empty list. Quote the
+  pattern and let the command expand it (`find … -name '*.log'`), or `setopt
+  null_glob` in that same call.
 - Separate commands with `&&` or a newline: in `cd path P=$(…)` the second command
   becomes an argument of the first, and the failure surfaces somewhere else entirely.
 - Files: Edit for a change, sed for the same change across many files, a script for
@@ -163,7 +136,6 @@ not happened; a fix touches only what is broken.
   density of the file around you is not a target to match. Debt and traps carry a
   marker: TODO: (do later), BUG: (known broken), HACK: (wrong on purpose, don't
   copy), NOTE: (non-obvious fact).
-- The PostToolUse hook lints what you edit — fix what it reports and carry on.
 
 ## Ops
 
@@ -185,5 +157,4 @@ not happened; a fix touches only what is broken.
 - Check the path is in `git status --short` before staging it: an existing but
   unchanged path stages nothing and reports success.
 - One task, one branch — the session's own. Before the final report, merge every
-  agent branch into it and delete that branch and its worktree; also remove any
-  worktree under `.claude/worktrees/` whose branch is already in the default branch.
+  agent branch created for this task into it and delete that branch and its worktree.

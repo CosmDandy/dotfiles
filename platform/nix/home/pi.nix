@@ -33,6 +33,7 @@ in
   home.file = {
     # Replace the managed-installer shim, which otherwise shadows the Nix package.
     ".local/bin/pi".source = "${piTools.agent}/bin/pi";
+    ".pi/agent/AGENTS.md".source = link "tools/pi/AGENTS.md";
     ".pi/agent/keybindings.json".source = link "tools/pi/keybindings.json";
     ".pi/agent/extensions/solarized-status.ts".source = link "tools/pi/extensions/solarized-status.ts";
     ".pi/agent/extensions/compaction.ts".source = link "tools/pi/extensions/compaction.ts";
@@ -50,7 +51,6 @@ in
       "${dotfiles}/tools/pi/mcp.json" "$HOME/.pi/agent/mcp.json"
   '';
 
-  # Seed independent, editable files; never overwrite local instructions or state.
   home.activation.piSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     # Remove only legacy Pi links, never Claude's skills or independent user files.
     for name in commit compliance performance skill-tester spec ux c-brag c-call c-daylog c-log knowledge lab; do
@@ -64,10 +64,6 @@ in
         esac
       fi
     done
-    if [ ! -e "$HOME/.pi/agent/AGENTS.md" ]; then
-      run ${pkgs.coreutils}/bin/install -m 0600 \
-        "${dotfiles}/tools/pi/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
-    fi
     if [ ! -e "$HOME/.pi/agent/settings.json" ]; then
       run ${pkgs.coreutils}/bin/install -m 0600 \
         "${dotfiles}/tools/pi/settings.json" "$HOME/.pi/agent/settings.json"
