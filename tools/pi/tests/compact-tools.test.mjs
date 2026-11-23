@@ -54,6 +54,7 @@ try {
   const read = tool("read", { path: "src/app.ts", offset: 2, limit: 30 });
   assert.equal(rows(read).length, 1);
   assert.match(body(read), /^ *read src\/app.ts:2-31$/);
+  assert.ok(read.render(100).join("\n").includes(themes.theme.fg("accent", "src/app.ts") + themes.theme.style(":2-31", darkMetadata)));
   assert.doesNotMatch(body(read), /[├│]/);
   assert.equal(timers.size, 0, "argument streaming must not start a timer");
   read.markExecutionStarted();
@@ -67,6 +68,7 @@ try {
   const animated = read.render(100).join("\n");
   assert.notEqual(animated, old, "pulse must animate without new tool output");
   assert.equal(plain(animated), plain(old), "animation does not add characters or cells");
+  assert.ok(animated.includes(themes.theme.style(":2-31", darkMetadata)), "read range stays quiet during animation");
   assert.ok(redraws > 0);
   const shortPulse = tool("bash", { command: "sleep 1" }, "pulse-short");
   const longPulse = tool("bash", { command: "printf 'a much longer command header for comparison'" }, "pulse-long");
@@ -364,6 +366,7 @@ try {
       assert.ok(header.includes(tail));
       assert.doesNotMatch(header, /hidden-root/);
     }
+    if (name === "read") assert.match(rows(call, 25)[0], /target\.ts$/, "hide the range before clipping the file name");
     call.setExpanded(true);
     assert.ok(rows(call, 200)[0].includes(longPath + (name === "read" ? ":12-19" : "")));
     assert.ok(rows(call, 35).length > 1, "expanded paths wrap instead of being cut off");
@@ -536,6 +539,10 @@ try {
     const openStyle = light
       ? { fg: mixColors(themes.theme.colors.borderMuted, rgbColor(241, 234, 215), 0.12, "srgb"), dim: false }
       : darkMetadata;
+    read.setExpanded(false);
+    assert.ok(read.render(100).join("\n").includes(themes.theme.style(":2-31", closedStyle)));
+    read.setExpanded(true);
+    assert.ok(read.render(100).join("\n").includes(themes.theme.style(":2-31", openStyle)));
     knowledge.setExpanded(false);
     assert.ok(knowledge.render(100).join("\n").includes(themes.theme.style("2 results · 340 ms", closedStyle)));
     knowledge.setExpanded(true);

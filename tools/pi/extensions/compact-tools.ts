@@ -647,9 +647,9 @@ export default function compactTools(pi: ExtensionAPI) {
           : toolName === "bash" || mcp ? "" : toolName === "ls"
           ? preview({ path: args?.path ?? "." }) : list
             ? [args?.pattern, args?.path ?? "."].filter(value => typeof value === "string").map(value => preview({ path: value })).join(" · ")
-            : toolName === "read" && typeof args?.path === "string" && args.path
-              ? preview(args) + formatReadLineRange(args.offset, args.limit)
-              : preview(args ?? {});
+            : preview(args ?? {});
+        const readRange = toolName === "read" && typeof args?.path === "string" && argsPreview
+          ? formatReadLineRange(args.offset, args.limit) : "";
         const outcome = !context.isPartial && !context.isError
           ? toolName === "write" ? writeKinds.get(context.toolCallId) ?? "Written" : context.state.outcome as string | undefined
           : undefined;
@@ -743,18 +743,20 @@ export default function compactTools(pi: ExtensionAPI) {
           const pathRoom = room - visibleWidth(title) - 1;
           const suffix = counts && (expanded || pathRoom - visibleWidth(counts) - 1 >= minPathWidth) ? " " + counts : "";
           const argsRoom = pathRoom - visibleWidth(suffix);
+          const range = expanded || argsRoom >= minPathWidth + readRange.length ? readRange : "";
+          const rangeLabel = range ? quietMetadata(theme, range, expanded) : "";
           const displayArgs = compactPath && argsRoom > 0
-            ? shortenPath(argsPreview, pathMarker, minPathWidth, argsRoom) : pathMarker + argsPreview;
+            ? shortenPath(argsPreview, pathMarker, minPathWidth, argsRoom - range.length) : pathMarker + argsPreview;
           const summary = (argsPreview ? " " + theme.fg(pathColor, displayArgs) : "") + suffix;
           const line = title + summary;
           const header = expanded && fileCall
-            ? wrapTextWithAnsi(animate(line + badge), Math.max(1, width))
-            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room) + shownBadge)), width)];
+            ? wrapTextWithAnsi(animate(line + badge) + rangeLabel, Math.max(1, width))
+            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge) + rangeLabel), width)];
           return paint(argumentsText ? [...header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)] : header);
         };
         if (context.isPartial) return cacheLines(render);
         return finishedComponent(context.state, expanded ? "call:open" : "call:closed",
-          [theme.colors, scope, argsPreview, outcome, padding, command, timing, timeout, argumentsText, context.isError,
+          [theme.colors, scope, argsPreview, readRange, outcome, padding, command, timing, timeout, argumentsText, context.isError,
             stats?.added, stats?.removed, stats?.modified], render);
       },
       renderResult(result, { expanded, isPartial }, theme, context) {
