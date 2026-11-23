@@ -77,18 +77,26 @@ func paneTTY(pid string) string {
 
 // ttyHasClaude is `ps -t tty -o args=` searched for "claude".
 // CLAUDE_CLI_PANE_TITLE_ARGS overrides the ps output for tests.
-func ttyHasClaude(tty string) bool {
+func ttyAgent(tty string) string {
 	var out string
 	if v, ok := os.LookupEnv("CLAUDE_CLI_PANE_TITLE_ARGS"); ok {
 		out = v
 	} else {
 		raw, err := exec.Command("ps", "-t", tty, "-o", "args=").Output()
 		if err != nil {
-			return false
+			return ""
 		}
 		out = string(raw)
 	}
-	return strings.Contains(out, "claude")
+	for _, line := range strings.Split(out, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "pi" {
+			return "Pi Coding Agent"
+		}
+	}
+	if strings.Contains(out, "claude") {
+		return "claude"
+	}
+	return ""
 }
 
 func runPaneTitle(args []string) {
@@ -122,14 +130,19 @@ func runPaneTitle(args []string) {
 	}
 
 	label := cmd
+	if cmd == "pi" {
+		label = "Pi Coding Agent"
+	}
 
 	// NOTE: Claude Code is either a node wrapper (devcontainers) or the
 	// native binary, whose comm is its version number — so "claude" is
 	// looked for in the args of any process on the pane's tty, which does
 	// not depend on the depth of the process tree.
 	if cmd == "node" || (len(cmd) > 0 && cmd[0] >= '0' && cmd[0] <= '9') {
-		if tty := paneTTY(panePID); tty != "" && ttyHasClaude(tty) {
-			label = "claude"
+		if tty := paneTTY(panePID); tty != "" {
+			if agent := ttyAgent(tty); agent != "" {
+				label = agent
+			}
 		}
 	}
 

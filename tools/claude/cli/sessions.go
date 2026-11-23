@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const permissionWait = "permission prompt"
@@ -189,12 +190,52 @@ func sessionCounts(selfID *string) (running, waiting, approval int) {
 	return running, waiting, approval
 }
 
+// Pi publishes one heartbeat per interactive runtime, including idle panes.
+func piSessionCounts() (total, running, waiting int) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	dir := filepath.Join(home, ".pi", "agent", "cache", "statusline", "sessions")
+	entries, _ := os.ReadDir(dir)
+	now := time.Now().UnixMilli()
+	for _, e := range entries {
+		pid, err := strconv.Atoi(strings.TrimSuffix(e.Name(), ".json"))
+		if err != nil || pid <= 0 || e.Name() != strconv.Itoa(pid)+".json" {
+			continue
+		}
+		var record struct {
+			PID   int
+			At    int64
+			State string
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil || json.Unmarshal(raw, &record) != nil || record.PID != pid || record.At < now-90000 || record.At > now || !alive(pid) {
+			continue
+		}
+		switch record.State {
+		case "idle":
+		case "running":
+			running++
+		case "waiting":
+			waiting++
+		default:
+			continue
+		}
+		total++
+	}
+	return
+}
+
 // sessionBadge renders the counters exactly as claude-sessions.py's main()
 // does: bare mode is waiting+approval only, uncoloured (drawn by the system
 // font in the window title); full mode adds running, coloured (the
 // statusline, which draws its own colours already).
 func sessionBadge(full bool, selfID *string) string {
 	running, waiting, approval := sessionCounts(selfID)
+	totalPi, runningPi, waitingPi := piSessionCounts()
+	running += runningPi
+	waiting += waitingPi
 
 	type part struct {
 		icon   string
@@ -210,6 +251,9 @@ func sessionBadge(full bool, selfID *string) string {
 	}
 
 	var out []string
+	if !full && totalPi > 0 {
+		out = append(out, fmt.Sprintf("π %d", totalPi))
+	}
 	for _, p := range parts {
 		if p.number <= 0 {
 			continue
