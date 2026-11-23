@@ -191,7 +191,7 @@ func sessionCounts(selfID *string) (running, waiting, approval int) {
 }
 
 // Pi publishes one heartbeat per interactive runtime, including idle panes.
-func piSessionCounts() (total, running, waiting int) {
+func piSessionCounts() (running, waiting int) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return
@@ -222,7 +222,6 @@ func piSessionCounts() (total, running, waiting int) {
 		default:
 			continue
 		}
-		total++
 	}
 	return
 }
@@ -233,7 +232,7 @@ func piSessionCounts() (total, running, waiting int) {
 // statusline, which draws its own colours already).
 func sessionBadge(full bool, selfID *string) string {
 	running, waiting, approval := sessionCounts(selfID)
-	totalPi, runningPi, waitingPi := piSessionCounts()
+	runningPi, waitingPi := piSessionCounts()
 	running += runningPi
 	waiting += waitingPi
 
@@ -251,9 +250,6 @@ func sessionBadge(full bool, selfID *string) string {
 	}
 
 	var out []string
-	if !full && totalPi > 0 {
-		out = append(out, fmt.Sprintf("π %d", totalPi))
-	}
 	for _, p := range parts {
 		if p.number <= 0 {
 			continue

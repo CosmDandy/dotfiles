@@ -75,7 +75,7 @@ func paneTTY(pid string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// ttyHasClaude is `ps -t tty -o args=` searched for "claude".
+// Identify the agent behind a node or version-number process name.
 // CLAUDE_CLI_PANE_TITLE_ARGS overrides the ps output for tests.
 func ttyAgent(tty string) string {
 	var out string
@@ -90,7 +90,7 @@ func ttyAgent(tty string) string {
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "pi" {
-			return "Pi Coding Agent"
+			return "pi"
 		}
 	}
 	if strings.Contains(out, "claude") {
@@ -130,9 +130,6 @@ func runPaneTitle(args []string) {
 	}
 
 	label := cmd
-	if cmd == "pi" {
-		label = "Pi Coding Agent"
-	}
 
 	// NOTE: Claude Code is either a node wrapper (devcontainers) or the
 	// native binary, whose comm is its version number — so "claude" is

@@ -172,7 +172,7 @@ func TestPiSessionBadge(t *testing.T) {
 		state string
 		age   int64
 		want  string
-	}{{"idle", 0, "π 1"}, {"running", 0, "π 1"}, {"waiting", 0, "π 1 ○ 1"}, {"waiting", 91000, ""}} {
+	}{{"idle", 0, ""}, {"running", 0, ""}, {"waiting", 0, "○ 1"}, {"waiting", 91000, ""}} {
 		data := fmt.Sprintf(`{"pid":%d,"at":%d,"state":%q}`, pid, time.Now().UnixMilli()-tc.age, tc.state)
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%d.json", pid)), []byte(data), 0600); err != nil {
 			t.Fatal(err)
@@ -182,7 +182,7 @@ func TestPiSessionBadge(t *testing.T) {
 		}
 	}
 	t.Setenv("CLAUDE_CLI_PANE_TITLE_ARGS", "-zsh\npi\n")
-	if ttyAgent("fixture") != "Pi Coding Agent" {
+	if ttyAgent("fixture") != "pi" {
 		t.Fatal("Pi not recognized")
 	}
 }
