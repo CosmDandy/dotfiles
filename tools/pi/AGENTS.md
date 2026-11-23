@@ -143,11 +143,9 @@ not happened; a fix touches only what is broken.
   helm diff, ansible --check — a gate before the fact, not a review after.
 - Identify the environment first; prod is confirm-required even when permitted.
 - Know the rollback path before you apply.
-- Off-file domains (ssh, network, bare metal, VMs): load the matching skill —
-  `ops-remote`, `ops-net`, `ops-metal`, `ops-vm` — before the second command,
-  unprompted. The domain's rules live in the skill.
-- All ssh: `-o BatchMode=yes -o ConnectTimeout=5 -T`, nothing that can prompt —
-  this must hold from the first command, so it lives here, not in the skill.
+- Before the first command in an ops domain, load its skill: SSH → `ops-remote`,
+  networking → `ops-net`, bare metal → `ops-metal`, VMs → `ops-vm`. If a command
+  spans domains, load each matching skill first (e.g. a route change over SSH).
 
 ## Git
 

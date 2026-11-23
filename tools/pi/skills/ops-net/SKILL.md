@@ -20,15 +20,19 @@ when_to_use: Any connectivity symptom or network change. Triggers - «не ра�
 ## Ordering
 
 Work the layers in order and re-measure after each step: link → address → route → neighbour
-→ DNS → firewall → application. Change one thing at a time. Jumping straight to firewall or
-DNS is the usual way to lose an hour.
+→ DNS → firewall → application. Jumping straight to firewall or DNS is the usual way to
+lose an hour.
+
+One change at a time, then re-measure. Batched changes make attribution impossible.
+Independent read-only checks can run in parallel; this rule is about changes, not tool calls.
 
 ## Diagnostics that are easy to get wrong
 
 - DNS: check with `getent hosts` or `resolvectl query`, not only `dig`. `dig` bypasses
   nsswitch and systemd-resolved, so it happily answers while the application cannot resolve.
-- `tcpdump` always bounded and filtered: `-nn`, an explicit BPF expression, and `-c N` or
-  `-w file`. An unbounded capture floods the session and buries the signal.
+- `tcpdump`: use `-nn`, an explicit BPF filter and a packet limit (`-c N`), even when
+  saving to a file. `-w file` sets the destination, not a limit. Set a time limit too
+  if the matching packets might never arrive.
 - Symptom "small things work, large things hang" is a PMTU blackhole, not "the network is
   slow". Bisect with `ping -M do -s <size>`; MSS clamping is the practical fix, letting ICMP
   type 3 code 4 through is the correct one. Watch for `rp_filter` silently dropping return

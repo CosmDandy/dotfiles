@@ -14,15 +14,12 @@ when_to_use: Any command that targets another machine — ssh, scp, rsync, ansib
   answer. `-T` avoids allocating a TTY that nothing reads.
 - Never run a command that can turn interactive: `apt`/`dnf` without `-y`, anything that may
   open an editor, `passwd`, a first-run wizard.
-- Anything that may exceed ~45 seconds — package upgrades, `dd`, image writes, firmware,
-  `talosctl upgrade` — starts detached and gets polled:
-  `ssh host 'tmux new -d -s job "…"'` or `systemd-run --unit=job …`, then poll for status.
-  At 45s the tool backgrounds the local ssh client rather than killing it, so the remote
-  work does keep running — but only while that channel lives. Stop the task, drop the link
-  or end the session and the remote job takes SIGHUP mid-write. Detaching on the remote side
-  is what makes it survive; the foreground is never the answer here.
-- No `sudo`: the PreToolUse guard denies it. Ask the user to run privileged steps, or use a
-  path that does not need elevation.
+- If losing SSH must not interrupt a job (an upgrade, image write or firmware update),
+  detach it on the remote host, not on the client. Use a remote `tmux` session or a
+  transient systemd service. Keep the job's output and exit status on the host;
+  reconnect and verify the outcome. A successful launch is not a successful job.
+- No `sudo` over SSH. Use a path that needs no elevation, or tell the user exactly
+  which privileged step they need to run.
 - Never edit a remote file in place without a backup first:
   `cp -a /etc/thing /etc/thing.bak-$(date +%s)`. That includes `sed -i` and `>` redirects.
 
@@ -38,8 +35,6 @@ Read out of the transcripts — every one of these cost turns more than once.
 - **Take the process name from `pgrep`, not from what you think you launched.**
   `pkill -f site.yml` misses `ansible-playbook-wrapped`; the usual outcome is three
   wasted attempts against a process that was never named that.
-- **`git commit` can outlast the 45s clock** when the repo has pre-commit hooks or
-  signing. Start it with `run_in_background` instead of discovering that at the timeout.
 - **The image is not this machine.** Packages present locally — PyYAML is the recurring
   one — may simply be absent. Check the import before building a script around it.
 
@@ -56,7 +51,6 @@ Read out of the transcripts — every one of these cost turns more than once.
 
 - Read state before changing it, and capture what you read to a file when the change is not
   trivially reversible.
-- One change at a time, then re-measure. Batched changes make attribution impossible.
 - After the change, verify from the same vantage point the user cares about — a service that
   answers on localhost but not from outside is not fixed.
 - Report what you actually ran and what came back. Never summarise a remote result you did
