@@ -4,9 +4,9 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
-import { getLanguageFromPath, highlightCode, isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { formatReadLineRange, getLanguageFromPath, getMarkdownTheme, highlightCode, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
-import { colorToRgb, mixColors, parseColor, rgbColor, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 const pulseInterval = 120;
 const timingInset = 3;
@@ -27,7 +27,7 @@ function expandedRows(rows: string[], expanded: boolean, width: number, theme: T
   });
 }
 
-function runningPulse(title: string, theme: Theme, step: number): string {
+function runningPulse(title: string, theme: Theme, step: number, strongLightPulse: boolean): string {
   const text = stripVTControlCharacters(title);
   const start = text.match(/^ */)![0];
   const segments = [...graphemes.segment(text.slice(start.length))];
@@ -47,7 +47,8 @@ function runningPulse(title: string, theme: Theme, step: number): string {
   };
   for (let i = 0; i < segments.length; i++) {
     const distance = Math.min(1, Math.abs(i - peak) / spread);
-    const shade = Math.round(contrast * Math.cos(distance * Math.PI));
+    const wave = Math.cos(distance * Math.PI);
+    const shade = Math.round(contrast * (strongLightPulse ? -1.5 * (wave + 1) : wave));
     if (shade !== previous && run) { output += paint(run, previous); run = ""; }
     run += segments[i].segment;
     previous = shade;
@@ -61,7 +62,7 @@ function clean(text: string): string {
 
 function shellLog(text: string): string {
   // Keep SGR colors, not cursor moves, window commands or other terminal controls.
-  return text.split(/(\x1b\[[0-9;]{0,64}m)/g)
+  return text.split(/(\x1b\[[0-9;:]{0,64}m)/g)
     .map((part, index) => index % 2 ? part : clean(part).replace(/[\x80-\x9f]/g, ""))
     .join("");
 }
@@ -69,6 +70,14 @@ function shellLog(text: string): string {
 function preview(args: Record<string, unknown>): string {
   const value = args.path ?? args.file_path ?? args.command ?? args.pattern ?? args.query ?? args.url;
   return clean(typeof value === "string" ? value : JSON.stringify(args)).replace(/\s+/g, " ").trim();
+}
+
+function shortenPath(path: string, marker: string, minWidth: number, maxWidth: number): string {
+  const prefix = maxWidth - visibleWidth(marker) >= minWidth ? marker : "";
+  const room = maxWidth - visibleWidth(prefix);
+  const width = visibleWidth(path);
+  if (width <= room) return prefix + path;
+  return prefix + "…" + (room > 1 ? sliceByColumn(path, width - room + 1, room - 1, true) : "");
 }
 
 function resolveToolPath(path: string, cwd: string): string | undefined {
@@ -133,6 +142,80 @@ function shellSearch(command: unknown): ShellSearch | undefined {
   return undefined;
 }
 
+const devopsPrograms = new Set([
+  "docker", "docker-compose", "ansible", "ansible-playbook", "ansible-inventory", "terraform", "tofu",
+  "kubectl", "helm", "talosctl", "ssh", "top", "htop", "free", "df", "ss", "journalctl",
+]);
+const groupedOptions = new Set([
+  "--context", "--namespace", "--kubeconfig", "--nodes", "--endpoints", "--selector", "--output",
+  "--inventory", "--limit", "--project-name", "--file", "--unit", "--since", "--until", "-n", "-o", "-f", "-i", "-u",
+]);
+
+type DevopsPreview = { words: string[]; note?: string };
+
+function simpleShellWords(command: string): string[] | undefined {
+  // Preserve shell spelling without evaluating expansions or interpreting compound commands.
+  const gap = /(?:[ \t]+|\\\r?\n)*/y;
+  const word = /(?:[^\s'"\\|;&<>()`#]+|'[^']*'|"(?:[^"\\`$]|\$(?!\()|\\[^\r\n])*"|\\[^\r\n])+/y;
+  const words: string[] = [];
+  let index = 0;
+  while (index < command.length) {
+    gap.lastIndex = index;
+    gap.exec(command);
+    if (gap.lastIndex === command.length) break;
+    if (words.length && gap.lastIndex === index) return undefined;
+    word.lastIndex = gap.lastIndex;
+    const token = word.exec(command);
+    if (!token) return undefined;
+    words.push(token[0]);
+    index = word.lastIndex;
+  }
+  return words;
+}
+
+function sshDestination(words: string[], start: number): number | undefined {
+  for (let i = start; i < words.length; i++) {
+    const word = words[i];
+    if (word === "--") return i + 1 < words.length ? i + 1 : undefined;
+    if (!word.startsWith("-")) return i;
+    if (/^-[1246AaCfGgKkMNnqsTtVvXxYy]+$/.test(word)) continue;
+    if (!/^-[BbcDEeFIiJLlmOoPpQRSWw]/.test(word)) return undefined;
+    if (word.length === 2 && (!words[++i] || words[i].startsWith("-"))) return undefined;
+  }
+  return undefined;
+}
+
+function devopsPreview(command: string, ready: boolean): DevopsPreview | undefined {
+  const source = command.trimEnd();
+  const head = /^[ \t]*(sudo[ \t]+)?([\w./-]+)(?=[ \t]|\\\r?\n|$)/.exec(source);
+  if (!head) return undefined;
+  const name = basename(head[2]);
+  if (!devopsPrograms.has(name)) return undefined;
+  const sshHead = head[1] ? ["sudo", head[2]] : [head[2]];
+  const words = ready ? simpleShellWords(source) : undefined;
+  if (name !== "ssh") return words ? { words } : undefined;
+  const destination = words && sshDestination(words, sshHead.length);
+  if (!words || destination === undefined) {
+    return { words: sshHead, note: ready ? "SSH arguments hidden · expand to inspect" : "Preparing SSH arguments…" };
+  }
+  return { words: words.slice(0, destination + 1), note: destination < words.length - 1 ? "Remote command hidden · expand to inspect" : undefined };
+}
+
+function devopsCommandLines(words: string[], width: number): string[] {
+  const lines: string[] = [];
+  let line = "$";
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const group = groupedOptions.has(word) && words[i + 1] && !words[i + 1].startsWith("-") ? `${word} ${words[++i]}` : word;
+    if (visibleWidth(line + " " + group) > width && line !== "$") {
+      lines.push(line);
+      line = " ";
+    }
+    line += " " + group;
+  }
+  return [...lines, line];
+}
+
 function elapsedLabel(durationMs: number | undefined): string {
   return durationMs !== undefined && Number.isFinite(durationMs)
     ? durationMs < 1000 ? `${Math.round(durationMs)} ms` : `${(durationMs / 1000).toFixed(1)} s` : "";
@@ -146,6 +229,39 @@ function mcpSummary(output: string, structured: unknown): string {
   const record = data as Record<string, unknown> | null | undefined;
   const items = Array.isArray(data) ? data : [record?.results, record?.items, record?.matches].find(Array.isArray);
   return Array.isArray(items) ? `${items.length} ${items.length === 1 ? "result" : "results"}` : "Done";
+}
+
+function knowledgeResponse(output: string, structured: unknown): Record<string, unknown> | undefined {
+  const parse = (value: unknown): unknown => {
+    if (typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch { return undefined; }
+  };
+  const data = parse(structured ?? output);
+  if (!data || typeof data !== "object") return undefined;
+  const record = data as Record<string, unknown>;
+  const result = "result" in record ? parse(record.result) : record;
+  return result && typeof result === "object" ? result as Record<string, unknown> : undefined;
+}
+
+function exaMatches(output: string) {
+  if (!output.startsWith("Title: ")) return undefined;
+  const hits = output.split(/\n---\n(?=\s*Title: )/).map(block => {
+    const match = block.trim().match(/^Title: ([^\n]+)\nURL: (https?:\/\/[^\s]+)(?=\n|$)/);
+    if (!match) return undefined;
+    return { title: match[1], heading: match[2], snippet: block.match(/\nHighlights:\s*([\s\S]*)/)?.[1] };
+  });
+  return hits.every(hit => hit !== undefined) ? hits : undefined;
+}
+
+function searchExcerpt(snippet: string, knowledge: boolean): string {
+  const lines = clean(snippet).split("\n")
+    .filter(line => !/^\s*(?:[~`]{3}|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$)/.test(line))
+    .map(line => line.replace(/^\s*(?:>\s*)+/, "").replace(/^\s*#{1,6}\s+/, "")
+      .replace(/\[([^\[\]\n]+)\]\([^\s)]+\)/g, "$1")
+      .replace(/\*\*|__|`/g, "").trim())
+    .filter(Boolean);
+  const text = lines.join("\n");
+  return knowledge ? text.replace(/(?<!\[)\[([\p{L}\p{N}_-]+)\](?!\])/gu, "$1") : text;
 }
 
 type FileScope = "project" | "tmp" | "external";
@@ -335,31 +451,32 @@ function renderDelta(patch: string, cwd: string, appearance: Theme["appearance"]
   });
 }
 
-function quietMetadata(theme: Theme, text: string): string {
+function quietMetadata(theme: Theme, text: string, expanded = false): string {
   return theme.style(text, {
-    fg: theme.appearance === "light" ? mixColors(theme.colors.borderMuted, lightTimingBackground, 0.27, "srgb") : "borderMuted",
-    dim: true,
+    fg: theme.appearance === "light" ? mixColors(theme.colors.borderMuted,
+      expanded ? expandedBackgrounds.light : lightTimingBackground, expanded ? 0.12 : 0.20, "srgb") : rgbColor(89, 102, 106),
+    dim: !expanded && theme.appearance === "light",
   });
 }
 
-function diffNumber(number: string, digits: number, kind: string, theme: Theme): string {
+function diffNumber(number: string, digits: number, kind: string, theme: Theme, expanded: boolean): string {
   const label = number.padStart(digits) + " ";
-  if (kind === " ") return quietMetadata(theme, label);
+  if (kind === " ") return quietMetadata(theme, label, expanded);
   const palette = diffPalette[theme.appearance][kind === "-" ? "remove" : "add"];
   return theme.style(label, { fg: parseColor(palette.number), bg: parseColor(palette.bg) });
 }
 
-function quietDiff(rows: DiffRow[], digits: number, theme: Theme): string {
+function quietDiff(rows: DiffRow[], digits: number, theme: Theme, expanded: boolean): string {
   return rows.map(row => {
     if ("text" in row) {
-      const prefix = row.number ? diffNumber(row.number, digits, " ", theme) + "  " : "";
-      return prefix + (row.number ? theme.fg("toolDiffContext", row.text) : quietMetadata(theme, row.text));
+      const prefix = row.number ? diffNumber(row.number, digits, " ", theme, expanded) + "  " : "";
+      return prefix + (row.number ? theme.fg("toolDiffContext", row.text) : quietMetadata(theme, row.text, expanded));
     }
     const { sign, code, changed } = row;
     const color = sign === "-" ? "toolDiffRemoved" : "toolDiffAdded";
     const palette = diffPalette[theme.appearance][sign === "-" ? "remove" : "add"];
     const text = changed ? diffTokens(code).map((part, index) => changed.has(index) ? theme.fg(color, part) : part).join("") : code;
-    return diffNumber(row.number, digits, sign, theme)
+    return diffNumber(row.number, digits, sign, theme, expanded)
       + theme.style(theme.fg(sign === "~" ? "warning" : color, sign) + " " + text, { bg: parseColor(palette.bg) });
   }).join("\n");
 }
@@ -502,6 +619,14 @@ export default function compactTools(pi: ExtensionAPI) {
     const [server, action] = mcp ? toolName.slice(5).split(/__(.*)/, 2) : [];
     const list = listTools.has(toolName);
     const codemode = toolName === "codemode";
+    const shellCall = toolName === "bash" || codemode;
+    const fileCall = toolName === "read" || toolName === "edit" || toolName === "write";
+    const knowledge = server === "knowledge" && (action === "search" || action === "read");
+    const exa = server === "exa" && (action === "web_search_exa" || action === "web_fetch_exa");
+    const searchMcp = action === "search" || action === "web_search_exa";
+    const friendlyMcp = knowledge || exa;
+    const matchesFor = (output: string, structured: unknown) => knowledge
+      ? knowledgeResponse(output, structured)?.results : exaMatches(output);
     const renderers: ToolRenderers = {
       renderShell: "self",
       renderCall(args, theme, context) {
@@ -519,7 +644,8 @@ export default function compactTools(pi: ExtensionAPI) {
           if (pending.size === 0) stop();
         }
 
-        const pulseStep = running ? Math.floor(Math.max(0, Date.now() - (context.state.pulseStartedAt as number)) / pulseInterval) : 0;
+        const liveMs = running ? Math.max(0, Date.now() - (context.state.pulseStartedAt as number)) : 0;
+        const pulseStep = Math.floor(liveMs / pulseInterval);
         const scope = fileScope(toolName, args, context.cwd, context.state);
         const quiet = scope === "tmp" && !context.isError;
         const pathColor = scope === "project" ? "accent" : scope === "external" ? "warning" : scope === "tmp" ? "muted" : "toolOutput";
@@ -533,41 +659,66 @@ export default function compactTools(pi: ExtensionAPI) {
           removed: compactStats.removed + compactStats.modified,
           modified: 0,
         } : compactStats;
-        const label = clean(action ? `${action.replaceAll("_", " ")} · ${server}` : toolName);
-        const argsPreview = toolName === "bash" || mcp ? "" : toolName === "ls"
+        const label = exa ? `${searchMcp ? "search" : "fetch"} · exa`
+          : clean(action ? `${action.replaceAll("_", " ")} · ${server}` : toolName);
+        const target = knowledge ? searchMcp ? args?.text : args?.path : args?.query;
+        const urls = exa && !searchMcp && Array.isArray(args?.urls) ? args.urls : [];
+        const argsPreview = friendlyMcp
+          ? searchMcp && typeof target === "string" ? preview({ query: JSON.stringify(target) })
+            : knowledge && typeof target === "string"
+              ? clean(basename(target, ".md") + (typeof args?.heading === "string" ? ` › ${args.heading}` : "")).replace(/\s+/g, " ")
+              : typeof urls[0] === "string" ? clean(urls[0]) + (urls.length > 1 ? ` +${urls.length - 1}` : "") : ""
+          : toolName === "bash" || mcp ? "" : toolName === "ls"
           ? preview({ path: args?.path ?? "." }) : list
             ? [args?.pattern, args?.path ?? "."].filter(value => typeof value === "string").map(value => preview({ path: value })).join(" · ")
-            : preview(args ?? {});
+            : toolName === "read" && typeof args?.path === "string" && args.path
+              ? preview(args) + formatReadLineRange(args.offset, args.limit)
+              : preview(args ?? {});
         const outcome = !context.isPartial && !context.isError
           ? toolName === "write" ? writeKinds.get(context.toolCallId) ?? "Written" : context.state.outcome as string | undefined
           : undefined;
         const padding = " ".repeat(context.outputPad);
         const sourceArg = codemode ? args?.code : args?.command;
-        const command = (toolName === "bash" || codemode) && typeof sourceArg === "string" ? clean(sourceArg) : "";
-        const timing = toolName === "bash" || codemode || list ? elapsedLabel(context.durationMs) : "";
+        const command = shellCall && typeof sourceArg === "string" ? clean(sourceArg) : "";
+        const devops = toolName === "bash" && !expanded
+          ? devopsPreview(command, context.argsComplete || context.executionStarted || !context.isPartial) : undefined;
+        context.state.devopsPreview = devops !== undefined;
+        const timing = shellCall ? elapsedLabel(context.isPartial ? liveMs : context.durationMs)
+          : list || friendlyMcp ? elapsedLabel(context.durationMs) : "";
+        const metadata = friendlyMcp ? [outcome, timing].filter(Boolean).join(" · ") : timing;
         const timeout = toolName === "bash" && typeof args?.timeout === "number" && Number.isFinite(args.timeout) && args.timeout > 0
           ? ` (timeout ${args.timeout} s)` : "";
-        const argumentsText = expanded && !list && !["bash", "edit", "read"].includes(toolName)
+        const argumentsText = expanded && !list && !friendlyMcp && !["bash", "edit", "read"].includes(toolName)
           ? clean(JSON.stringify(args ?? {}, null, 2)) : "";
         const render = (width: number) => {
           const available = width - timingInset;
-          const meta = timing && available >= 16 ? quietMetadata(theme, truncateToWidth(timing, Math.floor(available * 0.5))) : "";
-          const titleWidth = meta ? Math.min(Math.floor(width * 0.7), available - visibleWidth(meta) - 1) : width;
-          const animate = (text: string) => running ? runningPulse(text, theme, pulseStep) : text;
+          const meta = metadata && available >= 16 ? quietMetadata(theme, truncateToWidth(metadata, Math.floor(available * 0.5)), expanded) : "";
+          const compactWidth = Math.max(1, Math.floor(width * 0.7));
+          const titleWidth = meta ? Math.min(compactWidth, available - visibleWidth(meta) - 1) : expanded ? width : compactWidth;
+          const animate = (text: string) => running ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light") : text;
           const withMeta = (left: string) => meta ? left + " ".repeat(Math.max(1, available - visibleWidth(left) - visibleWidth(meta)))
             + meta + " ".repeat(timingInset) : left;
           const paint = (rows: string[]) => expandedRows(rows, expanded, width, theme);
-          if (toolName === "bash" || codemode) {
+          if (devops) {
+            const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
+            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title + timeout), Math.max(0, titleWidth - padding.length))), width);
+            const lines = devopsCommandLines(devops.words, Math.max(1, width - padding.length - 1));
+            const script = highlighted(lines.join("\n"), "bash", text => theme.fg("toolOutput", text));
+            return [header, ...indentedLines(script, padding, width),
+              ...(devops.note ? indentedLines(theme.fg("muted", devops.note), padding, width) : [])];
+          }
+          if (shellCall) {
             const lines = command.split("\n");
             const source = expanded ? command : lines[0];
-            const shell = context.isError ? source.split("\n").map(line => theme.fg("error", line)).join("\n")
+            const shell = !expanded ? theme.fg("toolOutput", source)
+              : context.isError ? source.split("\n").map(line => theme.fg("error", line)).join("\n")
               : context.isPartial && !context.argsComplete ? source
               : highlighted(source, codemode ? "javascript" : "bash", text => theme.fg("toolOutput", text));
             const [first, ...rest] = shell.split("\n");
-            const title = first || "…";
+            const title = source ? first : "…";
             const marker = codemode ? "codemode" : "$";
             const prompt = (room: number) => room > padding.length + marker.length + 1
-              ? theme.fg(context.isError ? "error" : "toolTitle", theme.bold(marker)) + " " : "";
+              ? theme.fg(expanded ? (context.isError ? "error" : "toolTitle") : "toolOutput", theme.bold(marker)) + " " : "";
             if (expanded) {
               const prefix = padding + prompt(width);
               const indent = padding + " ";
@@ -579,8 +730,8 @@ export default function compactTools(pi: ExtensionAPI) {
               }
               if (timeout) {
                 const last = rows.length - 1;
-                if (visibleWidth(rows[last]) + visibleWidth(timeout) <= width) rows[last] += quietMetadata(theme, timeout);
-                else rows.push(indent + quietMetadata(theme, timeout.trimStart()));
+                if (visibleWidth(rows[last]) + visibleWidth(timeout) <= width) rows[last] += quietMetadata(theme, timeout, expanded);
+                else rows.push(indent + quietMetadata(theme, timeout.trimStart(), expanded));
               }
               if (meta) {
                 const last = rows.length - 1;
@@ -607,15 +758,23 @@ export default function compactTools(pi: ExtensionAPI) {
             stats.removed ? theme.fg(quiet ? "muted" : "error", `−${stats.removed}`) : "",
             stats.modified ? theme.fg(quiet ? "muted" : "warning", `~${stats.modified}`) : "",
           ].filter(Boolean).join(" ") : "";
-          const summary = (argsPreview ? " " + theme.fg(pathColor, pathMarker + argsPreview) : "") + (counts ? " " + counts : "");
-          const badge = outcome ? theme.fg("muted", ` · ${outcome}`) : "";
-          const room = titleWidth - visibleWidth(badge);
-          const line = room > visibleWidth(padding + prefix)
-            ? truncateToWidth(padding + prefix + summary, room) + badge
-            : truncateToWidth(padding + prefix + summary, titleWidth);
-          const header = truncateToWidth(withMeta(animate(line)), width);
-          if (!argumentsText) return paint([header]);
-          return paint([header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)]);
+          const badge = outcome && !friendlyMcp ? theme.fg("muted", ` · ${outcome}`) : "";
+          const title = padding + prefix;
+          const compactPath = !expanded && fileCall && argsPreview;
+          const minPathWidth = compactPath ? Math.min(visibleWidth(argsPreview), visibleWidth(basename(argsPreview)) + 1) : 0;
+          const shownBadge = titleWidth - visibleWidth(title) - visibleWidth(badge) > minPathWidth ? badge : "";
+          const room = titleWidth - visibleWidth(shownBadge);
+          const pathRoom = room - visibleWidth(title) - 1;
+          const suffix = counts && (expanded || pathRoom - visibleWidth(counts) - 1 >= minPathWidth) ? " " + counts : "";
+          const argsRoom = pathRoom - visibleWidth(suffix);
+          const displayArgs = compactPath && argsRoom > 0
+            ? shortenPath(argsPreview, pathMarker, minPathWidth, argsRoom) : pathMarker + argsPreview;
+          const summary = (argsPreview ? " " + theme.fg(pathColor, displayArgs) : "") + suffix;
+          const line = title + summary;
+          const header = expanded && fileCall
+            ? wrapTextWithAnsi(animate(line + badge), Math.max(1, width))
+            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room) + shownBadge)), width)];
+          return paint(argumentsText ? [...header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)] : header);
         };
         if (context.isPartial) return cacheLines(render);
         return finishedComponent(context.state, expanded ? "call:open" : "call:closed",
@@ -625,7 +784,7 @@ export default function compactTools(pi: ExtensionAPI) {
       renderResult(result, { expanded, isPartial }, theme, context) {
         const search = toolName === "bash" && !isPartial && !context.isError && context.state.outcome === undefined
           ? shellSearch(context.args?.command) : undefined;
-        const liveTail = toolName === "bash" && isPartial && !expanded;
+        const liveTail = toolName === "bash" && isPartial && !expanded && !context.state.devopsPreview;
         if (toolName === "bash" && !expanded && !search && !liveTail) return new Text("", 0, 0);
         const details = result.details as { diff?: unknown; patch?: unknown } | undefined;
         const diff = typeof details?.diff === "string" ? clean(details.diff) : undefined;
@@ -664,7 +823,7 @@ export default function compactTools(pi: ExtensionAPI) {
         const content = codemode && first?.type === "text" && /^Script (?:completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/.test(first.text)
           ? result.content.slice(1) : result.content;
         const readOutput = () => content.map(block => {
-          if (block.type === "text") return toolName === "bash" ? shellLog(block.text) : clean(block.text);
+          if (block.type === "text") return expanded && (toolName === "bash" || codemode) ? shellLog(block.text) : clean(block.text);
           if (block.type === "image") return `[image: ${clean(block.mimeType)}]`;
           return `[${clean(block.type)}]`;
         }).join("\n") || (mcp && result.structuredContent !== undefined ? clean(JSON.stringify(result.structuredContent, null, 2)) : "");
@@ -677,8 +836,11 @@ export default function compactTools(pi: ExtensionAPI) {
             const limited = Boolean((details && "truncation" in details) || record?.truncated);
             context.state.outcome = `${clean(search.scope)} · ${count} ${search.noun}${count === 1 ? "" : "s"}${limited ? " (shown)" : ""}`;
           } else {
-            context.state.outcome = list ? listSummary(toolName, output, details as Record<string, unknown> | undefined)
-              : mcpSummary(output, result.structuredContent);
+            const matches = friendlyMcp && searchMcp ? matchesFor(output, result.structuredContent) : undefined;
+            context.state.outcome = friendlyMcp ? (Array.isArray(matches)
+              ? `${matches.length} ${matches.length === 1 ? "result" : "results"}` : "")
+              : list ? listSummary(toolName, output, details as Record<string, unknown> | undefined)
+                : mcpSummary(output, result.structuredContent);
           }
           queueMicrotask(context.invalidate);
         }
@@ -692,35 +854,70 @@ export default function compactTools(pi: ExtensionAPI) {
             if (deltaOutput) {
               const rows = expanded ? deltaOutput.full : deltaOutput.preview;
               const text = rows.map(row => {
-                if (!row.number) return quietMetadata(theme, row.text);
+                if (!row.number) return quietMetadata(theme, row.text, expanded);
                 const body = row.kind === " " ? theme.fg("toolDiffContext", " " + row.text) : row.text;
-                return diffNumber(row.number, deltaOutput.digits, row.kind, theme) + body;
+                return diffNumber(row.number, deltaOutput.digits, row.kind, theme, expanded) + body;
               }).join("\n");
               return paint(indentedLines(text, padding, width));
             }
             const rows = showDiff.rows;
             const shown = expanded ? rows : rows.slice(0, editPreviewLines);
             const digits = rows.reduce((max, row) => Math.max(max, row.number?.length ?? 0), 0);
-            const text = quietDiff(shown, digits, theme);
+            const text = quietDiff(shown, digits, theme, expanded);
             const remaining = rows.length - shown.length;
-            return paint(indentedLines(text + (remaining ? `\n${quietMetadata(theme, `… ${remaining} more lines`)}` : ""), padding, width));
+            return paint(indentedLines(text + (remaining ? `\n${quietMetadata(theme, `… ${remaining} more lines`, expanded)}` : ""), padding, width));
           }
           const output = readOutput();
+          if (friendlyMcp && !isPartial && !context.isError) {
+            const noteText = searchMcp ? undefined : knowledge ? knowledgeResponse(output, result.structuredContent)?.text : output;
+            if (typeof noteText === "string") {
+              const indent = padding + " ";
+              const note = new Markdown(clean(noteText), 0, 0, getMarkdownTheme());
+              return paint(note.render(Math.max(1, width - indent.length)).map(row => truncateToWidth(indent + row, width)));
+            }
+            const matches = searchMcp ? matchesFor(output, result.structuredContent) : undefined;
+            if (Array.isArray(matches)) {
+              if (matches.length === 0) return paint(indentedLines(theme.fg("muted", "No results"), padding, width));
+              const rows: string[] = [];
+              const indent = padding + " ";
+              for (const [index, item] of matches.entries()) {
+                const title = typeof item?.title === "string" ? item.title : item?.path;
+                if (typeof title !== "string") return paint(indentedLines(theme.fg("toolOutput", output), padding, width));
+                if (index > 0) rows.push("");
+                const number = `${index + 1}. `;
+                const hanging = " ".repeat(number.length);
+                const titleWidth = Math.max(1, width - indent.length - hanging.length);
+                const titleRows = wrapTextWithAnsi(theme.fg("accent", theme.bold(clean(title))), titleWidth);
+                for (const [i, row] of titleRows.entries()) {
+                  rows.push(truncateToWidth(indent + (i === 0 ? quietMetadata(theme, number, expanded) : hanging) + row, width));
+                }
+                if (typeof item.heading === "string" && item.heading !== title) {
+                  const heading = item.heading.startsWith(`${title} > `) ? item.heading.slice(title.length + 3) : item.heading;
+                  const detail = knowledge ? `Section: ${heading.replace(/ > /g, " → ")}` : heading;
+                  rows.push(truncateToWidth(indent + hanging + quietMetadata(theme, clean(detail), expanded), width));
+                }
+                if (typeof item.snippet === "string") {
+                  const excerpt = searchExcerpt(item.snippet, knowledge);
+                  if (excerpt) rows.push(...indentedLines(theme.fg("toolOutput", excerpt), padding + hanging, width).slice(0, 2));
+                }
+              }
+              return paint(rows);
+            }
+          }
           if (liveTail) {
-            if (!clean(output).trim()) return [];
+            if (!output.trim()) return [];
             const indent = padding + " ";
-            const log = theme.fg("toolOutput", output.replace(/\n+$/, "") + "\x1b[0m");
-            const rows = wrapTextWithAnsi(log, Math.max(1, width - indent.length));
+            const rows = wrapTextWithAnsi(output.replace(/\n+$/, ""), Math.max(1, width - indent.length));
             const overflow = rows.length > bashTailRows;
             const visible = overflow ? bashTailRows - 1 : bashTailRows;
-            const tail = rows.slice(-visible).map(row => truncateToWidth(indent + row, width));
+            const tail = rows.slice(-visible).map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
             if (!overflow) return tail;
             const hint = quietMetadata(theme, `… ${rows.length - visible} earlier lines`);
             return [truncateToWidth(indent + hint, width), ...tail];
           }
           if (toolName === "bash" || codemode) {
-            const color = codemode && context.isError ? "error" : "toolOutput";
-            const log = theme.fg(color, output) + (toolName === "bash" && output.includes("\x1b[") ? "\x1b[0m" : "");
+            const color = expanded && codemode && context.isError ? "error" : "toolOutput";
+            const log = theme.fg(color, output) + (output.includes("\x1b[") ? "\x1b[0m" : "");
             return output ? paint(["", ...indentedLines(log, padding, width)]) : [];
           }
           const plain = (text: string) => theme.fg(context.isError && toolName !== "bash" ? "error" : "toolOutput", text);
