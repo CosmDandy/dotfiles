@@ -116,3 +116,6 @@ jobs:
           PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
             nix shell --inputs-from . nixpkgs#nodejs_24 --command \
             node ../../tools/pi/tests/session-auto-title.test.mjs
+          PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_24 --command \
+            node --test ../../tools/pi/tests/codex-web-search.test.mjs
