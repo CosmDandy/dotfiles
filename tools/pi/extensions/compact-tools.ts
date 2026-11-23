@@ -11,6 +11,7 @@ import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByCol
 const pulseInterval = 120;
 const timingInset = 3;
 const bashTailRows = 5;
+const sshTailRows = 10;
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 // Keep contrast subtle: lighter than the Solarized dark canvas, darker than the light canvas.
@@ -144,14 +145,17 @@ function shellSearch(command: unknown): ShellSearch | undefined {
 
 const devopsPrograms = new Set([
   "docker", "docker-compose", "ansible", "ansible-playbook", "ansible-inventory", "terraform", "tofu",
-  "kubectl", "helm", "talosctl", "ssh", "top", "htop", "free", "df", "ss", "journalctl",
+  "kubectl", "helm", "talosctl", "top", "htop", "free", "df", "ss", "journalctl",
 ]);
 const groupedOptions = new Set([
   "--context", "--namespace", "--kubeconfig", "--nodes", "--endpoints", "--selector", "--output",
   "--inventory", "--limit", "--project-name", "--file", "--unit", "--since", "--until", "-n", "-o", "-f", "-i", "-u",
 ]);
 
-type DevopsPreview = { words: string[]; note?: string };
+function shellProgram(command: string): string | undefined {
+  const word = /^[ \t]*(?:sudo[ \t]+)?([\w./-]+)(?=[ \t]|\\\r?\n|$)/.exec(command.trimEnd())?.[1];
+  return word && basename(word);
+}
 
 function simpleShellWords(command: string): string[] | undefined {
   // Preserve shell spelling without evaluating expansions or interpreting compound commands.
@@ -171,34 +175,6 @@ function simpleShellWords(command: string): string[] | undefined {
     index = word.lastIndex;
   }
   return words;
-}
-
-function sshDestination(words: string[], start: number): number | undefined {
-  for (let i = start; i < words.length; i++) {
-    const word = words[i];
-    if (word === "--") return i + 1 < words.length ? i + 1 : undefined;
-    if (!word.startsWith("-")) return i;
-    if (/^-[1246AaCfGgKkMNnqsTtVvXxYy]+$/.test(word)) continue;
-    if (!/^-[BbcDEeFIiJLlmOoPpQRSWw]/.test(word)) return undefined;
-    if (word.length === 2 && (!words[++i] || words[i].startsWith("-"))) return undefined;
-  }
-  return undefined;
-}
-
-function devopsPreview(command: string, ready: boolean): DevopsPreview | undefined {
-  const source = command.trimEnd();
-  const head = /^[ \t]*(sudo[ \t]+)?([\w./-]+)(?=[ \t]|\\\r?\n|$)/.exec(source);
-  if (!head) return undefined;
-  const name = basename(head[2]);
-  if (!devopsPrograms.has(name)) return undefined;
-  const sshHead = head[1] ? ["sudo", head[2]] : [head[2]];
-  const words = ready ? simpleShellWords(source) : undefined;
-  if (name !== "ssh") return words ? { words } : undefined;
-  const destination = words && sshDestination(words, sshHead.length);
-  if (!words || destination === undefined) {
-    return { words: sshHead, note: ready ? "SSH arguments hidden · expand to inspect" : "Preparing SSH arguments…" };
-  }
-  return { words: words.slice(0, destination + 1), note: destination < words.length - 1 ? "Remote command hidden · expand to inspect" : undefined };
 }
 
 function devopsCommandLines(words: string[], width: number): string[] {
@@ -680,8 +656,9 @@ export default function compactTools(pi: ExtensionAPI) {
         const padding = " ".repeat(context.outputPad);
         const sourceArg = codemode ? args?.code : args?.command;
         const command = shellCall && typeof sourceArg === "string" ? clean(sourceArg) : "";
-        const devops = toolName === "bash" && !expanded
-          ? devopsPreview(command, context.argsComplete || context.executionStarted || !context.isPartial) : undefined;
+        const program = toolName === "bash" ? shellProgram(command) : undefined;
+        const devops = !expanded && program && devopsPrograms.has(program) &&
+          (context.argsComplete || context.executionStarted || !context.isPartial) ? simpleShellWords(command.trimEnd()) : undefined;
         context.state.devopsPreview = devops !== undefined;
         const timing = shellCall ? elapsedLabel(context.isPartial ? liveMs : context.durationMs)
           : list || friendlyMcp ? elapsedLabel(context.durationMs) : "";
@@ -702,10 +679,9 @@ export default function compactTools(pi: ExtensionAPI) {
           if (devops) {
             const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
             const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title + timeout), Math.max(0, titleWidth - padding.length))), width);
-            const lines = devopsCommandLines(devops.words, Math.max(1, width - padding.length - 1));
+            const lines = devopsCommandLines(devops, Math.max(1, width - padding.length - 1));
             const script = highlighted(lines.join("\n"), "bash", text => theme.fg("toolOutput", text));
-            return [header, ...indentedLines(script, padding, width),
-              ...(devops.note ? indentedLines(theme.fg("muted", devops.note), padding, width) : [])];
+            return [header, ...indentedLines(script, padding, width)];
           }
           if (shellCall) {
             const lines = command.split("\n");
@@ -784,8 +760,11 @@ export default function compactTools(pi: ExtensionAPI) {
       renderResult(result, { expanded, isPartial }, theme, context) {
         const search = toolName === "bash" && !isPartial && !context.isError && context.state.outcome === undefined
           ? shellSearch(context.args?.command) : undefined;
-        const liveTail = toolName === "bash" && isPartial && !expanded && !context.state.devopsPreview;
-        if (toolName === "bash" && !expanded && !search && !liveTail) return new Text("", 0, 0);
+        const command = context.args?.command;
+        const tailRows = toolName === "bash" && !expanded && !context.state.devopsPreview
+          ? typeof command === "string" && shellProgram(command) === "ssh" ? sshTailRows : isPartial ? bashTailRows : 0
+          : 0;
+        if (toolName === "bash" && !expanded && !search && !tailRows) return new Text("", 0, 0);
         const details = result.details as { diff?: unknown; patch?: unknown } | undefined;
         const diff = typeof details?.diff === "string" ? clean(details.diff) : undefined;
         let prepared = context.state.preparedDiff as PreparedDiff | undefined;
@@ -818,7 +797,7 @@ export default function compactTools(pi: ExtensionAPI) {
         }
         const deltaOutput = interactive ? delta?.output : undefined;
         const summarize = !isPartial && !context.isError && (list || mcp || search) && context.state.outcome === undefined;
-        if (!summarize && !expanded && !showDiff && !context.isError && !liveTail) return new Text("", 0, 0);
+        if (!summarize && !expanded && !showDiff && !context.isError && !tailRows) return new Text("", 0, 0);
         const first = result.content[0];
         const content = codemode && first?.type === "text" && /^Script (?:completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/.test(first.text)
           ? result.content.slice(1) : result.content;
@@ -844,7 +823,7 @@ export default function compactTools(pi: ExtensionAPI) {
           }
           queueMicrotask(context.invalidate);
         }
-        if (!expanded && !showDiff && !context.isError && !liveTail) return new Text("", 0, 0);
+        if (!expanded && !showDiff && !context.isError && !tailRows) return new Text("", 0, 0);
         const path = context.args?.path ?? context.args?.file_path;
         const language = typeof path === "string" ? getLanguageFromPath(path) : undefined;
         const padding = " ".repeat(context.outputPad);
@@ -904,12 +883,12 @@ export default function compactTools(pi: ExtensionAPI) {
               return paint(rows);
             }
           }
-          if (liveTail) {
+          if (tailRows) {
             if (!output.trim()) return [];
             const indent = padding + " ";
             const rows = wrapTextWithAnsi(output.replace(/\n+$/, ""), Math.max(1, width - indent.length));
-            const overflow = rows.length > bashTailRows;
-            const visible = overflow ? bashTailRows - 1 : bashTailRows;
+            const overflow = rows.length > tailRows;
+            const visible = overflow ? tailRows - 1 : tailRows;
             const tail = rows.slice(-visible).map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
             if (!overflow) return tail;
             const hint = quietMetadata(theme, `… ${rows.length - visible} earlier lines`);
@@ -925,7 +904,7 @@ export default function compactTools(pi: ExtensionAPI) {
           return paint(indentedLines(highlighted(output, outputLanguage, plain), padding, width));
         };
         return isPartial ? cacheLines(render) : finishedComponent(context.state, expanded ? "result:open" : "result:closed",
-          [theme.colors, result.content, result.structuredContent, showDiff, deltaOutput, language, padding, context.isError], render);
+          [theme.colors, result.content, result.structuredContent, showDiff, deltaOutput, language, padding, tailRows, context.isError], render);
       },
     };
     return renderers;
