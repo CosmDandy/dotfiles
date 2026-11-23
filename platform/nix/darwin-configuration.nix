@@ -8,7 +8,6 @@
   memoryGiB,
   claudeTools,
   piTools,
-  opencodePackage,
   atuinPackage,
   ...
 }:
@@ -216,7 +215,6 @@ in
     claudeTools.cli
     piTools.agent
     piTools.statusline
-    opencodePackage
     uv
     luarocks # for mason (luacheck); brings its own lua
     eza

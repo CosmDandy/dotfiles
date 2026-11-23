@@ -4,10 +4,8 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     # TODO: Remove this pin when Atuin's Darwin tests pass on unstable.
     nixpkgs-atuin.url = "github:NixOS/nixpkgs/682ba80136e2c8dacd6b8900f578a72329458901";
-    # The main pin still contains OpenCode V1. Keep V2 independent of system updates.
-    nixpkgs-opencode.url = "github:NixOS/nixpkgs/e62746b0b472753ef019baceab6f1e2e52014980";
     pi-source = {
-      url = "github:earendil-works/pi/v1.4.0";
+      url = "github:earendil-works/pi/stable";
       flake = false;
     };
     darwin = {
@@ -28,7 +26,6 @@
     {
       nixpkgs,
       nixpkgs-atuin,
-      nixpkgs-opencode,
       darwin,
       home-manager,
       disko,
@@ -63,7 +60,6 @@
             inherit profile;
             claudeTools = mkClaudeTools system;
             piTools = mkPiTools system;
-            opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
           };
           modules = [
             ./home
@@ -171,7 +167,6 @@
               ;
             claudeTools = mkClaudeTools system;
             piTools = mkPiTools system;
-            opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
             atuinPackage = nixpkgs-atuin.legacyPackages.${system}.atuin;
           };
           modules = [
@@ -223,7 +218,6 @@
                   inherit profile;
                   claudeTools = mkClaudeTools system;
                   piTools = mkPiTools system;
-                  opencodePackage = nixpkgs-opencode.legacyPackages.${system}.opencode;
                 };
                 users.${user}.imports = [ ./home ];
               };

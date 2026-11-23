@@ -82,8 +82,8 @@ class TmuxEnterTest(unittest.TestCase):
 
     def test_agent_from_env_and_argument(self):
         for args, env, expected in (
-            (("test",), "opencode", "opencode"),
-            (("test", "", "pi"), "opencode", "pi"),
+            (("test",), "pi", "pi"),
+            (("test", "", "pi"), "claude", "pi"),
         ):
             with self.subTest(args=args, env=env):
                 _, commands = self.run_script(*args, agent_env=env)
@@ -91,9 +91,11 @@ class TmuxEnterTest(unittest.TestCase):
                 self.assertNotIn("claude", "\n".join(commands))
 
     def test_unknown_agent_is_refused_before_tmux(self):
-        result, commands = self.run_script("test", "", "vim")
-        self.assertEqual(result.returncode, 2)
-        self.assertEqual(commands, [])
+        for agent in ("vim", "opencode", "codex"):
+            with self.subTest(agent=agent):
+                result, commands = self.run_script("test", "", agent)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(commands, [])
 
     def test_directory_becomes_the_session_directory(self):
         with tempfile.TemporaryDirectory() as work:
