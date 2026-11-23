@@ -113,17 +113,29 @@ export function countSessions(directory: string, now = Date.now()) {
 export default function (pi: ExtensionAPI) {
   const markdownParser = new Marked();
   const subheading = /^ {0,3}#{3,6}(?=[ \t]|$)/m;
-  pi.registerMarkdownTransformer((markdown, { isStreaming }) => {
-    if (isStreaming || !subheading.test(markdown)) return markdown;
+  const reportColors = { "✔": "success", "✘": "error", "!": "accent", "?": "warning", "»": "mdLink" } as const;
+  const reportOpener = /^ {0,3}(?:\*\*|__)?([✔✘!?»])(?=\s|$|\*\*|__)/m;
+  pi.registerMarkdownTransformer((markdown, { isStreaming, messageType }) => {
+    const theme = messageType === "assistant" ? sessionContext?.ui.theme : undefined;
+    if (isStreaming || (!subheading.test(markdown) && !(theme && reportOpener.test(markdown)))) return markdown;
     const source = markdown.replace(/\r\n?/g, "\n");
     let cursor = 0, copied = 0, output = "";
     for (const token of markdownParser.lexer(source)) {
       const start = source.indexOf(token.raw, cursor);
       if (start === -1) return markdown;
       cursor = start + token.raw.length;
-      if (token.type !== "heading" || !/^ {0,3}#{3,6}(?=[ \t]|\n|$)/.test(token.raw)) continue;
-      // Pi displays the literal prefix at level three and deeper, but not at level two.
-      output += source.slice(copied, start) + token.raw.replace(/^( {0,3})#{3,6}/, "$1##");
+      let replacement: string;
+      if (token.type === "heading" && /^ {0,3}#{3,6}(?=[ \t]|\n|$)/.test(token.raw)) {
+        // Pi displays the literal prefix at level three and deeper, but not at level two.
+        replacement = token.raw.replace(/^( {0,3})#{3,6}/, "$1##");
+      } else if (theme && token.type === "paragraph" && token.tokens && !token.text.includes("\n")) {
+        const glyph = reportOpener.exec(token.text)?.[1] as keyof typeof reportColors | undefined;
+        if (!glyph) continue;
+        // The whole label is bold; redundant Markdown delimiters next to ANSI escapes can render literally.
+        const label = token.tokens.map(t => t.type === "strong" ? t.text : t.raw).join("");
+        replacement = theme.style(label, { fg: reportColors[glyph], bold: true }) + token.raw.slice(token.text.length);
+      } else continue;
+      output += source.slice(copied, start) + replacement;
       copied = cursor;
     }
     return copied ? output + source.slice(copied) : markdown;

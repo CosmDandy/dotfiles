@@ -22,6 +22,7 @@ const themesPath = fileURLToPath(new URL("../themes/", import.meta.url));
 const load = path => import(pathToFileURL(join(modules, path)).href);
 const { loadExtensions } = await load("@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
 const { CustomEditor } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
+const { AssistantMessageComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/assistant-message.js");
 const { FooterComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/footer.js");
 const { KeybindingsManager } = await load("@earendil-works/pi-coding-agent/dist/core/keybindings.js");
 const themes = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js");
@@ -369,6 +370,28 @@ try {
     assert.ok(!editor.render(151).join("").includes(themes.theme.getBgAnsi("customMessageBg")), `${appearance}: no card background`);
     assert.equal(plain(editor.render(151).at(-1)), ` ╰${"─".repeat(147)}╯ `);
     const palette = JSON.parse(readFileSync(join(themesPath, `solarized-${appearance}.json`), "utf8"));
+    const claude = JSON.parse(readFileSync(join(themesPath, `../../claude/themes/solarized-${appearance}.json`))).overrides;
+    const report = [
+      ["**✔ Готово**", "✔ Готово", "success", "success"], ["✘ **Сбой**", "✘ Сбой", "error", "error"],
+      ["! Нашёл", "! Нашёл", "accent", "claude"], ["?", "?", "warning", "warning"], ["» Действие", "» Действие", "mdLink", "suggestion"],
+    ];
+    const source = report.map(([heading]) => heading + "\n\nОбычный текст.").join("\n\n");
+    const renderMessage = transformers => new AssistantMessageComponent(assistant({ content: [{ type: "text", text: source }] }),
+      false, themes.getMarkdownTheme(), undefined, 0, transformers).render(80);
+    const renderer = extension.markdownTransformer.transformer;
+    const rows = renderMessage([renderer]);
+    assert.deepEqual(rows.map(plain), renderMessage([]).map(plain), "no frames or text changes");
+    for (const [, label, fg, original] of report) {
+      assert.equal(palette.vars[palette.colors[fg]], claude[original]);
+      assert.ok(rows.some(row => row.includes(themes.theme.style(label, { fg, bold: true }))), `${appearance}: ${label}`);
+    }
+    const bodyRows = list => list.filter(row => plain(row).includes("Обычный текст."));
+    assert.equal(bodyRows(rows).length, report.length);
+    assert.deepEqual(bodyRows(rows), bodyRows(renderMessage([])));
+    const untouched = "> ✔ Цитата\n\n```sh\n! echo test\n```\n\n- ? Список\n\n![image](a.png)\n\n! Первая строка\nпродолжение.";
+    for (const [text, messageType, isStreaming] of [[untouched, "assistant", false], [source, "user", false], [source, "assistant", true]]) {
+      assert.equal(renderer(text, { messageType, isStreaming, availableWidth: 80 }), text);
+    }
     const messageBg = colorToRgb(themes.theme.colors.userMessageBg);
     const terminalBg = appearance === "light" ? { r: 253, g: 246, b: 227 } : { r: 0, g: 43, b: 54 };
     assert.ok(messageBg.r <= terminalBg.r && messageBg.g < terminalBg.g && messageBg.b < terminalBg.b);
