@@ -2,5 +2,19 @@
   "$schema": "https://pi.dev/schemas/settings.schema.json",
   "theme": "solarized-light/solarized-dark",
   "transport": "sse",
-  "hideThinkingBlock": true
+  "hideThinkingBlock": true,
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6.2-sol",
+  "defaultThinkingLevel": "medium",
+  "defaultTools": ["+codemode"],
+  "doubleEscapeAction": "none",
+  "showCacheMissNotices": true,
+  "fullscreenExitOutput": "resume-hint",
+  "treeFilterMode": "user-only",
+  "markdown": { "mermaid": "final" },
+  "compaction": {
+    "modelOverrides": {
+      "openai-codex/gpt-6.2-sol": { "reserveTokens": 200000 }
+    }
+  }
 }

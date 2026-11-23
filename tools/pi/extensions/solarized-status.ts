@@ -1,16 +1,49 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { sliceByColumn, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Marked, mixColors, rgbColor, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
+
+const lightReady = rgbColor(152, 161, 106);
+const lightBackground = rgbColor(253, 246, 227);
+type TurnPhase = "wait" | "generation" | "bash" | "tools";
+type TurnSpan = { phase: TurnPhase; from: number; to: number };
+type TurnTiming = { started: number; spans: TurnSpan[]; tokens: number; textSeconds: number };
+
+function summarizeTurn(turn: TurnTiming, ended: number, aborted: boolean) {
+  const breakdown = { wait: 0, generation: 0, bash: 0, tools: 0, parallel: 0, other: 0 };
+  const active = { wait: 0, generation: 0, bash: 0, tools: 0 };
+  const edges = turn.spans.flatMap(({ phase, from, to }) => {
+    const start = Math.max(turn.started, from);
+    const end = Math.min(ended, to);
+    return start < end ? [{ at: start, phase, delta: 1 }, { at: end, phase, delta: -1 }] : [];
+  }).sort((a, b) => a.at - b.at);
+  let previous = turn.started;
+  for (const { at, phase, delta } of edges) {
+    // Overlapping calls consume a single wall-clock interval, not one interval per call.
+    const bucket = active.bash ? active.tools ? "parallel" : "bash" : active.tools ? "tools"
+      : active.generation ? "generation" : active.wait ? "wait" : "other";
+    breakdown[bucket] += at - previous;
+    active[phase] += delta;
+    previous = at;
+  }
+  breakdown.other += ended - previous;
+  return { total: ended - turn.started, ...breakdown, aborted,
+    speed: turn.textSeconds > 0 ? turn.tokens / turn.textSeconds : undefined };
+}
+
+const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
 
 type Window = { used_percentage: number; resets_at: number };
+type WindowName = "five_hour" | "seven_day";
+const windowNames = ["five_hour", "seven_day"] as const;
 // Only actual subscription-window headers, never requests/minute or tokens/minute.
 export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000) {
   const h = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k.toLowerCase(), v]));
-  const result: { five_hour?: Window; seven_day?: Window } = {};
-  const number = (key: string) => h[key] == null ? NaN : Number(h[key]);
+  const result: Partial<Record<WindowName, Window | null>> = {};
+  const number = (key: string) => h[key]?.trim() ? Number(h[key]) : NaN;
   for (const name of ["primary", "secondary"]) {
     const prefix = `x-codex-${name}-`;
     const used = number(prefix + "used-percent");
@@ -22,6 +55,10 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
     const key = minutes === 300 ? "five_hour" : minutes === 10080 ? "seven_day" : undefined;
     if (key) result[key] = { used_percentage: used, resets_at: reset };
   }
+  // A zero-length slot beside a valid weekly window explicitly disables the short window.
+  if (result.seven_day && !result.five_hour &&
+    (number("x-codex-primary-window-minutes") === 0 || number("x-codex-secondary-window-minutes") === 0))
+    result.five_hour = null;
   for (const [suffix, key] of [["5h", "five_hour"], ["7d", "seven_day"]] as const) {
     const prefix = `anthropic-ratelimit-unified-${suffix}-`;
     const utilization = number(prefix + "utilization"), reset = number(prefix + "reset");
@@ -31,12 +68,127 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
   return result;
 }
 
+type Observation = { observedAt: number } & (Window | { absent: true });
+type ObservedLimits = Partial<Record<WindowName, Observation>>;
+
+function observe(parsed: ReturnType<typeof parseLimits>, observedAt: number): ObservedLimits {
+  const record: ObservedLimits = {};
+  for (const name of windowNames) {
+    const window = parsed[name];
+    if (window !== undefined) record[name] = window === null ? { observedAt, absent: true } : { ...window, observedAt };
+  }
+  return record;
+}
+
+// Select the newest observation before checking expiry, so an older window cannot resurface.
+function loadSharedObservations(cache: string, provider: string, now: number) {
+  const latest: ObservedLimits = {};
+  const merge = (record: ObservedLimits) => {
+    for (const name of windowNames) {
+      const window = record[name];
+      if (!window || !Number.isFinite(window.observedAt) || window.observedAt > now) continue;
+      if ("absent" in window ? window.absent !== true :
+        !Number.isFinite(window.used_percentage) || window.used_percentage < 0 || !Number.isFinite(window.resets_at)) continue;
+      const previous = latest[name];
+      // A millisecond tie must not let a parallel snapshot resurrect a disabled window.
+      if (!previous || window.observedAt > previous.observedAt ||
+        (window.observedAt === previous.observedAt && "absent" in window)) latest[name] = window;
+    }
+  };
+  const directory = join(cache, encodeURIComponent(provider));
+  let files: string[] = [];
+  try { files = readdirSync(directory); } catch { /* No observation for this provider yet. */ }
+  for (const name of files) {
+    if (!/^limits-\d+\.json$/.test(name)) continue;
+    try { merge(JSON.parse(readFileSync(join(directory, name), "utf8"))); } catch { /* Ignore incomplete or corrupt cache files. */ }
+  }
+  // Older loaded runtimes publish this diagnostic but do not have shared snapshots yet.
+  try {
+    const diagnostic = JSON.parse(readFileSync(join(cache, "transport-diagnostic.json"), "utf8"));
+    if (diagnostic.provider === provider) {
+      const observedAt = diagnostic.observedAt ?? Date.parse(diagnostic.at);
+      const parsed = parseLimits(diagnostic.subscriptionHeaders ?? {}, observedAt / 1000);
+      merge(observe(parsed, observedAt));
+    }
+  } catch { /* Diagnostics are optional; provider snapshots remain authoritative. */ }
+  return latest;
+}
+
+export function loadSharedLimits(cache: string, provider: string, now = Date.now()) {
+  const latest = loadSharedObservations(cache, provider, now);
+  const active: Partial<Record<WindowName, Window & { observedAt: number }>> = {};
+  for (const name of windowNames) {
+    const window = latest[name];
+    if (window && !("absent" in window) && window.resets_at > now / 1000) active[name] = window;
+  }
+  return active;
+}
+
+// Show the total number of working runtimes, including this one, only from two onward.
+export function countSessions(directory: string, now = Date.now()) {
+  let running = 0;
+  for (const name of readdirSync(directory)) {
+    if (!/^\d+\.json$/.test(name)) continue;
+    try {
+      const entry = JSON.parse(readFileSync(join(directory, name), "utf8"));
+      if (entry.pid !== Number(name.slice(0, -5)) || !Number.isFinite(entry.at) || now - entry.at > 90000) continue;
+      process.kill(entry.pid, 0);
+      if (entry.state === "running") running++;
+    } catch { /* A crashed or concurrently closing runtime is not a live session. */ }
+  }
+  return { running: running > 1 ? running : 0, waiting: 0 };
+}
+
 export default function (pi: ExtensionAPI) {
+  const markdownParser = new Marked();
+  const subheading = /^ {0,3}#{3,6}(?=[ \t]|$)/m;
+  const reportColors = { "✔": "success", "✘": "error", "!": "accent", "?": "warning", "»": "mdLink" } as const;
+  const reportOpener = /^ {0,3}(?:\*\*|__)?([✔✘!?»])(?=\s|$|\*\*|__)/m;
+  pi.registerMarkdownTransformer((markdown, { isStreaming, messageType }) => {
+    const theme = messageType === "assistant" ? sessionContext?.ui.theme : undefined;
+    if (isStreaming || (!subheading.test(markdown) && !(theme && reportOpener.test(markdown)))) return markdown;
+    const source = markdown.replace(/\r\n?/g, "\n");
+    let cursor = 0, copied = 0, output = "";
+    for (const token of markdownParser.lexer(source)) {
+      const start = source.indexOf(token.raw, cursor);
+      if (start === -1) return markdown;
+      cursor = start + token.raw.length;
+      let replacement: string;
+      if (token.type === "heading" && /^ {0,3}#{3,6}(?=[ \t]|\n|$)/.test(token.raw)) {
+        // Pi displays the literal prefix at level three and deeper, but not at level two.
+        replacement = token.raw.replace(/^( {0,3})#{3,6}/, "$1##");
+      } else if (theme && token.type === "paragraph" && token.tokens && !token.text.includes("\n")) {
+        const glyph = reportOpener.exec(token.text)?.[1] as keyof typeof reportColors | undefined;
+        if (!glyph) continue;
+        // The whole label is bold; redundant Markdown delimiters next to ANSI escapes can render literally.
+        const label = token.tokens.map(t => t.type === "strong" ? t.text : t.raw).join("");
+        replacement = theme.style(label, { fg: reportColors[glyph], bold: true }) + token.raw.slice(token.text.length);
+      } else continue;
+      output += source.slice(copied, start) + replacement;
+      copied = cursor;
+    }
+    return copied ? output + source.slice(copied) : markdown;
+  }, { messageTypes: ["assistant", "user"] });
+
   const root = join(homedir(), ".pi", "agent");
+  const cache = join(root, "cache", "statusline");
   let enabled = true;
   let refresh: (() => void) | undefined;
   let redraw: (() => void) | undefined;
   let busy = false;
+  let waitingForUser = false;
+  let sessionTimer: ReturnType<typeof setInterval> | undefined;
+  const sessionsDir = join(root, "cache", "statusline", "sessions");
+  const sessionFile = join(sessionsDir, `${process.pid}.json`);
+  let sessionContext: ExtensionContext | undefined;
+  function publishSession() {
+    if (!sessionContext) return;
+    writeFileSync(sessionFile + ".tmp", JSON.stringify({
+      pid: process.pid, at: Date.now(),
+      state: waitingForUser ? "waiting" : busy ? "running" : "idle",
+    }), { mode: 0o600 });
+    renameSync(sessionFile + ".tmp", sessionFile);
+  }
   let generatingSince: number | undefined;
   let phase: "Waiting" | "Thinking" | "Generating" | "Preparing" = "Waiting";
   let stream: { firstOutput?: number; firstText?: number; lastText?: number; textChunks: number; toolCall: boolean } = { textChunks: 0, toolCall: false };
@@ -50,12 +202,36 @@ export default function (pi: ExtensionAPI) {
   const activeTools = new Map<string, string>();
   const stars = ["·", "✢", "*", "✶", "✻", "✽"];
   const thinkingFrames = [...stars, ...stars.toReversed()];
-  const seconds = (value: number) => `${value.toFixed(1).replace(".", ",")} s`;
-  function responseStats() {
-    if (generatingSince !== undefined) return seconds((performance.now() - generatingSince) / 1000);
-    if (!lastResponse) return "— s · — tok/s";
-    return seconds(lastResponse.seconds) + (lastResponse.speed === undefined ? " · — tok/s" : ` · ≈${lastResponse.speed.toFixed(1).replace(".", ",")} tok/s`);
-  }
+  let turnTiming: TurnTiming | undefined;
+  const toolStarts = new Map<string, { from: number; phase: "bash" | "tools" }>();
+  const decimal = (value: number) => value.toFixed(1).replace(".", ",");
+  const seconds = (ms: number) => `${decimal(ms / 1000)} s`;
+  const startTiming = () => { turnTiming ??= { started: performance.now(), spans: [], tokens: 0, textSeconds: 0 }; };
+  pi.registerEntryRenderer<ReturnType<typeof summarizeTurn>>("turn-timing", (entry, { expanded }, theme) => {
+    const timing = entry.data;
+    if (!timing) return;
+    const toolTime = timing.bash + timing.tools + timing.parallel;
+    const phases = [[timing.wait, "wait"], [timing.generation, "gen"], [toolTime, "tools"], [timing.other, "other"]] as const;
+    const parts = [`${seconds(timing.total)}${timing.aborted ? " (interrupted)" : ""}`];
+    for (const [ms, label] of phases) {
+      const percent = timing.total > 0 ? Math.round(100 * ms / timing.total) : 0;
+      if (percent > 0) parts.push(`${label} ${percent}%`);
+    }
+    if (timing.speed !== undefined) parts.push(`≈${decimal(timing.speed)} tok/s`);
+    const lines = [parts.join(" · ")];
+    if (expanded) {
+      const elapsed = phases.filter(([ms]) => ms >= 50).map(([ms, label]) => `${label} ${seconds(ms)}`);
+      if (elapsed.length) lines.push(elapsed.join(" · "));
+      if (toolTime >= 50) {
+        lines.push(`bash ${seconds(timing.bash)} · other tools ${seconds(timing.tools)}`
+          + (timing.parallel >= 50 ? ` · overlap ${seconds(timing.parallel)}` : ""));
+      }
+    }
+    const light = theme.appearance === "light";
+    const fg = light ? mixColors(theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb") : rgbColor(89, 102, 106);
+    const text = lines.map((line, i) => (i ? "  " : "") + theme.style(line, { fg, dim: light })).join("\n");
+    return new Text(text, 2, 0);
+  });
   pi.registerCommand("statusline-metrics", {
     description: "Show client-side response latency, text throughput and token accounting",
     handler: async () => {
@@ -70,26 +246,25 @@ export default function (pi: ExtensionAPI) {
       }, { triggerTurn: false });
     },
   });
-  // Separate observations per provider, model and session. No credentials read.
-  const observations = new Map<string, ReturnType<typeof parseLimits>>();
   let lastDiagnostic: object = { observed: false, note: "No provider response observed since reload" };
   pi.registerCommand("statusline-limits", {
-    description: "Show observed subscription-window headers (no credentials)",
-    handler: async () => {
+    description: "Show observed subscription-window headers and shared provider limits (no credentials)",
+    handler: async (_args, ctx) => {
       pi.sendMessage({
         customType: "statusline-limits",
-        content: "Subscription window transport diagnostic:\n```json\n" + JSON.stringify(lastDiagnostic, null, 2) + "\n```",
+        content: "Subscription window transport diagnostic:\n```json\n" + JSON.stringify({
+          lastResponse: lastDiagnostic,
+          sharedLimits: loadSharedLimits(cache, ctx.model?.provider ?? "unknown"),
+        }, null, 2) + "\n```",
         display: true,
       }, { triggerTurn: false });
     },
   });
-  const key = (ctx: ExtensionContext) => `${ctx.sessionManager.getSessionId()}:${ctx.model?.provider}:${ctx.model?.id}`;
   function install(ctx: ExtensionContext) {
     if (ctx.mode !== "tui") return;
     if (!enabled) {
       ctx.ui.setEditorComponent(undefined);
       ctx.ui.setWorkingVisible(true);
-      ctx.ui.setWidget("statusline-half-edge", undefined);
       ctx.ui.setFooter(undefined);
       refresh = undefined;
       redraw = undefined;
@@ -97,31 +272,7 @@ export default function (pi: ExtensionAPI) {
     }
     ctx.ui.setWorkingVisible(false);
     ctx.ui.setFooter((tui, _theme, data) => {
-      let width = 100, line = "", identity = "", footerHints = "", pending = false, dirty = false, disposed = false;
-      const stripeColor = () => {
-        const theme = ctx.ui.theme;
-        return activeTools.size ? theme.colors.warning : generatingSince !== undefined
-          ? phase === "Thinking" ? theme.colors.thinkingHigh : phase === "Generating" ? theme.colors.thinkingMedium : phase === "Preparing" ? theme.colors.warning : theme.colors.thinkingLow
-          : theme.colors.dim;
-      };
-      ctx.ui.setWidget("statusline-half-edge", () => ({
-        invalidate() {},
-        render(columns: number) {
-          if (columns < 6) return [" ".repeat(columns)];
-          const theme = ctx.ui.theme;
-          return ["\x1b[49m " + theme.style("╻", { fg: stripeColor(), dim: true }) +
-            theme.style("▄".repeat(columns - 3), { fg: theme.colors.customMessageBg }) + " "];
-        },
-      }));
-      const paintCard = (text: string, columns: number) => {
-        if (columns < 6) return truncateToWidth(text, columns);
-        const theme = ctx.ui.theme;
-        const background = theme.getBgAnsi("customMessageBg");
-        // Centered box-drawing strokes join ╻/╹; a left-aligned ▎ cannot.
-        const stripe = theme.style("┃", { fg: stripeColor(), dim: true });
-        const content = sliceByColumn(text, 2, columns - 3);
-        return "\x1b[49m " + stripe + background + content.replace(/\x1b\[(?:0|49)?m/g, escape => escape + background) + "\x1b[49m ";
-      };
+      let width = 100, line = "", pending = false, dirty = false, disposed = false;
       let child: ReturnType<typeof spawn> | undefined;
       function update() {
         if (disposed) return;
@@ -129,19 +280,15 @@ export default function (pi: ExtensionAPI) {
         pending = true;
         const tmp = join(root, "cache", "statusline", encodeURIComponent(ctx.model?.provider ?? "unknown"));
         mkdirSync(tmp, { recursive: true, mode: 0o700 });
-        let cost = 0;
         let current: { input: number; cacheRead: number; cacheWrite: number } | undefined;
         for (const entry of ctx.sessionManager.getBranch()) {
           if (entry.type === "message" && entry.message.role === "assistant") {
-            cost += entry.message.usage.cost.total;
             current = entry.message.usage;
           }
         }
         const usage = ctx.getContextUsage();
-        const limits = { ...observations.get(key(ctx)) };
-        const now = Date.now() / 1000;
-        for (const k of ["five_hour", "seven_day"] as const)
-          if (limits[k] && limits[k]!.resets_at <= now) delete limits[k];
+        const limits = loadSharedLimits(cache, ctx.model?.provider ?? "unknown");
+        const effort = pi.getThinkingLevel();
         const payload = {
           model: { display_name: ctx.model?.name ?? ctx.model?.id ?? "No model", id: ctx.model?.id },
           context_window: {
@@ -150,11 +297,13 @@ export default function (pi: ExtensionAPI) {
             current_usage: current ? { input_tokens: current.input, cache_read_input_tokens: current.cacheRead, cache_creation_input_tokens: current.cacheWrite } : {},
           },
           thinking: { enabled: pi.getThinkingLevel() !== "off" },
-          effort: { level: pi.getThinkingLevel() },
-          cost: { total_cost_usd: cost }, rate_limits: limits,
+          // The statusline renderer normalizes unstyled labels to lowercase and uses the model's neutral gray.
+          effort: { level: effort === "medium" ? "MEDIUM" : effort },
+          rate_limits: limits,
+          sessions: countSessions(sessionsDir),
         };
         child = spawn(join(root, "bin", "solarized-statusline"), [], {
-          env: { ...process.env, TMPDIR: tmp, COLUMNS: String(Math.max(1, width - (width >= 79 && footerHints ? visibleWidth(footerHints) + 3 : 0))), CLAUDE_STATUSLINE_MARGIN: "0", PI_STATUSLINE_LAYOUT: "split" },
+          env: { ...process.env, TMPDIR: tmp, COLUMNS: String(Math.max(1, width)) },
           stdio: ["pipe", "pipe", "ignore"],
         });
         let output = "";
@@ -166,15 +315,7 @@ export default function (pi: ExtensionAPI) {
         child.on("close", code => {
           clearTimeout(timeout); pending = false; child = undefined;
           if (disposed) return;
-          if (code === 0) {
-            try {
-              const rendered = JSON.parse(output);
-              identity = rendered.identity;
-              line = rendered.info;
-            } catch {
-              line = "Status line unavailable: check pi-statusline installation (see tools/pi/README.md)";
-            }
-          } else line = "Status line unavailable: check pi-statusline installation (see tools/pi/README.md)";
+          line = code === 0 ? output : "Status line unavailable: check pi-statusline installation (see tools/pi/README.md)";
           tui.requestRender();
           if (dirty) { dirty = false; update(); }
         });
@@ -182,7 +323,6 @@ export default function (pi: ExtensionAPI) {
       refresh = update;
       const requestRender = () => tui.requestRender();
       redraw = requestRender;
-      const timer = setInterval(update, 15000);
       // Queue state can change without a model or tool event.
       let queued = ctx.hasPendingMessages();
       const clock = setInterval(() => {
@@ -191,83 +331,116 @@ export default function (pi: ExtensionAPI) {
         queued = nextQueued;
       }, 100);
       ctx.ui.setEditorComponent((editorTui, editorTheme, keybindings) => {
-        const hint = (action: "app.model.select" | "app.thinking.cycle", label: string) => {
-          const keys = keybindings.getKeys(action);
-          return keys.length ? `${keys[0]} ${label}` : "";
-        };
-        footerHints = [hint("app.model.select", "model"), hint("app.thinking.cycle", "effort")].filter(Boolean).join(" · ");
         class StatusEditor extends CustomEditor {
-          // Pi reapplies stock editor padding after installing a custom editor.
-          setPaddingX(_padding: number): void { super.setPaddingX(3); }
-          render(columns: number): string[] {
-            const lines = super.render(columns);
-            if (columns < 6) return lines;
-            // Keep row/column geometry intact for cursor placement and autocomplete clicks.
-            return lines.map(text => paintCard(text, columns));
-          }
-          private fit(columns: number, left: string, right = "") {
-            const innerWidth = Math.max(0, columns - 6);
-            if (columns < 6) return " ".repeat(columns);
-            const rightText = truncateToWidth(right, Math.max(0, innerWidth - 4));
-            const leftText = truncateToWidth(left, Math.max(0, innerWidth - visibleWidth(rightText) - (rightText ? 2 : 0)));
-            const gap = Math.max(0, innerWidth - visibleWidth(leftText) - visibleWidth(rightText));
-            return "   " + leftText + " ".repeat(gap) + rightText + "   ";
-          }
-          protected renderTopBorder(columns: number, hiddenLineCount: number): string {
-            const innerWidth = Math.max(0, columns - 6);
-            if (innerWidth !== width) { width = innerWidth; update(); }
+          private hiddenAbove = 0;
+          private bottomBorder = "";
+
+          private renderStatus(columns: number, modeLabel: string): string {
             const theme = ctx.ui.theme;
+            const light = theme.appearance === "light";
+            const secondary = light ? "thinkingText" : "dim";
             const state = activeTools.size ? "Running" : generatingSince !== undefined ? phase : busy ? "Active" : interrupted ? "Interrupted" : "Ready";
             const phases = {
               Waiting: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors.thinkingLow },
-              Thinking: { frames: thinkingFrames, color: theme.colors.thinkingHigh },
-              Generating: { frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], color: theme.colors.thinkingMedium },
+              Thinking: { frames: thinkingFrames, color: theme.colors.thinkingText },
+              // Leave the top Braille dot row empty so the spinner sits closer to the text baseline.
+              Generating: { frames: ["⠖", "⠲", "⢲", "⢰", "⣰", "⣠", "⣄", "⣆", "⡆", "⡖"], color: theme.colors.thinkingMedium },
               Preparing: { frames: ["·", "•", "●", "•"], color: theme.colors.warning },
               Running: { frames: ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"], color: theme.colors.warning },
-              Active: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors.dim },
+              Active: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors[secondary] },
             };
             const animation = state in phases ? phases[state as keyof typeof phases] : undefined;
             const frame = animation?.frames[Math.floor(performance.now() / 150) % animation.frames.length];
-            const stateLabel = animation ? theme.style(`${frame} ${state}`, { fg: animation.color, dim: true }) : theme.fg("muted", `${interrupted ? "■" : "·"} ${state}`);
-            const toolNames = activeTools.size ? theme.fg("dim", [...new Set(activeTools.values())].join(", ")) : "";
-            const badges = [error ? theme.fg("error", "error") : "", ctx.hasPendingMessages() ? theme.fg("warning", "queued") : "", hiddenLineCount ? `↑ ${hiddenLineCount} more` : ""].filter(Boolean);
-            const statuses = [...data.getExtensionStatuses().values()];
-            const left = [stateLabel, toolNames, ...badges, ...statuses].filter(Boolean).join(theme.fg("dim", " · "));
-            return this.fit(columns, left, theme.fg("muted", responseStats()));
+            const phaseColor = animation?.color ?? (interrupted ? theme.colors.warning : light ? lightReady : theme.colors.success);
+            const stateLabel = theme.style(animation ? `${frame} ${state}` : `${interrupted ? "■" : "·"} ${state}`, {
+              fg: light && !["Ready", "Thinking", "Active"].includes(state) ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
+              dim: !light,
+            });
+            const toolNames = activeTools.size ? theme.fg(secondary, [...new Set(activeTools.values())].join(", ")) : "";
+            const badges = [error ? theme.style("error", { fg: "error", dim: !light }) : "", ctx.hasPendingMessages() ? theme.style("queued", { fg: "warning", dim: !light }) : "", this.hiddenAbove ? `↑ ${this.hiddenAbove} more` : ""].filter(Boolean);
+            const statuses = data.getExtensionStatuses();
+            const otherStatuses = [...statuses].filter(([key]) => key !== "work-mode").map(([, value]) => value);
+            const left = [modeLabel, toolNames, ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
+            const right = truncateToWidth(stateLabel, columns, "");
+            const gap = columns - visibleWidth(right);
+            return truncateToWidth(left, Math.max(0, gap - 1), "", true) + (gap ? " " : "") + right;
           }
+          protected renderTopBorder(columns: number, hiddenLineCount: number): string {
+            this.hiddenAbove = hiddenLineCount;
+            return "─".repeat(columns);
+          }
+
           protected renderBottomBorder(columns: number, hiddenLineCount: number): string {
-            const innerWidth = Math.max(0, columns - 6);
-            const bottom = truncateToWidth(identity, innerWidth);
-            return this.fit(columns, bottom, hiddenLineCount ? `↓ ${hiddenLineCount} more` : "");
+            this.bottomBorder = stripVTControlCharacters(super.renderBottomBorder(columns, hiddenLineCount));
+            return this.bottomBorder;
+          }
+
+          render(columns: number): string[] {
+            const margin = frameInset(columns);
+            const inset = " ".repeat(margin);
+            const innerWidth = columns - 2 * margin;
+            const lines = super.render(innerWidth);
+            const bottom = lines.indexOf(this.bottomBorder, 1);
+            const theme = ctx.ui.theme;
+            const [mode, profile, agents] = (data.getExtensionStatuses().get("work-mode") ?? "").split(" · ");
+            const light = theme.appearance === "light";
+            const coral = light ? rgbColor(170, 72, 66) : rgbColor(217, 126, 116);
+            const blue = light ? rgbColor(43, 108, 150) : rgbColor(111, 172, 207);
+            const modeColor = mode === "EXPLORE" ? blue : mode === "EXECUTE" ? coral : undefined;
+            const profileColor = profile === "AUTONOMOUS" ? coral : mixColors(theme.colors.muted, theme.colors.dim, 0.65, "srgb");
+            const modeLabel = modeColor ? [
+              theme.style(mode, { fg: modeColor }),
+              profile ? theme.style(profile, { fg: profileColor }) : "",
+              agents ? theme.fg("accent", agents) : "",
+            ].filter(Boolean).join(theme.fg("dim", " · ")) : "";
+            const borderColor = modeColor ? mixColors(theme.colors.borderMuted, modeColor, 0.5, "srgb") : undefined;
+            const border = (text: string) => borderColor ? theme.style(text, { fg: borderColor }) : theme.fg("borderMuted", text);
+            const frame = lines.map((line, i) => {
+              if (i === 0) return margin ? ` ${border(`╭─${line}─╮`)} ` : border(line);
+              if (i === bottom) return margin ? ` ${border(`╰─${line}─╯`)} ` : border(line);
+              if (!margin) return line;
+              return i < bottom ? ` ${border("│")} ${line} ${border("│")} ` : inset + line + inset;
+            });
+            return [inset + this.renderStatus(innerWidth, modeLabel) + inset, ...frame];
+          }
+
+          handleMouse(event: TuiMouseEvent) {
+            const margin = frameInset(event.width);
+            return super.handleMouse({ ...event, x: event.x - margin, y: event.y - 1,
+              width: event.width - 2 * margin, height: event.height - 1 });
           }
         }
-        return new StatusEditor(editorTui, editorTheme, keybindings, { paddingX: 3 });
+        return new StatusEditor(editorTui, editorTheme, keybindings);
       });
       update();
       return {
         invalidate() {},
         render(columns: number) {
-          const innerWidth = Math.max(0, columns - 6);
-          const hints = columns >= 85 ? footerHints : "";
-          const reserved = visibleWidth(hints) + (hints ? 3 : 0);
-          // Resize and hint visibility affect the Go renderer's right-hand budget.
+          const margin = frameInset(columns);
+          const inset = " ".repeat(margin);
+          const innerWidth = Math.max(1, columns - margin * 2);
           if (width !== innerWidth) { width = innerWidth; update(); }
-          const info = truncateToWidth(line, Math.max(0, innerWidth - reserved));
-          const general = ctx.ui.theme.fg("dim", hints) + (hints ? "   " : "") + info;
           const theme = ctx.ui.theme;
-          // Upper-half blocks extend the panel by half a cell without painting a full row.
-          const edge = columns < 6 ? " ".repeat(columns) : " " +
-            theme.style("╹", { fg: stripeColor(), dim: true }) +
-            theme.style("▀".repeat(columns - 3), { fg: theme.colors.customMessageBg }) + " ";
-          return [
-            "\x1b[49m" + edge,
-            truncateToWidth("   " + general + "   ", columns),
-          ];
+          // On light backgrounds the ribbon's ANSI gray plus faint loses too much contrast.
+          const output = theme.appearance === "light"
+            ? line.replaceAll("\x1b[2;38;5;11m", theme.getFgAnsi("thinkingText")).replaceAll("\x1b[2;", "\x1b[")
+            : line;
+          const rows = output.split("\n");
+          if (rows.length === 1) {
+            // The Go renderer and TUI can count Nerd Font glyphs differently. Correct its inter-block gap in terminal columns.
+            const row = rows[0];
+            const gap = [...row.matchAll(/ {2,}/g)].reduce<RegExpMatchArray | undefined>((longest, match) =>
+              !longest || match[0].length > longest[0].length ? match : longest, undefined);
+            if (gap && gap.index !== undefined) {
+              const size = gap[0].length + innerWidth - visibleWidth(row);
+              if (size > 0) rows[0] = row.slice(0, gap.index) + " ".repeat(size) + row.slice(gap.index + gap[0].length);
+            }
+          }
+          return rows.flatMap(row => wrapTextWithAnsi(row, innerWidth))
+            .map(row => inset + truncateToWidth(row, innerWidth, "", true) + inset);
         },
         dispose() {
           disposed = true;
-          ctx.ui.setWidget("statusline-half-edge", undefined);
-          clearInterval(timer);
           clearInterval(clock);
           child?.kill();
           if (refresh === update) refresh = undefined;
@@ -282,13 +455,25 @@ export default function (pi: ExtensionAPI) {
     phase = "Waiting";
     stream = { textChunks: 0, toolCall: false };
     lastResponse = undefined;
+    turnTiming = undefined;
+    toolStarts.clear();
     error = false;
     interrupted = false;
     activeTools.clear();
+    waitingForUser = false;
+    sessionContext = ctx;
+    if (ctx.mode === "tui") ctx.ui.setHiddenThinkingLabel("");
+    mkdirSync(sessionsDir, { recursive: true, mode: 0o700 });
+    publishSession();
+    sessionTimer = setInterval(() => { publishSession(); refresh?.(); }, 15000);
+    sessionTimer.unref();
     install(ctx);
   });
+  pi.on("before_agent_start", startTiming);
   pi.on("agent_start", () => {
+    startTiming();
     busy = true;
+    publishSession();
     error = false;
     interrupted = false;
     redraw?.();
@@ -326,19 +511,32 @@ export default function (pi: ExtensionAPI) {
     redraw?.();
   });
   pi.on("tool_execution_start", event => {
+    if (turnTiming && !event.parentToolCallId) {
+      toolStarts.set(event.toolCallId, { from: performance.now(), phase: event.toolName === "bash" ? "bash" : "tools" });
+    }
     activeTools.set(event.toolCallId, event.toolName);
     redraw?.();
   });
   pi.on("tool_execution_end", event => {
+    const started = toolStarts.get(event.toolCallId);
+    if (started) turnTiming?.spans.push({ ...started, to: performance.now() });
+    toolStarts.delete(event.toolCallId);
     activeTools.delete(event.toolCallId);
-    if (event.isError) error = true;
     redraw?.();
   });
-  pi.on("agent_settled", event => {
+  pi.on("agent_settled", (event, ctx) => {
+    const ended = performance.now();
+    if (ctx.mode === "tui" && turnTiming && ended > turnTiming.started) {
+      for (const started of toolStarts.values()) turnTiming.spans.push({ ...started, to: ended });
+      pi.appendEntry("turn-timing", summarizeTurn(turnTiming, ended, event.aborted));
+    }
+    turnTiming = undefined;
+    toolStarts.clear();
     busy = false;
     generatingSince = undefined;
     interrupted = event.aborted;
     activeTools.clear();
+    publishSession();
     redraw?.();
   });
   pi.on("after_provider_response", async (event, ctx) => {
@@ -346,18 +544,35 @@ export default function (pi: ExtensionAPI) {
     const safeHeaders = Object.fromEntries(Object.entries(event.headers).filter(([name]) =>
       /^x-codex-(primary|secondary)-(used-percent|window-minutes|reset-at|reset-after-seconds)$/i.test(name) ||
       /^anthropic-ratelimit-unified-(5h|7d)-(utilization|reset)$/i.test(name)));
-    lastDiagnostic = { observed: true, at: new Date().toISOString(), provider: ctx.model?.provider,
+    const observedAt = Date.now();
+    const provider = ctx.model?.provider ?? "unknown";
+    const directory = join(cache, encodeURIComponent(provider));
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const snapshot = { ...loadSharedObservations(cache, provider, observedAt), ...observe(next, observedAt) };
+    if (Object.keys(snapshot).length) {
+      // Each process owns one atomic snapshot, so parallel writers cannot overwrite each other.
+      const path = join(directory, `limits-${process.pid}.json`);
+      writeFileSync(path + ".tmp", JSON.stringify(snapshot), { mode: 0o600 });
+      renameSync(path + ".tmp", path);
+    }
+    lastDiagnostic = { observed: true, at: new Date().toISOString(), observedAt, provider,
       model: ctx.model?.id, status: event.status, subscriptionHeaders: safeHeaders, parsed: next };
-    mkdirSync(join(root, "cache", "statusline"), { recursive: true, mode: 0o700 });
-    writeFileSync(join(root, "cache", "statusline", "transport-diagnostic.json"), JSON.stringify(lastDiagnostic, null, 2), { mode: 0o600 });
-    if (Object.keys(next).length) observations.set(key(ctx), { ...observations.get(key(ctx)), ...next });
+    const diagnosticPath = join(cache, "transport-diagnostic.json");
+    const diagnosticTemp = diagnosticPath + `.${process.pid}.tmp`;
+    writeFileSync(diagnosticTemp, JSON.stringify(lastDiagnostic, null, 2), { mode: 0o600 });
+    renameSync(diagnosticTemp, diagnosticPath);
     refresh?.();
   });
   pi.on("message_end", event => {
     if (event.message.role === "assistant") {
       const message = event.message;
       const started = generatingSince;
-      const elapsed = message.durationMs ?? (started === undefined ? undefined : performance.now() - started);
+      const ended = performance.now();
+      const elapsed = message.durationMs ?? (started === undefined ? undefined : ended - started);
+      if (turnTiming && started !== undefined) {
+        const split = Math.min(ended, Math.max(started, stream.firstOutput ?? ended));
+        turnTiming.spans.push({ phase: "wait", from: started, to: split }, { phase: "generation", from: split, to: ended });
+      }
       generatingSince = undefined;
       const failed = message.stopReason === "error" || message.stopReason === "aborted";
       if (message.stopReason === "error") error = true;
@@ -367,6 +582,10 @@ export default function (pi: ExtensionAPI) {
         const textTokens = reasoning === undefined || hasTools ? undefined : message.usage.output - reasoning;
         const textSeconds = stream.firstText !== undefined && stream.lastText !== undefined ? (stream.lastText - stream.firstText) / 1000 : undefined;
         const unavailable = failed ? "Response failed or was aborted" : hasTools ? "Output includes tool-call tokens" : reasoning === undefined ? "Provider did not separate reasoning tokens" : !textTokens ? "No text tokens" : stream.textChunks < 2 || !textSeconds ? "Text arrived in fewer than two timed chunks" : undefined;
+        if (turnTiming && unavailable === undefined && textTokens !== undefined && textSeconds !== undefined) {
+          turnTiming.tokens += textTokens;
+          turnTiming.textSeconds += textSeconds;
+        }
         lastResponse = {
           seconds: elapsed / 1000,
           firstOutputSeconds: started !== undefined && stream.firstOutput !== undefined ? (stream.firstOutput - started) / 1000 : undefined,
@@ -380,6 +599,13 @@ export default function (pi: ExtensionAPI) {
     }
     refresh?.();
     redraw?.();
+  });
+  pi.on("ui_prompt_start", () => { waitingForUser = true; publishSession(); });
+  pi.on("ui_prompt_end", () => { waitingForUser = false; publishSession(); });
+  pi.on("session_shutdown", () => {
+    clearInterval(sessionTimer);
+    sessionContext = undefined;
+    rmSync(sessionFile, { force: true });
   });
   pi.on("model_select", () => { refresh?.(); redraw?.(); });
   pi.on("thinking_level_select", () => { refresh?.(); redraw?.(); });

@@ -354,9 +354,7 @@ tw() {
 t3() { tw 3 "$1"; }
 t6() { tw 6 "$1"; }
 
-# The agent in window 2 of `tn` and `ds` sessions: claude | opencode | pi.
-# One-off: `WORKSPACE_AGENT=pi tn`.
-export WORKSPACE_AGENT=${WORKSPACE_AGENT:-claude}
+# Pi opens in window 2 of new `tn` and `ds` sessions. One-off: `WORKSPACE_AGENT=claude tn`.
 
 tn() {
     local name="${1:-$(basename "$PWD")}"

@@ -159,6 +159,16 @@ in
 
         run nvim --headless "+Lazy! install" +qa \
           || ${warn "nvim Lazy install failed (offline?)"}
+
+        # NOTE: blink.cmp fetches its prebuilt fuzzy library lazily, on the first
+        # InsertEnter. A container where nvim was closed mid-download kept only a
+        # *.so.tmp and completion silently stayed off. Fetching here makes the
+        # image carry the binary; a no-op once the version file matches the tag.
+        run rm -f "$HOME"/.local/share/nvim/lazy/blink.cmp/target/release/*.tmp
+        run nvim --headless \
+          "+lua require('lazy').load({ plugins = { 'blink.cmp' } })" \
+          "+lua local r = {}; require('blink.cmp.fuzzy.download').ensure_downloaded(function(err) r.done = true; r.err = err end); vim.wait(60000, function() return r.done end, 100); if not r.done or r.err then vim.cmd('cquit') end" \
+          +qa || ${warn "blink.cmp fuzzy binary not downloaded (offline?)"}
       ); fi
     '';
 

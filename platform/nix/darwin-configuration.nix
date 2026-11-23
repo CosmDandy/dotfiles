@@ -8,7 +8,6 @@
   memoryGiB,
   claudeTools,
   piTools,
-  opencodePackage,
   atuinPackage,
   ...
 }:
@@ -26,16 +25,18 @@ let
   # rollback must move the script together with its plist.
   # NOTE: writeShellScriptBin, not writeShellApplication — the latter forces
   # `set -euo pipefail`, and these scripts parse exit codes by hand on purpose.
-  backupScript = pkgs.writeShellScriptBin "backup" (
-    builtins.readFile ../../automation/backup/backup.sh
-  );
-  # NOTE: the manifest is its own store path passed in by env var.
-  # writeShellScriptBin creates exactly one file, so "next to the script" does
-  # not exist in the store.
-  backupManifest = ../../automation/backup/manifest.conf;
-  backupCheckScript = pkgs.writeShellScriptBin "backup-check" (
-    builtins.readFile ../../automation/backup/backup-check.sh
-  );
+  # DISABLED 2026-11-18 (restic backup is not used for now): to re-enable, uncomment this
+  # block, the `restic` package and the `backup` / `backup-check` agents below.
+  # backupScript = pkgs.writeShellScriptBin "backup" (
+  #   builtins.readFile ../../automation/backup/backup.sh
+  # );
+  # # NOTE: the manifest is its own store path passed in by env var.
+  # # writeShellScriptBin creates exactly one file, so "next to the script" does
+  # # not exist in the store.
+  # backupManifest = ../../automation/backup/manifest.conf;
+  # backupCheckScript = pkgs.writeShellScriptBin "backup-check" (
+  #   builtins.readFile ../../automation/backup/backup-check.sh
+  # );
   cleanupMacScript = pkgs.writeShellScriptBin "cleanup-mac" (
     builtins.readFile ../../automation/launchd/scripts/cleanup-mac.sh
   );
@@ -118,6 +119,8 @@ in
       "leader-key"
       # Browsers
       "arc"
+      "ardia-browser/tap/ardia"
+      "helium-browser"
       # "netnewswire"
       # Development
       "ghostty"
@@ -168,6 +171,7 @@ in
       "Happ" = 6504287215;
     };
     taps = [
+      "ardia-browser/tap"
       "nikitabobko/tap"
     ];
   };
@@ -216,7 +220,6 @@ in
     claudeTools.cli
     piTools.agent
     piTools.statusline
-    opencodePackage
     uv
     luarocks # for mason (luacheck); brings its own lua
     eza
@@ -253,7 +256,7 @@ in
     lima # declarative Linux VMs (PXE bench)
     gdu
     gitleaks
-    restic # automation/backup/backup.sh
+    # restic # automation/backup/backup.sh (disabled, see the backup block above)
     direnv
     nix-direnv
     rbw
@@ -286,46 +289,50 @@ in
   # org.nixos.*; timing-mcp is not here, it belongs to
   # tools/claude/custom/install.sh.
   launchd.user.agents = {
-    # NOTE: 13:00, not at night — the laptop sleeps, and launchd does not catch
-    # up a missed calendar run the way systemd's Persistent=true does.
-    backup.serviceConfig = {
-      ProgramArguments = [ "${backupScript}/bin/backup" ];
-      EnvironmentVariables.BACKUP_MANIFEST_FILE = "${backupManifest}";
-      StartCalendarInterval = [
-        {
-          Hour = 13;
-          Minute = 0;
-        }
-      ];
-      RunAtLoad = false;
-      LowPriorityIO = true;
-      Nice = 5;
-      # NOTE: Library/Logs, not /tmp — macOS wipes /tmp on reboot and incident
-      # logs disappeared before anyone read them.
-      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/backup.log";
-      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/backup.log";
-    };
-
-    # NOTE: a separate agent, not a tail of backup.sh — a script can report that
-    # it failed, but not that it was never started, and that is the typical
-    # failure.
-    backup-check.serviceConfig = {
-      ProgramArguments = [
-        "${backupCheckScript}/bin/backup-check"
-        "--quiet"
-      ];
-      StartCalendarInterval = [
-        {
-          Hour = 15;
-          Minute = 0;
-        }
-      ];
-      RunAtLoad = false;
-      LowPriorityIO = true;
-      Nice = 5;
-      StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
-      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
-    };
+    # DISABLED 2026-11-18, see the backup block at the top. To re-enable: uncomment both agents,
+    # run `darwin-rebuild switch`, then `launchctl enable gui/$(id -u)/org.nixos.backup` and
+    # `.../org.nixos.backup-check` (they were disabled by hand and that override survives a switch).
+    #
+    # # NOTE: 13:00, not at night — the laptop sleeps, and launchd does not catch
+    # # up a missed calendar run the way systemd's Persistent=true does.
+    # backup.serviceConfig = {
+    #   ProgramArguments = [ "${backupScript}/bin/backup" ];
+    #   EnvironmentVariables.BACKUP_MANIFEST_FILE = "${backupManifest}";
+    #   StartCalendarInterval = [
+    #     {
+    #       Hour = 13;
+    #       Minute = 0;
+    #     }
+    #   ];
+    #   RunAtLoad = false;
+    #   LowPriorityIO = true;
+    #   Nice = 5;
+    #   # NOTE: Library/Logs, not /tmp — macOS wipes /tmp on reboot and incident
+    #   # logs disappeared before anyone read them.
+    #   StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/backup.log";
+    #   StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/backup.log";
+    # };
+    #
+    # # NOTE: a separate agent, not a tail of backup.sh — a script can report that
+    # # it failed, but not that it was never started, and that is the typical
+    # # failure.
+    # backup-check.serviceConfig = {
+    #   ProgramArguments = [
+    #     "${backupCheckScript}/bin/backup-check"
+    #     "--quiet"
+    #   ];
+    #   StartCalendarInterval = [
+    #     {
+    #       Hour = 15;
+    #       Minute = 0;
+    #     }
+    #   ];
+    #   RunAtLoad = false;
+    #   LowPriorityIO = true;
+    #   Nice = 5;
+    #   StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
+    #   StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/backup-check.log";
+    # };
 
     cleanup-mac.serviceConfig = {
       ProgramArguments = [ "${cleanupMacScript}/bin/cleanup-mac" ];
@@ -573,7 +580,14 @@ in
       # default set.
       persistent-apps = [ ];
       persistent-others = [
-        "/Users/${config.system.primaryUser}/Downloads"
+        {
+          folder = {
+            path = "/Users/${config.system.primaryUser}/Downloads";
+            displayas = "stack";
+            showas = "fan";
+            arrangement = "date-added";
+          };
+        }
       ];
     };
     finder = {

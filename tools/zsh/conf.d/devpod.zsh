@@ -385,7 +385,7 @@ ds() {
     # the correction sat in the fallback branch that an existing script skips.
     _enter+='infocmp "$TERM" >/dev/null 2>&1 || export TERM=xterm-256color; '
     local _script='$HOME/dotfiles/tools/devpod/tmux-enter.sh'
-    _enter+="if [ -x $_script ]; then exec $_script $id '' ${WORKSPACE_AGENT:-claude}; fi; "
+    _enter+="if [ -x $_script ]; then exec $_script $id '' ${WORKSPACE_AGENT:-pi}; fi; "
     # NOTE: a container without tmux is not an error — the flag means "tmux
     # when there is tmux". Without this the entry died with "command not found:
     # tmux" and dropped the user back on the mac, which is a worse outcome than
@@ -1796,7 +1796,7 @@ typeset -ga DP_SECRETS=(
   "env|work env file (jira, gitlab, nomad…)|_dp_put_workenv|3"
   "github|GitHub token for gh|_dp_put_github|4"
   "gitlab|GitLab token and host for glab|_dp_put_gitlab|5"
-  "knowledge|knowledge MCP bearer token|_dp_put_knowledge|6"
+  "knowledge|MCP Knowledge bearer token|_dp_put_knowledge|6"
 )
 
 # Where the work variables live inside a container.
