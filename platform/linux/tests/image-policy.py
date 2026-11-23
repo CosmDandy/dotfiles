@@ -94,7 +94,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert 'skipping home-manager switch' in run(repo/LINUX/'dotfiles-provision')
     run('git', 'remote', 'set-url', 'origin', repo.as_uri(), cwd=clone)
     for path in ('platform/nix/flake.lock', 'platform/nix/home/pi.nix', 'tools/pi/statusline/main.go',
-                 'tools/pi/mcp.json', 'tools/nvim/lua/plugins/editor/blink-cmp.lua', 'tools/zsh/plugins.zsh'):
+                 'tools/pi/patches/vim-transcript.patch', 'tools/pi/mcp.json',
+                 'tools/nvim/lua/plugins/editor/blink-cmp.lua', 'tools/zsh/plugins.zsh'):
         write(repo/path, 'baked'); commit()
         new_key = run(repo/LINUX/'image-key', cwd=repo)
         assert new_key != key, path
