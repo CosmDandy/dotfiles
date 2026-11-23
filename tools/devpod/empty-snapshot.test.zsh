@@ -3,7 +3,7 @@ set -eu
 root=${0:A:h:h:h}
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
-export HOME=$tmp
+export HOME=$tmp XDG_CACHE_HOME=$tmp/cache XDG_STATE_HOME=$tmp/state DP_LOG=$tmp/events.tsv
 mkdir -p "$HOME/.devpod/contexts/default/workspaces"
 source "$root/tools/zsh/conf.d/devpod.zsh"
 _dp_cache_dir

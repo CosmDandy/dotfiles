@@ -4,7 +4,7 @@ export DOTFILES_DIR=${0:A:h:h:h}
 local tmp=$(mktemp -d)
 local sock=$tmp/tmux
 trap 'tmux -S "$sock" kill-server 2>/dev/null || :; rm -rf -- "$tmp"' EXIT
-export HOME=$tmp
+export HOME=$tmp XDG_CACHE_HOME=$tmp/cache XDG_STATE_HOME=$tmp/state DP_LOG=$tmp/events.tsv
 mkdir -p "$HOME/.devpod/contexts/default/workspaces"
 # Exercise fzf on a real tty; only the final provisioning step is replaced.
 tmux -S "$sock" -f /dev/null new-session -d -x 160 -y 32 'zsh -fc '\''source "$DOTFILES_DIR/tools/zsh/conf.d/devpod.zsh"; _dp_new() { print -r -- "$1" > "$HOME/created"; }; dp'\'''
