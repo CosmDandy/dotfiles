@@ -580,7 +580,14 @@ in
       # default set.
       persistent-apps = [ ];
       persistent-others = [
-        "/Users/${config.system.primaryUser}/Downloads"
+        {
+          folder = {
+            path = "/Users/${config.system.primaryUser}/Downloads";
+            displayas = "stack";
+            showas = "fan";
+            arrangement = "date-added";
+          };
+        }
       ];
     };
     finder = {
