@@ -110,7 +110,7 @@ jobs:
           PI_TEST_BIN="$pi_store/bin/pi" \
             nix shell --inputs-from . nixpkgs#nodejs_24 nixpkgs#tmux --command \
             node --test ../../tools/pi/tests/vim-transcript.test.mjs
-          PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+          TERM=xterm-256color COLORTERM=truecolor PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
             nix shell --inputs-from . nixpkgs#nodejs_24 --command \
             node ../../tools/pi/tests/compact-tools.test.mjs
           PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
