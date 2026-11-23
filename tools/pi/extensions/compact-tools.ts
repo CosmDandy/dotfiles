@@ -219,6 +219,51 @@ function knowledgeResponse(output: string, structured: unknown): Record<string, 
   return result && typeof result === "object" ? result as Record<string, unknown> : undefined;
 }
 
+type KnowledgeCard = { summary: string; fields: [string, string][] };
+
+function knowledgeCard(action: string, data: Record<string, unknown> | undefined): KnowledgeCard | undefined {
+  if (!data) return undefined;
+  if (action === "propose_note" || action === "propose_edit") {
+    if (typeof data.pr !== "string" || typeof data.path !== "string") return undefined;
+    const number = /\/pull\/(\d+)\/?$/.exec(data.pr)?.[1];
+    const state = data.new_pr === true ? "Opened" : data.new_pr === false ? "Updated" : "";
+    const fields: KnowledgeCard["fields"] = [["Note", data.path], ["Pull request", data.pr]];
+    if (typeof data.branch === "string") fields.push(["Branch", data.branch]);
+    return { summary: `${state} PR${number ? ` #${number}` : ""}`.trim(), fields };
+  }
+  if (action === "list_proposals" && Array.isArray(data)) {
+    const fields: KnowledgeCard["fields"] = [];
+    for (const item of data) {
+      if (typeof item?.topic !== "string" || typeof item.pr !== "string") return undefined;
+      fields.push([item.topic, item.pr]);
+    }
+    return { summary: `${data.length} open ${data.length === 1 ? "PR" : "PRs"}`, fields };
+  }
+  if (action === "related") {
+    const fields: KnowledgeCard["fields"] = [];
+    let total = 0;
+    for (const [key, label] of [["parents", "Parents"], ["children", "Children"], ["links_out", "Outgoing"], ["backlinks", "Backlinks"]]) {
+      const items = data[key];
+      if (!Array.isArray(items)) return undefined;
+      const paths = items.map(item => item?.path ?? item?.name);
+      if (!paths.every(path => typeof path === "string")) return undefined;
+      total += items.length;
+      if (paths.length) fields.push([label, paths.join("\n")]);
+    }
+    return { summary: `${total} ${total === 1 ? "relation" : "relations"}`, fields };
+  }
+  if (action === "status" && typeof data.notes === "number") {
+    const fields: KnowledgeCard["fields"] = [];
+    for (const [key, label] of [["notes", "Notes"], ["chunks", "Chunks"], ["edges", "Edges"], ["unresolved_links", "Unresolved links"], ["multi_parent_notes", "Multi-parent notes"], ["last_sync", "Last sync"]]) {
+      const value = data[key];
+      if (typeof value === "number" || typeof value === "string") fields.push([label, String(value)]);
+    }
+    if (Array.isArray(data.parent_cycles)) fields.push(["Parent cycles", data.parent_cycles.length ? JSON.stringify(data.parent_cycles) : "None"]);
+    return { summary: `${data.notes} ${data.notes === 1 ? "note" : "notes"}`, fields };
+  }
+  return undefined;
+}
+
 function exaMatches(output: string) {
   if (!output.startsWith("Title: ")) return undefined;
   const hits = output.split(/\n---\n(?=\s*Title: )/).map(block => {
@@ -600,7 +645,9 @@ export default function compactTools(pi: ExtensionAPI) {
     const knowledge = server === "knowledge" && (action === "search" || action === "read");
     const exa = server === "exa" && (action === "web_search_exa" || action === "web_fetch_exa");
     const searchMcp = action === "search" || action === "web_search_exa";
-    const friendlyMcp = knowledge || exa;
+    const proposal = server === "knowledge" && (action === "propose_note" || action === "propose_edit");
+    const cardTool = proposal || (server === "knowledge" && ["list_proposals", "related", "status"].includes(action));
+    const friendlyMcp = knowledge || exa || cardTool;
     const matchesFor = (output: string, structured: unknown) => knowledge
       ? knowledgeResponse(output, structured)?.results : exaMatches(output);
     const renderers: ToolRenderers = {
@@ -637,10 +684,12 @@ export default function compactTools(pi: ExtensionAPI) {
         } : compactStats;
         const label = exa ? `${searchMcp ? "search" : "fetch"} · exa`
           : clean(action ? `${action.replaceAll("_", " ")} · ${server}` : toolName);
-        const target = knowledge ? searchMcp ? args?.text : args?.path : args?.query;
+        const target = action === "propose_note" && proposal ? args?.title
+          : cardTool ? args?.path : knowledge ? searchMcp ? args?.text : args?.path : args?.query;
         const urls = exa && !searchMcp && Array.isArray(args?.urls) ? args.urls : [];
         const argsPreview = friendlyMcp
           ? searchMcp && typeof target === "string" ? preview({ query: JSON.stringify(target) })
+            : cardTool && typeof target === "string" ? clean(proposal && action === "propose_note" ? target : basename(target, ".md")).replace(/\s+/g, " ")
             : knowledge && typeof target === "string"
               ? clean(basename(target, ".md") + (typeof args?.heading === "string" ? ` › ${args.heading}` : "")).replace(/\s+/g, " ")
               : typeof urls[0] === "string" ? clean(urls[0]) + (urls.length > 1 ? ` +${urls.length - 1}` : "") : ""
@@ -818,7 +867,8 @@ export default function compactTools(pi: ExtensionAPI) {
             context.state.outcome = `${clean(search.scope)} · ${count} ${search.noun}${count === 1 ? "" : "s"}${limited ? " (shown)" : ""}`;
           } else {
             const matches = friendlyMcp && searchMcp ? matchesFor(output, result.structuredContent) : undefined;
-            context.state.outcome = friendlyMcp ? (Array.isArray(matches)
+            context.state.outcome = cardTool ? knowledgeCard(action, knowledgeResponse(output, result.structuredContent))?.summary ?? ""
+              : friendlyMcp ? (Array.isArray(matches)
               ? `${matches.length} ${matches.length === 1 ? "result" : "results"}` : "")
               : list ? listSummary(toolName, output, details as Record<string, unknown> | undefined)
                 : mcpSummary(output, result.structuredContent);
@@ -849,7 +899,29 @@ export default function compactTools(pi: ExtensionAPI) {
             return paint(indentedLines(text + (remaining ? `\n${quietMetadata(theme, `… ${remaining} more lines`, expanded)}` : ""), padding, width));
           }
           const output = readOutput();
-          if (friendlyMcp && !isPartial && !context.isError) {
+          if (cardTool && !isPartial && !context.isError) {
+            const card = knowledgeCard(action, knowledgeResponse(output, result.structuredContent));
+            if (card) {
+              const fields = [...card.fields];
+              if (proposal) {
+                for (const key of ["topic", "reason", "parent", "aliases", "links"]) {
+                  const value = context.args?.[key];
+                  const text = Array.isArray(value) ? value.filter(item => typeof item === "string").join(", ") : value;
+                  if (typeof text === "string" && text) fields.push([key[0].toUpperCase() + key.slice(1), text]);
+                }
+              }
+              const rows = fields.flatMap(([label, value]) => indentedLines(
+                quietMetadata(theme, clean(label) + ": ", expanded) + theme.fg("toolOutput", clean(value)), padding, width));
+              const body = proposal && context.args?.body;
+              if (typeof body === "string" && body.trim()) {
+                const indent = padding + " ";
+                const note = new Markdown(clean(body), 0, 0, getMarkdownTheme());
+                rows.push("", ...note.render(Math.max(1, width - indent.length)).map(row => truncateToWidth(indent + row, width)));
+              }
+              return paint(rows);
+            }
+          }
+          if (!cardTool && friendlyMcp && !isPartial && !context.isError) {
             const noteText = searchMcp ? undefined : knowledge ? knowledgeResponse(output, result.structuredContent)?.text : output;
             if (typeof noteText === "string") {
               const indent = padding + " ";
