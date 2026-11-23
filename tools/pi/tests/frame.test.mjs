@@ -121,7 +121,7 @@ try {
   let choice, menu;
   const notifications = [];
   modes.runtime.getActiveTools = () => activeTools;
-  modes.runtime.getAllTools = () => [...buildTools, "grep", "mcp__knowledge__read"].map(name => ({ name }));
+  modes.runtime.getAllTools = () => [...buildTools, "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"].map(name => ({ name }));
   modes.runtime.setActiveTools = names => { activeTools = names; };
   const modeContext = { ...ctx, isIdle: () => idle, ui: { ...ctx.ui,
     setStatus: (key, value) => statuses.set(key, value), notify: text => notifications.push(text),
@@ -168,7 +168,7 @@ try {
   assert.match(top(), /^ {3}EXPLORE/);
   assert.equal(plain(editor.render(151).slice(2).join("")).match(/x/g)?.length, 145);
   editor.setText("");
-  assert.deepEqual(activeTools, ["read", "grep", "mcp__knowledge__read"]);
+  assert.deepEqual(activeTools, ["read", "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"]);
   for (const toolName of ["write", "edit", "bash", "codemode", "mcp__knowledge__propose_edit", "subagent"]) {
     assert.equal((await modeEvent("tool_call", { toolName })).block, true);
   }

@@ -6,6 +6,7 @@ const subagentTool = "subagent";
 const readOnlyTools = new Set([
   "read", "grep", "find", "ls",
   "mcp__knowledge__search", "mcp__knowledge__read", "mcp__knowledge__related", "mcp__knowledge__status",
+  "mcp__context7__resolve_library_id", "mcp__context7__query_docs",
   "mcp__exa__web_search_exa", "mcp__exa__web_fetch_exa",
 ]);
 

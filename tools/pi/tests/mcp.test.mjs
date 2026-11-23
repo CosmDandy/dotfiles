@@ -25,7 +25,9 @@ try {
   const loaded = loadMcpConfig({ agentDir: testAgentDir, cwd, projectTrusted: false });
   assert.deepEqual(loaded.errors, []);
   const servers = new Map(loaded.servers.map(({ name, config }) => [name, config]));
-  assert.deepEqual([...servers.keys()].sort(), ["exa", "knowledge"]);
+  assert.deepEqual([...servers.keys()].sort(), ["context7", "exa", "knowledge"]);
+  assert.equal(servers.get("context7").url, "https://mcp.context7.com/mcp");
+  assert.equal(servers.get("context7").exposure, "deferred");
   assert.equal(servers.get("knowledge").exposure, "deferred");
   assert.equal(servers.get("knowledge").url, "http://100.64.0.1:7234/mcp");
   assert.equal(servers.get("exa").exposure, "direct");
