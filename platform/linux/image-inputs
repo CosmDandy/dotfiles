@@ -13,6 +13,7 @@ tools/claude/cli/go.*
 tools/claude/custom
 tools/pi/statusline/*.go
 tools/pi/statusline/go.*
+tools/pi/patches/vim-transcript.patch
 !tools/**/*_test.go
 tools/pi/install-mcp.sh
 tools/pi/mcp.json
