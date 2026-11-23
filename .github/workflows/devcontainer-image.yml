@@ -7,27 +7,29 @@ on:
   push:
     branches: [main]
     paths:
-      - 'platform/nix/**'
-      # the Go hooks are built by the flake into the image's home profile
-      - 'tools/claude/guard/**'
-      - 'tools/claude/cli/**'
-      - 'tools/pi/**'
-      # mac-only files: homeConfigurations never read them
-      - '!platform/nix/darwin-configuration.nix'
-      - '!platform/nix/home/darwin.nix'
-      # the NixOS stand's system layer: homeConfigurations never read it either
-      - '!platform/nix/nixos/**'
+      # Keep in sync with platform/linux/image-inputs (checked by image-policy tests).
       - 'platform/linux/Dockerfile'
-      # the provisioning wrapper is COPYed into the image, so editing it needs a
-      # rebuild exactly like editing the Dockerfile
       - 'platform/linux/dotfiles-provision'
-      # NOTE: the submodule pointer must be here — the MCP set is baked against
-      # it and install.sh compares the baked value with the pointer in the
-      # clone. A mismatch runs the submodule installer in every workspace (+8s
-      # measured); a rebuild restores it.
+      - 'platform/linux/image-inputs'
+      - 'platform/linux/image-key'
+      - 'platform/nix/flake.nix'
+      - 'platform/nix/flake.lock'
+      - 'platform/nix/home/**/*.nix'
+      - '!platform/nix/home/darwin.nix'
+      - 'tools/claude/guard/*.go'
+      - 'tools/claude/guard/go.*'
+      - 'tools/claude/cli/*.go'
+      - 'tools/claude/cli/go.*'
       - 'tools/claude/custom'
-      # the nvim config is baked into the image (plugins + mason)
-      - 'tools/nvim/**'
+      - 'tools/pi/statusline/*.go'
+      - 'tools/pi/statusline/go.*'
+      - '!tools/**/*_test.go'
+      - 'tools/pi/install-mcp.sh'
+      - 'tools/pi/mcp.json'
+      - 'tools/pi/settings.json'
+      - 'tools/nvim/init.lua'
+      - 'tools/nvim/lua/plugins/**/*.lua'
+      - 'tools/zsh/plugins.zsh'
       - '.github/workflows/devcontainer-image.yml'
   # A rebuild with no repo changes still picks up fresh apt packages and
   # base-image patches; the nix half stays identical because flake.lock holds it.
@@ -135,7 +137,9 @@ jobs:
           context: .
           file: platform/linux/Dockerfile
           target: core
-          build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+          build-args: |
+            CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+            REVISION=${{ github.sha }}
           cache-from: ${{ github.event_name != 'schedule' && format('type=registry,ref={0}:buildcache-{1}', env.IMAGE, matrix.arch) || '' }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       # The second build runs on the same builder immediately after, taking the
@@ -147,7 +151,9 @@ jobs:
           context: .
           file: platform/linux/Dockerfile
           target: devops
-          build-args: CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+          build-args: |
+            CUSTOM_SHA=${{ steps.custom-sha.outputs.sha }}
+            REVISION=${{ github.sha }}
           cache-from: ${{ github.event_name != 'schedule' && format('type=registry,ref={0}:buildcache-{1}', env.IMAGE, matrix.arch) || '' }}
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
@@ -160,6 +166,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/digests/core /tmp/digests/devops
+          platform/linux/image-key > /tmp/digests/env-key
           touch "/tmp/digests/core/${DIGEST_CORE#sha256:}"
           touch "/tmp/digests/devops/${DIGEST_DEVOPS#sha256:}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -193,9 +200,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Two tags on one manifest: the floating :<profile> that devcontainer.json
-      # pulls, and an immutable :<profile>-<date>-<sha7> for pinning or rollback
-      # by hand. Layers are not re-pushed — imagetools only writes metadata.
+      # One manifest: latest profile, immutable release and compatibility key.
+      # Weekly rebuilds may refresh the same key; pin by digest for exact bytes.
       # NOTE: the date is required — the weekly schedule rebuilds the same
       # commit, and without it the new image would overwrite the existing
       # <profile>-<sha>.
@@ -205,6 +211,9 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           version="$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          cmp /tmp/digests/digest-{amd64,arm64}/env-key
+          key=$(cat /tmp/digests/digest-amd64/env-key)
+          [[ $key =~ ^[a-f0-9]{24}$ ]]
           # download-artifact puts each artifact in its own subdirectory, with
           # the profiles in folders inside:
           # /tmp/digests/digest-<arch>/<profile>/<sha>
@@ -220,6 +229,7 @@ jobs:
             docker buildx imagetools create \
               -t "$IMAGE:$profile" \
               -t "$IMAGE:$profile-$version" \
+              -t "$IMAGE:$profile-env-$key" \
               "${refs[@]}"
             # The digest of the manifest just written, not of a per-arch image:
             # that is what a client resolves :<profile> to, and therefore what

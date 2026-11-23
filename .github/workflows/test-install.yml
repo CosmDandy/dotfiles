@@ -25,6 +25,8 @@ jobs:
           persist-credentials: false
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y zsh shellcheck yamllint
+      - name: Check prebuilt image compatibility and provisioning policy
+        run: python3 platform/linux/tests/image-policy.py
       - name: Syntax-check all shell scripts
         run: |
           fail=0

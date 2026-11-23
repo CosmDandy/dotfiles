@@ -36,4 +36,9 @@ else
   echo "dotfiles-provision: origin недоступен — разворачиваем запечённое состояние"
 fi
 
-exec "$CLONE/platform/linux/install.sh"
+# Older installers ignore unknown arguments and would build on a cache miss.
+if [[ ! -x "$CLONE/platform/linux/image-key" ]]; then
+  echo "Checkout predates prebuilt-only provisioning; refusing automatic installation." >&2
+  exit 1
+fi
+exec "$CLONE/platform/linux/install.sh" --prebuilt "$@"

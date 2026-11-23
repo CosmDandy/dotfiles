@@ -392,10 +392,7 @@ _zinit_load() {
     # after the first command was run, and a fresh shell had no autosuggestions
     # at all until you typed something. Reported as "new session does not
     # suggest, old one does".
-    zinit light zsh-users/zsh-completions
-    zinit light zsh-users/zsh-autosuggestions
-    zinit light zdharma-continuum/fast-syntax-highlighting
-    zinit light hlissner/zsh-autopair
+    source "$DOTFILES_DIR/tools/zsh/plugins.zsh"
 
     # autosuggestions hooks itself on precmd; we are past the first one, so it
     # needs the explicit start it used to get from the `atload` ice.

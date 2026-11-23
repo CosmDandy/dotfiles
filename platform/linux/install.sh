@@ -11,15 +11,32 @@ source "$PLATFORM_DIR/common.sh"
 # platform/nix/home/ and applied by a single home-manager switch. Only the
 # irreducible minimum lives here.
 #
-# Profiles: core | devops
-# Usage: PROFILE=core ./install.sh
-#    or: devpod up --dotfiles-script-env PROFILE=core
-#
-# NOTE: without an explicit variable the profile comes from the marker the
-# prebuilt image writes. Otherwise a :core image would get the devops profile
-# rolled onto it, pulling terraform, ansible, kubectl and k9s into the
-# container's personal layer — measured at 5m41s against ~20s.
+# Bare Linux installs may build. Image provisioning must never silently turn a
+# cache miss into a full per-workspace build (including Terraform).
 PROFILE="${PROFILE:-$(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo devops)}"
+case "$PROFILE" in core|devops) ;; *) echo "Unsupported profile: $PROFILE" >&2; exit 2;; esac
+prebuilt=false
+[[ ! -e /etc/devcontainer-prebuilt ]] || prebuilt=true
+allow_build=false
+for option in "$@"; do
+  case "$option" in
+    --prebuilt) prebuilt=true ;;
+    --allow-local-build) allow_build=true ;;
+    *) echo "Unknown install option: $option" >&2; exit 2 ;;
+  esac
+done
+use_image=false
+if $prebuilt && ! $allow_build; then
+  key=$(cd "$DOTFILES_ROOT" && "$SCRIPT_DIR/image-key")
+  if [[ "$key" != "$(cat "$HOME/.dotfiles-generation" 2>/dev/null)" ||
+        "$PROFILE" != "$(cat "$HOME/.dotfiles-profile" 2>/dev/null)" ]]; then
+    echo "Incompatible prebuilt environment. Required image: ghcr.io/cosmdandy/devcontainer:${PROFILE}-env-${key}" >&2
+    echo "Wait for CI to publish it, then pull and recreate. No local build started." >&2
+    echo "To explicitly build in this workspace: PROFILE=$PROFILE $SCRIPT_DIR/install.sh --allow-local-build" >&2
+    exit 1
+  fi
+  use_image=true
+fi
 print_section "Profile: ${PROFILE}"
 
 # Nix install mode. Two shapes, and the difference is not cosmetic:
@@ -69,6 +86,10 @@ done
 # NOTE: --no-channel-add — packages come from flake.lock, and the default
 # channel would pull ~400MB of unpinned tree.
 if ! command -v nix &> /dev/null; then
+  if $use_image; then
+    echo "Missing Nix in prebuilt image: ghcr.io/cosmdandy/devcontainer:${PROFILE}-env-${key}" >&2
+    exit 1
+  fi
   print_section "Installing Nix (${NIX_INSTALL}-user)"
   NIX_INSTALLER=/tmp/nix-install.sh
   curl -fsSL https://nixos.org/nix/install -o "$NIX_INSTALLER"
@@ -144,42 +165,7 @@ fi
 FLAKE_DIR="$DOTFILES_ROOT/platform/nix"
 HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 
-# Generation marker: the prebuilt image stamps ~/.dotfiles-generation with a
-# hash of everything its baked generation was built from. When the clone hashes
-# to the same value the baked generation is already what a switch would produce
-# — out-of-store symlinks resolve through ~/dotfiles and start pointing into the
-# fresh clone by themselves — so the switch and every activation hook are
-# skipped. The nightly sync updates the checkout only; package changes need
-# an explicit switch or a workspace recreated from the updated image.
-#
-# NOTE: the hash must be computed identically here and in
-# platform/linux/Dockerfile.
-# NOTE: darwin-only files are excluded to mirror the CI rebuild triggers — they
-# never affect the Linux generation, but a mac-only commit would otherwise flip
-# the hash with no rebuilt image and force a pointless full switch until the
-# next weekly build.
-# NOTE: LC_ALL=C on both sides — `sort` collates by locale, and this very file
-# set orders differently between C and en_US.UTF-8 (tools/nvim/.stylua.toml
-# moves from position 10 to 47). An ssh client sending LC_* is enough to break
-# it, and the only symptom would be the skip quietly never firing.
-# NOTE: lazy-lock.json is excluded because it is not part of the source tree —
-# gitignored, absent from a fresh clone, and written by `Lazy! sync`. Left in,
-# the two sides hashed different trees and the skip never fired.
-generation_hash() {
-  (cd "$DOTFILES_ROOT" \
-    && find platform/nix tools/nvim tools/claude/guard tools/claude/cli tools/pi -type f \
-         ! -path platform/nix/darwin-configuration.nix \
-         ! -path platform/nix/home/darwin.nix \
-         ! -name lazy-lock.json -print0 \
-       | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
-}
-GEN_FILE="$HOME/.dotfiles-generation"
-CURRENT_GEN="$(generation_hash)"
-# NOTE: the marker only vouches for the profile the image itself baked — rolling
-# PROFILE=devops onto a :core image must still go through a full switch.
-BAKED_PROFILE="$(cat "$HOME/.dotfiles-profile" 2>/dev/null || echo none)"
-
-if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == "$BAKED_PROFILE" ]]; then
+if $use_image; then
   print_section "Prebuilt generation matches — skipping home-manager switch"
   # The one thing the skipped hooks still owe us: the custom submodule, which
   # cannot live in a public image. Shallow — only its working tree is ever read.
@@ -198,20 +184,9 @@ if [[ -f "$GEN_FILE" && "$CURRENT_GEN" == "$(cat "$GEN_FILE")" && "$PROFILE" == 
     submodule_init tools/claude/custom \
       || echo "warn: claude custom submodule skipped (нет ssh-агента или ключа)"
   fi
-  # The installer is only needed when the image did not already bake its result
-  # — both the ~/.claude/* symlinks and the MCP registrations live in $HOME,
-  # which ships with the image. Running it anyway cost 6s of the 12s this branch
-  # used to take.
-  # NOTE: compared against the pinned commit rather than probing for one server
-  # name. What the image baked is valid only for the submodule commit it was
-  # built against, and that commit is in neither the generation hash nor the CI
-  # rebuild triggers — so a changed MCP roster would never reach a new container
-  # while a name-probe matched. The comparison also self-heals: a stale image
-  # simply fails it and the installer runs.
-  if [[ -f "$DOTFILES_ROOT/tools/claude/custom/install.sh" ]] \
-     && [[ "$BAKED_CUSTOM" != "$PINNED_CUSTOM" || ! -L "$HOME/.claude/skills" ]]; then
-    PATH="$HOME/.local/bin:$PATH" "$DOTFILES_ROOT/tools/claude/custom/install.sh" \
-      || echo "warn: MCP install failed"
+  if [[ "$BAKED_CUSTOM" != "$PINNED_CUSTOM" || ! -L "$HOME/.claude/skills" ]]; then
+    echo "Incomplete prebuilt Claude setup. Recreate with ghcr.io/cosmdandy/devcontainer:${PROFILE}-env-${key}" >&2
+    exit 1
   fi
 else
   print_section "Activating home-manager configuration: ${HM_CONFIG}"
@@ -226,18 +201,14 @@ else
   # files HM would refuse to overwrite to *.hm-backup.
   # NOTE: the marker goes in before the switch, not only after it — the
   # activation's mason step reads it through lsp.lua to pick the profile's tools.
-  # The generation file goes away with it: if the switch then fails, the marker
-  # already names the new profile while the baked generation still matches, and
-  # every later run would take the skip branch and stay on the old profile. The
-  # file is written back below only once the switch has succeeded.
-  rm -f "$GEN_FILE"
+  # A local switch invalidates the baked marker even if activation fails.
+  rm -f "$HOME/.dotfiles-generation"
   echo "$PROFILE" > "$HOME/.dotfiles-profile"
   if command -v home-manager &> /dev/null; then
     home-manager switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
   else
     nix run --inputs-from "$FLAKE_DIR" home-manager -- switch --flake "$FLAKE_DIR#${HM_CONFIG}" -b hm-backup
   fi
-  echo "$CURRENT_GEN" > "$GEN_FILE"
 fi
 
 # Keep the selected profile for the next install.

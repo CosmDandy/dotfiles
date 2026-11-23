@@ -1,7 +1,6 @@
 # Prebuilt devcontainer image for DevPod: Ubuntu + Nix + home-manager. Built in
 # CI for amd64+arm64 as ghcr.io/cosmdandy/devcontainer:{core,devops}. Store
-# paths match the repo's flake.lock, so home-manager switch on `devpod up` is an
-# instant no-op.
+# paths and activation results are baked once; provisioning checks compatibility.
 #
 # The profile is a stage, not a build-arg: devops inherits core, so the lower
 # layers are literally the same and the registry deduplicates them — with :core
@@ -99,7 +98,8 @@ COPY --chown=cosmdandy:cosmdandy platform/nix /opt/dotfiles/platform/nix
 COPY --chown=cosmdandy:cosmdandy tools/claude/guard /opt/dotfiles/tools/claude/guard
 COPY --chown=cosmdandy:cosmdandy tools/claude/cli /opt/dotfiles/tools/claude/cli
 # Pi's renderer is built by the flake; its public resources seed the live config.
-COPY --chown=cosmdandy:cosmdandy tools/pi /opt/dotfiles/tools/pi
+COPY --chown=cosmdandy:cosmdandy tools/pi/statusline /opt/dotfiles/tools/pi/statusline
+COPY --chown=cosmdandy:cosmdandy tools/pi/install-mcp.sh tools/pi/settings.json tools/pi/mcp.json /opt/dotfiles/tools/pi/
 
 # NOTE: the nvim config has to exist for the activation hooks — home-manager
 # links ~/.config/nvim into ~/dotfiles, and with a dangling symlink the `-e
@@ -138,38 +138,31 @@ USER cosmdandy
 # fatal — it runs on the baked copy.
 COPY --chown=root:root platform/linux/dotfiles-provision /usr/local/bin/dotfiles-provision
 
-# Generation marker: hash of the source tree the baked home-manager generation
-# is built from. platform/linux/install.sh hashes the fresh clone and, on a
-# match, skips the switch and every activation hook — that is what makes devpod
-# up take seconds.
-# NOTE: MUST stay byte-identical with generation_hash() there. The darwin
-# exclusions mirror the CI rebuild triggers, and lazy-lock.json is out because
-# it is gitignored and therefore absent from any clone.
-# NOTE: stamped HERE, in the pristine tree straight after the COPY. `Lazy! sync`
-# writes lazy-lock.json into tools/nvim during the core stage, so a hash taken
-# afterwards described a tree no clone can reproduce and the skip silently never
-# fired.
-RUN (cd /opt/dotfiles && find platform/nix tools/nvim tools/claude/guard tools/claude/cli tools/pi -type f \
-       ! -path platform/nix/darwin-configuration.nix \
-       ! -path platform/nix/home/darwin.nix \
-       ! -name lazy-lock.json -print0 \
-     | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1) \
-    > "$HOME/.dotfiles-generation"
+# Fetch the exact public revision, never a moving main and never the builder's
+# .git directory. The core and devops build layers do not depend on this stage.
+FROM base AS checkout
+ARG REVISION
+RUN test -n "$REVISION" \
+  && git init -q -b main "$HOME/dotfiles" \
+  && cd "$HOME/dotfiles" \
+  && git remote add origin https://github.com/CosmDandy/dotfiles.git \
+  && git fetch -q --depth=1 origin "$REVISION" \
+  && test "$(git rev-parse FETCH_HEAD)" = "$REVISION" \
+  && git reset -q --hard FETCH_HEAD \
+  && git update-ref refs/remotes/origin/main HEAD \
+  && git branch --set-upstream-to=origin/main main \
+  && git remote set-url origin git@github.com:CosmDandy/dotfiles.git \
+  && platform/linux/image-key > "$HOME/.dotfiles-generation"
 
-# --- core: editor, shell, git, CI ---
-FROM base AS core
-# NOTE: the submodule commit the MCP set below is baked against. CI writes it
-# and install.sh compares it with the pointer in the clone; a mismatch means the
-# set changed after the build and the submodule installer must run. Without this
-# check a new server (or a corrected address, as happened with timing) would not
-# reach containers until the next image rebuild, silently. `unknown` makes a
-# hand-built image fail the comparison, i.e. err towards running the installer.
-ARG CUSTOM_SHA=unknown
+FROM base AS core-env
+# Provisioning checks that the baked MCP setup matches the pinned submodule.
+ARG CUSTOM_SHA
 # NOTE: the profile marker is written BEFORE the switch — the activation's mason
 # step runs nvim, and lsp.lua reads the marker to decide whether the IaC tools
 # belong in this profile. Written after, core saw no marker and baked them in,
 # and devops saw "core" and installed none of its own.
-RUN echo core > "$HOME/.dotfiles-profile" \
+RUN test -n "$CUSTOM_SHA" \
+  && echo core > "$HOME/.dotfiles-profile" \
   && ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "path:/opt/dotfiles?dir=platform/nix#cosmdandy-core-$(uname -m)-linux" -b hm-backup \
@@ -209,14 +202,6 @@ RUN echo core > "$HOME/.dotfiles-profile" \
      done \
   && echo "$CUSTOM_SHA" > "$HOME/.claude/.mcp-baked-from" \
   && rm -f "$HOME/dotfiles" \
-  # The dotfiles clone is baked in; dotfiles-provision only catches it up to
-  # origin.
-  # NOTE: must come AFTER `rm -f $HOME/dotfiles` — before that it is a symlink
-  # to /opt/dotfiles and clone into an existing path fails. Cloned over https
-  # (the build has no agent and no keys), with origin switched to ssh so the
-  # user can push memory back from inside the container.
-  && git clone --quiet --depth 1 https://github.com/CosmDandy/dotfiles.git "$HOME/dotfiles" \
-  && git -C "$HOME/dotfiles" remote set-url origin git@github.com:CosmDandy/dotfiles.git \
   # NOTE: mason build caches (npm ~71 MB, go ~66 MB, pip ~121 MB) must be
   # cleaned in the SAME RUN or they stay under a whiteout. pip caches the venv
   # wheels and is the largest.
@@ -225,12 +210,8 @@ RUN echo core > "$HOME/.dotfiles-profile" \
   && nix-collect-garbage -d
 
 # --- devops: core + IaC/K8s/container ---
-FROM core AS devops
-# NOTE: rm -rf, not just ln — core leaves a REAL clone in ~/dotfiles, and `ln
-# -sfn` onto an existing directory silently links inside it (same trap as
-# ~/.claude/* above). This stage puts its own clone back at the end.
+FROM core-env AS devops-env
 RUN echo devops > "$HOME/.dotfiles-profile" \
-  && rm -rf "$HOME/dotfiles" \
   && ln -sfn /opt/dotfiles "$HOME/dotfiles" \
   && nix run --inputs-from /opt/dotfiles/platform/nix home-manager -- \
       switch --flake "path:/opt/dotfiles?dir=platform/nix#cosmdandy-devops-$(uname -m)-linux" -b hm-backup \
@@ -242,6 +223,28 @@ RUN echo devops > "$HOME/.dotfiles-profile" \
   && rm -f "$HOME/dotfiles" \
   && rm -rf "$HOME/.npm" "$HOME/.cache/go-build" "$HOME/go/pkg/mod/cache" \
             "$HOME/.cache/pip" \
-  && nix-collect-garbage -d \
-  && git clone --quiet --depth 1 https://github.com/CosmDandy/dotfiles.git "$HOME/dotfiles" \
-  && git -C "$HOME/dotfiles" remote set-url origin git@github.com:CosmDandy/dotfiles.git
+  && nix-collect-garbage -d
+
+FROM core-env AS core
+ARG REVISION
+LABEL org.opencontainers.image.revision=$REVISION
+COPY --from=checkout --chown=cosmdandy:cosmdandy /home/cosmdandy/dotfiles /home/cosmdandy/dotfiles
+COPY --from=checkout --chown=cosmdandy:cosmdandy /home/cosmdandy/.dotfiles-generation /home/cosmdandy/.dotfiles-generation
+RUN cd "$HOME/dotfiles" \
+  && test "$(git rev-parse HEAD)" = "$REVISION" \
+  && test "$(git rev-parse HEAD:tools/claude/custom)" = "$(cat "$HOME/.claude/.mcp-baked-from")" \
+  && test "$(platform/linux/image-key)" = "$(cat "$HOME/.dotfiles-generation")" \
+  && test "$(cat "$HOME/.dotfiles-profile")" = core \
+  && test -r "$HOME/.pi/agent/AGENTS.md" && "$HOME/.local/bin/pi" --version
+
+FROM devops-env AS devops
+ARG REVISION
+LABEL org.opencontainers.image.revision=$REVISION
+COPY --from=checkout --chown=cosmdandy:cosmdandy /home/cosmdandy/dotfiles /home/cosmdandy/dotfiles
+COPY --from=checkout --chown=cosmdandy:cosmdandy /home/cosmdandy/.dotfiles-generation /home/cosmdandy/.dotfiles-generation
+RUN cd "$HOME/dotfiles" \
+  && test "$(git rev-parse HEAD)" = "$REVISION" \
+  && test "$(git rev-parse HEAD:tools/claude/custom)" = "$(cat "$HOME/.claude/.mcp-baked-from")" \
+  && test "$(platform/linux/image-key)" = "$(cat "$HOME/.dotfiles-generation")" \
+  && test "$(cat "$HOME/.dotfiles-profile")" = devops \
+  && test -r "$HOME/.pi/agent/AGENTS.md" && "$HOME/.local/bin/pi" --version
