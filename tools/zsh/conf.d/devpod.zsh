@@ -574,9 +574,16 @@ _dp_cache_dir() {
 # substitution is most of what made the picker feel slow.
 _dp_meta() {
   emulate -L zsh
-  local -a files=(${HOME}/.devpod/contexts/*/workspaces/*/workspace.json(N))
+  setopt localoptions pipefail
+  local root=$HOME/.devpod/contexts dir
+  # An unreadable parent looks just like an empty glob.
+  for dir in "$root" "$root"/*(/N) "$root"/*/workspaces(/N) "$root"/*/workspaces/*(/N); do
+    [[ -r $dir && -x $dir ]] || return 1
+  done
+  local -a files=("$root"/*/workspaces/*/workspace.json(N))
   (( $#files )) || return 0
-  jq -r '[.id, (.uid // "-"), (.provider.name // "-"),
+  for dir in $files; do [[ -s $dir ]] || return 1; done
+  jq -er '[.id, (.uid // "-"), (.provider.name // "-"),
           (.provider.options.HOST.value // "-"),
           (.lastUsed // "-"),
           (.source.gitRepository // .source.localFolder // "-"),
@@ -704,7 +711,13 @@ _dp_snapshot() {
 
   # NOTE: the metadata is read ONCE and kept, not re-read per section — it is
   # the same jq call the state collection already pays for.
-  meta=(${(f)"$(_dp_meta)"})
+  local records
+  records=$(_dp_meta) || return 1
+  if [[ -z $records ]]; then
+    : > "$out"
+    return $?
+  fi
+  meta=(${(f)records})
   local -A host_down
   while IFS=$'\t' read -r uid st im sec; do
     # A host that never answered announces itself; its workspaces then get
@@ -760,17 +773,7 @@ _dp_snapshot_refresh() {
     rm -f -- $part
     return 1
   fi
-  # NOTE: an empty result is never an answer worth keeping. jq off PATH, an
-  # unreadable ~/.devpod, every host down — the collection returns nothing and
-  # would blank the cache, and because the refresh usually runs in the
-  # background that happens silently. The old code collected on every run and
-  # healed itself next time; this one would stay broken.
-  if [[ ! -s $part ]]; then
-    (( ms = (EPOCHREALTIME - t0) * 1000 ))
-    _dp_log snapshot $ms 1 reason=empty
-    rm -f -- $part
-    return 1
-  fi
+
   local -i rows=${#${(f)"$(< $part)"}}
   (( ms = (EPOCHREALTIME - t0) * 1000 ))
   _dp_log snapshot $ms 0 "rows=$rows"
@@ -811,7 +814,7 @@ _dp_snapshot_use() {
   _dp_cache_dir || return 1
   local -i age=${1:-$DP_CACHE_TTL}
   local -a good=( $DP_SNAPSHOT(N.ms-$age) )
-  (( $#good )) && [[ -s $DP_SNAPSHOT ]] && return 0
+  (( $#good )) && [[ -f $DP_SNAPSHOT ]] && return 0
   _dp_snapshot_refresh || return 1
   return 2
 }
@@ -836,7 +839,6 @@ _dp_refresh_async() {
     # re-asks the header, which would otherwise say "refreshing" forever.
     { _dp_snapshot_refresh; \
         _dp_rows "$DP_SNAPSHOT" > $rows.part \
-        && [[ -s $rows.part ]] \
         && mv -f -- $rows.part $rows } >/dev/null 2>&1 &!
   else
     # NOTE: a floor, so that `dp ls` in a loop does not start a refresh per
@@ -865,6 +867,8 @@ _dp_rows() {
     snap=$DP_SNAPSHOT
     (( rc == 0 )) && _dp_refresh_async
   fi
+  [[ -f $snap ]] || return 1
+  [[ -s $snap ]] || return 0
   local -a lines=(${(f)"$(< $snap)"})
   (( $#lines )) || return 0
 
@@ -1555,19 +1559,10 @@ _dp_pick_action() {
   # on that host is recorded as missing.
   rm -f -- $DP_CACHE_DIR/state.*(N.mm+60)
 
-  # Only the very first run has nothing at all to draw. -s and not -f: an empty
-  # file passes -f, renders no rows, and there is no path from here back to a
-  # collection — `dp` would report "no workspaces" forever.
-  # Whether this opening waited for a collection is the difference between 40ms
-  # and a second and a half, so the row says which of the two it was.
+  # An empty snapshot is valid: Ctrl-N creates from the query, not a selected row.
   local _cached=yes
-  [[ -s $DP_SNAPSHOT ]] || { _cached=no; _dp_snapshot_refresh || return 1 }
-  _dp_rows "$DP_SNAPSHOT" > $base
-  if [[ ! -s $base ]]; then
-    rm -f -- $base
-    print -u2 "dp: no workspaces and an empty catalog"
-    return 1
-  fi
+  [[ -f $DP_SNAPSHOT ]] || { _cached=no; _dp_snapshot_refresh || return 1 }
+  _dp_rows "$DP_SNAPSHOT" > $base || return 1
   # The states on screen are as old as the cache; this is what corrects them.
   _dp_refresh_async "$fresh"
 
@@ -1607,10 +1602,12 @@ _dp_pick_action() {
   _dp_log picker $_ms 0 "cached=$_cached" "rows=$_rows"
   local _hdr=$($dot/tools/devpod/status.zsh $DP_SNAPSHOT)
   local _t_open=$EPOCHREALTIME
+  local -a search=("${_DP_FZF_SEARCH[@]}")
+  [[ -s $base ]] || search+=(--ghost='type a workspace name, then Ctrl-N')
   local out
   out=$(fzf --ansi --nth=1 --accept-nth=1 --multi --id-nth=1 \
       --print-query --expect=ctrl-n,ctrl-s \
-      $_DP_FZF_SEARCH \
+      "${search[@]}" \
       --info='inline-right: ' \
       ${_hdr:+--header=$_hdr} \
       --bind="load:transform-header($dot/tools/devpod/status.zsh $DP_SNAPSHOT)+reload-sync($dot/tools/devpod/await-rows.zsh $fresh $base)" \

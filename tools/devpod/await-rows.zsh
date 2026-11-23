@@ -29,7 +29,7 @@ local -F waited=0
 
 # NOTE: the file is only ever moved into place whole, so its mere existence is
 # the handshake — there is no half-written table to guard against here.
-while (( waited < wait_s )) && [[ ! -s $fresh ]]; do
+while (( waited < wait_s )) && [[ ! -f $fresh ]]; do
   sleep $step
   (( waited += step ))
 done
@@ -37,11 +37,11 @@ done
 # Taking the fresh table becomes the new fallback: the next wait starts from
 # what is on screen right now, so a timeout redraws the current rows rather
 # than rows from several refreshes ago.
-if [[ -s $fresh ]]; then
+if [[ -f $fresh ]]; then
   mv -f -- $fresh $fallback 2>/dev/null || cat -- $fresh
 fi
 
 # NOTE: never exit without printing a table. Whatever comes out of here BECOMES
 # the list, so an empty answer blanks the picker — if the refresh died, or was
 # swept away by another run, the rows already on screen are the right answer.
-[[ -s $fallback ]] && cat -- $fallback
+[[ -f $fallback ]] && cat -- $fallback
