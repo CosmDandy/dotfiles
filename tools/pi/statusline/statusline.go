@@ -1,7 +1,7 @@
 package main
 
 // Port of tools/claude/statusline.sh: session JSON on stdin, one line on
-// stdout. Identity and context on the left, spend and subscription limits
+// stdout. Identity and context on the left, sessions and subscription limits
 // on the right.
 //
 // The original forked jq once (still ~130ms saved over per-field forks) plus
@@ -20,7 +20,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -34,37 +33,17 @@ const esc = "\x1b"
 
 var (
 	reset = esc + "[0m"
-	// Palette slots 0-15 only, so the line follows the terminal theme
-	// instead of hardcoded shades.
-	green  = esc + "[32m"
-	yellow = esc + "[33m"
-	red    = esc + "[31m"
-	blue   = esc + "[34m"
-	// Solarized orange DOES have a slot: it lands on 9, the one named "bright
-	// red", and the ghostty iTerm2 presets put #cb4b16 there in both the light
-	// and the dark variant. So this follows the theme like everything else;
-	// 166 was an absolute xterm tone that did not. Contrast holds on both
-	// sides: 3.26 dark, 4.27 light. It exists for a single purpose: the Fable
-	// segments.
-	orange = esc + "[38;5;9m"
-	// Neutral for "on track" — green already means "room to accelerate" in
-	// these segments.
-	cyan = esc + "[36m"
-	// NOTE: secondary text is ANSI 11, not "bright black" (8) or faint.
-	// Solarized defines the secondary tone with different codes for its
-	// light and dark themes, and the theme switches automatically here; 8
-	// gives a contrast of ~2.1 on dark against a readability floor of 3.
-	// Only 11 stays above it on both sides (3.37 dark / 4.13 light).
-	gray = esc + "[38;5;11m"
-	// 38;5;11 is not "bright yellow" here: under Solarized it is base00,
-	// the body text colour, and the theme follows the system — light by
-	// day, dark by night. So the shade stays, and what recedes is the
-	// WEIGHT: SGR 2 (faint) dims relative to whatever the foreground
-	// currently is, which survives both themes where an absolute grey
-	// cannot (238 sinks on dark, turns near-black on light — tried, wrong
-	// both ways).
-	dim = esc + "[38;5;11m"
-	sep = esc + "[2;38;5;11m"
+	// Keep terminal-adaptive hues, but make the entire footer secondary to the chat.
+	green  = esc + "[2;32m"
+	yellow = esc + "[2;33m"
+	red    = esc + "[2;31m"
+	blue   = esc + "[2;34m"
+	orange = esc + "[2;38;5;9m"
+	cyan   = esc + "[2;36m"
+	// Solarized's secondary foreground follows both terminal appearances in slot 11.
+	gray = esc + "[2;38;5;11m"
+	dim  = gray
+	sep  = gray
 )
 
 // NOTE: the red threshold must equal CLAUDE_AUTOCOMPACT_PCT_OVERRIDE —
@@ -73,7 +52,6 @@ var (
 const (
 	ctxYellow = 30
 	ctxRed    = 45
-	barLen    = 10
 
 	// The cache is shown only when it actually dips — it sits at 85-95%
 	// normally, and an evergreen indicator carried no information.
@@ -105,22 +83,22 @@ const (
 	idleWindow     = 300 // silence longer than this means spending stopped
 	// A 5h window cannot reset further ahead than its own length.
 	fiveHourMaxAhead = 5*3600 + 600
+	// Provider reset timestamps can drift by a few seconds inside the same window.
+	windowResetTolerance = 60
 	// An unchanged percentage is recorded at most this often: every session
 	// on the machine appends to one file, and a line per tick per session
 	// buys no precision the minute-scale arithmetic below can use.
 	sampleEvery = 60
 	// Nothing older is ever read (the trend's baseline is the oldest sample).
 	historyKeep = trendLag + 2*limitWindow
-
-	sessionTTL = 90
 )
 
 // --- glyphs --------------------------------------------------------------
 
 type glyphSet struct {
-	think, fiveHour, week, approve, dead, arrow string
-	capL, capR                                  string
-	cols                                        int
+	think, fiveHour, week, approve, refresh, arrow string
+	capL, capR                                     string
+	cols                                           int
 }
 
 func pickGlyphs() glyphSet {
@@ -139,7 +117,7 @@ func pickGlyphs() glyphSet {
 	}
 	if mode == "ascii" {
 		return glyphSet{
-			think: "*", fiveHour: "5h", week: "7d", approve: "", dead: "!!", arrow: "->",
+			think: "*", fiveHour: "5h", week: "7d", approve: "", refresh: "reset", arrow: "->",
 			cols: 1,
 		}
 	}
@@ -151,7 +129,7 @@ func pickGlyphs() glyphSet {
 		fiveHour: "\U000F0996", // md-progress_clock
 		week:     "\U000F0A33", // md-calendar_week
 		approve:  "\U000F033E", // md-lock — waiting for permission
-		dead:     "\U0001F480", // window fully spent
+		refresh:  "\U000F0450", // md-refresh
 		arrow:    "⟶",
 		cols:     2,
 	}
@@ -163,21 +141,20 @@ func asciiTerm(term string) bool {
 	return asciiTermRe.MatchString(term)
 }
 
-// Color carries effort intensity without adding icons to the model block.
-func effortParts(level string) (glyph, label, color string) {
+func effortParts(level string) (label, color string) {
 	switch level {
 	case "low":
-		return "", "low", cyan
+		return "low", cyan
 	case "medium":
-		return "", "medium", blue
+		return "medium", blue
 	case "high":
-		return "", "high", yellow
+		return "high", yellow
 	case "xhigh":
-		return "", "xhigh", orange
+		return "xhigh", orange
 	case "max":
-		return "", "max", red
+		return "max", red
 	default:
-		return "", strings.ToLower(level), gray
+		return strings.ToLower(level), gray
 	}
 }
 
@@ -209,9 +186,10 @@ type statuslinePayload struct {
 	Agent struct {
 		Name *string `json:"name"`
 	} `json:"agent"`
-	Cost struct {
-		TotalCostUSD *float64 `json:"total_cost_usd"`
-	} `json:"cost"`
+	Sessions struct {
+		Running int `json:"running"`
+		Waiting int `json:"waiting"`
+	} `json:"sessions"`
 	RateLimits struct {
 		FiveHour struct {
 			UsedPercentage *float64 `json:"used_percentage"`
@@ -236,7 +214,6 @@ type statuslineFields struct {
 	effort        string
 	thinking      string
 	agent         string
-	costCents     int64
 	fivePct100    *int64
 	fiveReset     *int64
 	weekPct       *int64
@@ -252,7 +229,7 @@ type statuslineFields struct {
 // it is implemented here as "nil pointer means missing/null", not "zero
 // value means missing".
 func parseFields(p *statuslinePayload) statuslineFields {
-	f := statuslineFields{model: "Claude", styleName: "default"}
+	f := statuslineFields{model: "Pi", styleName: "default"}
 	if p.ContextWindow.UsedPercentage != nil {
 		f.usedPct = int64(math.Floor(*p.ContextWindow.UsedPercentage))
 	}
@@ -283,9 +260,6 @@ func parseFields(p *statuslinePayload) statuslineFields {
 	if p.Agent.Name != nil {
 		f.agent = *p.Agent.Name
 	}
-	if p.Cost.TotalCostUSD != nil {
-		f.costCents = int64(math.Round(*p.Cost.TotalCostUSD * 100))
-	}
 	if v := p.RateLimits.FiveHour.UsedPercentage; v != nil {
 		n := int64(math.Floor(*v * 100))
 		f.fivePct100 = &n
@@ -309,43 +283,6 @@ func parseFields(p *statuslinePayload) statuslineFields {
 		f.modelID = *p.Model.ID
 	}
 	return f
-}
-
-// --- context bar -----------------------------------------------------------
-
-var eighths = [8]string{" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉"}
-
-// renderBar draws the block bar in theme colours; the last occupied cell is
-// filled with an eighth block, giving 1/8-cell precision at the same width.
-// NOTE: the CAP_L/CAP_R wrapping branch of the shell version is dead code —
-// both glyph modes set them empty — and is not ported.
-func renderBar(pct, length int64) string {
-	e := pct * length * 8 / 100
-	full := e / 8
-	frac := e % 8
-	gCells := ctxYellow * length / 100
-	yCells := ctxRed * length / 100
-
-	var out strings.Builder
-	for i := int64(0); i < length; i++ {
-		c := red
-		if i < gCells {
-			c = green
-		} else if i < yCells {
-			c = yellow
-		}
-		out.WriteString(c)
-		switch {
-		case i < full:
-			out.WriteString("█")
-		case i == full && frac > 0:
-			out.WriteString(eighths[frac])
-		default:
-			out.WriteString("░")
-		}
-	}
-	out.WriteString(reset)
-	return out.String()
 }
 
 // --- limits ----------------------------------------------------------------
@@ -427,11 +364,7 @@ func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
 		return fiveHourResult{pct100: pct100, reset: reset}
 	}
 
-	// NOTE: window rollover is detected by resets_at, NOT by the
-	// percentage dropping. Sessions update the payload at their own pace
-	// and an idle one holds a snapshot for hours, so any drop threshold
-	// fires spuriously and wipes the history. resets_at changes exactly at
-	// the reset and only forward.
+	// A new window moves the reset materially forward; second-scale jitter is not a rollover.
 	wf := f + ".window"
 	var prevReset int64
 	if data, err := os.ReadFile(wf); err == nil {
@@ -440,7 +373,7 @@ func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
 	if prevReset > now+fiveHourMaxAhead { // a marker written before the check above
 		prevReset = 0
 	}
-	if *reset > prevReset {
+	if prevReset <= now || *reset > prevReset+windowResetTolerance {
 		_ = os.WriteFile(wf, []byte(fmt.Sprintf("%d\n", *reset)), 0o644)
 		_ = os.WriteFile(f, []byte(fmt.Sprintf("%d %d\n", now, pct100)), 0o644) // new window — new baseline
 		return fiveHourResult{pct100: pct100, reset: reset}
@@ -458,17 +391,15 @@ func fiveHourDev(pct100 int64, reset *int64, now int64) fiveHourResult {
 		}
 	}
 
-	// NOTE: a stale snapshot is not written to history but the calculation
-	// continues — the limit is per-account, so an idle session must show
-	// the same picture as an active one. An early return here used to
-	// leave lagging windows with no forecast at all.
+	// History may inform a forecast, but must never replace the provider's current percentage.
+	if *reset < prevReset-windowResetTolerance {
+		return fiveHourResult{pct100: pct100, reset: reset}
+	}
+	if pct100 < last {
+		_ = os.WriteFile(f, []byte(fmt.Sprintf("%d %d\n", now, pct100)), 0o644)
+		return fiveHourResult{pct100: pct100, reset: reset}
+	}
 	switch {
-	case *reset < prevReset:
-		r := prevReset
-		reset = &r
-		pct100 = last
-	case pct100 < last:
-		pct100 = last
 	case pct100 == last && now-lastTS < sampleEvery:
 	default:
 		// NOTE: append only. Rewriting the file through `awk > tmp && mv`
@@ -616,11 +547,9 @@ func readSamples(path string) []awkSample {
 	return out
 }
 
-// computeLimits ports compute_limits(): subscription limits straight from
-// the payload — no network, no cache, and it works unchanged in a
-// devcontainer.
-func computeLimits(g glyphSet, now int64, wantETA, wantWeek bool, fields statuslineFields, debugAll bool) string {
-	fiveSeg := ""
+// Percentages come from the provider payload; local history only estimates the forecast.
+func computeLimits(g glyphSet, now int64, wantETA bool, fields statuslineFields, debugAll bool) string {
+	fiveSeg := dim + g.fiveHour + " —" + reset
 	if fields.fivePct100 != nil {
 		res := fiveHourDev(*fields.fivePct100, fields.fiveReset, now)
 		fivePct := res.pct100 / 100
@@ -653,9 +582,9 @@ func computeLimits(g glyphSet, now int64, wantETA, wantWeek bool, fields statusl
 			}
 			if fivePct >= 100 {
 				// Window fully spent: only the release time still matters.
-				fiveSeg = red + g.dead + " you lose"
+				fiveSeg = red + g.refresh
 				if res.reset != nil {
-					fiveSeg += " (" + fmtClock(*res.reset) + ")"
+					fiveSeg += " " + fmtClock(*res.reset)
 				}
 				fiveSeg += reset
 			} else {
@@ -685,8 +614,8 @@ func computeLimits(g glyphSet, now int64, wantETA, wantWeek bool, fields statusl
 		}
 	}
 
-	weekSeg := ""
-	if fields.weekPct != nil && wantWeek {
+	weekSeg := dim + g.week + " —" + reset
+	if fields.weekPct != nil {
 		// NOTE: the weekly deviation is a comparison against a LINEAR
 		// schedule, not an extrapolated rate — dividing by the percentage
 		// produced +53d and -3.8d out of nowhere on a small percentage or
@@ -736,7 +665,7 @@ func visWidth(s string, g glyphSet) int {
 	stripped := ansiRe.ReplaceAllString(s, "")
 	n := len([]rune(stripped))
 	if g.cols > 1 {
-		for _, gl := range []string{g.think, g.fiveHour, g.week, g.approve, g.dead} {
+		for _, gl := range []string{g.think, g.fiveHour, g.week, g.approve, g.refresh} {
 			if gl == "" {
 				continue
 			}
@@ -746,16 +675,14 @@ func visWidth(s string, g glyphSet) int {
 	return n
 }
 
-// joinEdges hugs the right block to the terminal edge; when the line is too
-// short both halves are joined into one ribbon, which beats wrapping onto a
-// second line.
+// Keep limits visible on narrow terminals instead of clipping the right block.
 func joinEdges(left, right string, cols, rightMargin int, g glyphSet) string {
 	if right == "" {
 		return left
 	}
 	gap := cols - rightMargin - visWidth(left, g) - visWidth(right, g)
 	if gap < 2 {
-		return left + " " + sep + "·" + reset + " " + right
+		return left + "\n" + right
 	}
 	return left + strings.Repeat(" ", gap) + right
 }
@@ -768,88 +695,6 @@ func add(acc, segAdd string) string {
 		return segAdd
 	}
 	return acc + " " + sep + "·" + reset + " " + segAdd
-}
-
-// --- right margin ------------------------------------------------------
-
-// rightMargin mirrors the Remote Control chip probe: whether THIS session
-// holds a bridge is answered by ~/.claude.json's replBridgePlaceholders,
-// each carrying the pid that owns it. Walk up from this process to the
-// owning `claude` process and see whether its pid is among them.
-func rightMargin(pid int) int {
-	if v, ok := os.LookupEnv("CLAUDE_STATUSLINE_MARGIN"); ok {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-
-	rc := 2
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return rc
-	}
-	data, err := os.ReadFile(filepath.Join(home, ".claude.json"))
-	if err != nil {
-		return rc
-	}
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.UseNumber()
-	var parsed map[string]any
-	if dec.Decode(&parsed) != nil {
-		return rc
-	}
-	placeholders, _ := parsed["replBridgePlaceholders"].(map[string]any)
-	var bridgePIDs []string
-	for _, v := range placeholders {
-		entry, ok := v.(map[string]any)
-		if !ok {
-			continue
-		}
-		pidVal, ok := entry["pid"]
-		if !ok || pidVal == nil {
-			continue
-		}
-		if n, ok := pidVal.(json.Number); ok {
-			bridgePIDs = append(bridgePIDs, n.String())
-		}
-	}
-	if len(bridgePIDs) == 0 {
-		return rc
-	}
-
-	probe := pid
-	for hops := 0; hops < 6 && probe > 1; hops++ {
-		matched := false
-		for _, bp := range bridgePIDs {
-			if bp == strconv.Itoa(probe) {
-				matched = true
-				break
-			}
-		}
-		if matched {
-			return 5
-		}
-		probe = parentPID(probe)
-	}
-	return rc
-}
-
-func parentPID(pid int) int {
-	out, err := exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output()
-	if err != nil {
-		return 0
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-// --- money ---------------------------------------------------------------
-
-func fmtMoney(cents int64) string {
-	return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
 }
 
 // --- entry point -----------------------------------------------------------
@@ -874,7 +719,7 @@ func runStatusline(_ []string) {
 			cols = n
 		}
 	}
-	margin := rightMargin(os.Getpid())
+	margin := 0
 
 	now := time.Now().Unix()
 	// CLAUDE_CLI_NOW is a test-only override: the rate-limit history fixtures
@@ -897,16 +742,12 @@ func runStatusline(_ []string) {
 	if i := strings.Index(modelStr, " ("); i >= 0 {
 		modelStr = modelStr[:i]
 	}
-	// Fable costs several times what the others do, and the name alone
-	// does not say so after a week of reading it. Orange on the name and
-	// on the spend below — the two places that say this session is the
-	// expensive kind. Matched on the id and on the display name both:
+	// Fable costs several times what the others do; orange marks the name.
+	// Matched on the id and on the display name both:
 	// Anthropic renames one or the other, not both at once.
 	modelColour := gray
-	fable := false
 	if fableRe.MatchString(fields.modelID + " " + fields.model) {
 		modelColour = orange
-		fable = true
 	}
 	ctxMark := ""
 	if fields.ctxSize >= 1000000 {
@@ -914,21 +755,15 @@ func runStatusline(_ []string) {
 	}
 	modelSeg := modelColour + modelStr + reset + ctxMark
 	if fields.effort != "" {
-		glyph, label, color := effortParts(fields.effort)
-		if glyph != "" {
-			modelSeg += sep + " · " + reset + color + glyph + " " + label + reset
-		} else {
-			modelSeg += sep + " · " + reset + color + label + reset
-		}
+		label, color := effortParts(fields.effort)
+		modelSeg += sep + " · " + reset + color + label + reset
 	}
-	modelSegSlim := modelSeg
 	// the base agent is called "claude" — not information, so only custom
 	// ones are shown
 	switch fields.agent {
 	case "", "claude", "Claude":
 	default:
 		modelSeg += gray + " ▸ " + fields.agent + reset
-		modelSegSlim += gray + " ▸ " + fields.agent + reset
 	}
 
 	// --- context -------------------------------------------------------
@@ -939,8 +774,7 @@ func runStatusline(_ []string) {
 	if fields.usedPct >= ctxRed {
 		ctxColor = red
 	}
-	bar := renderBar(fields.usedPct, barLen)
-	ctxSeg := bar + " " + ctxColor + strconv.FormatInt(fields.usedPct, 10) + "%" + reset
+	ctxSeg := ctxColor + strconv.FormatInt(fields.usedPct, 10) + "%" + reset
 
 	// --- cache ----------------------------------------------------------
 	// only when it dipped, and only when there is something to divide
@@ -961,63 +795,15 @@ func runStatusline(_ []string) {
 		}
 	}
 
-	// --- money and sessions -------------------------------------------
-	// how many of us, my share, everyone's total. NOTE: the 5h/7d limits
-	// are per-account but the cost in the payload is per-session, so with
-	// several windows open only one share is visible. Each session writes
-	// its own file; alive means touched within sessionTTL.
-	total := int64(0)
-	if fields.sid != "" {
-		tmpdir := os.Getenv("TMPDIR")
-		if tmpdir == "" {
-			tmpdir = "/tmp"
-		}
-		sdir := filepath.Join(tmpdir, "claude-sessions")
-		if err := os.MkdirAll(sdir, 0o755); err == nil {
-			_ = os.WriteFile(filepath.Join(sdir, fields.sid), []byte(fmt.Sprintf("%d\n", fields.costCents)), 0o644)
-			entries, _ := os.ReadDir(sdir)
-			for _, e := range entries {
-				if e.IsDir() {
-					continue
-				}
-				path := filepath.Join(sdir, e.Name())
-				info, err := os.Stat(path)
-				if err != nil {
-					continue
-				}
-				if now-info.ModTime().Unix() > sessionTTL {
-					_ = os.Remove(path) // session closed or long silent
-					continue
-				}
-				data, err := os.ReadFile(path)
-				c := int64(0)
-				if err == nil {
-					fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &c)
-				}
-				total += c
-			}
-		}
+	badgeSeg := ""
+	if p.Sessions.Running > 0 {
+		badgeSeg = cyan + "◉ " + strconv.Itoa(p.Sessions.Running) + reset
 	}
-
-	// What the other sessions are doing, not how many exist: running,
-	// waiting for an answer, waiting for permission. Read from
-	// ~/.claude/sessions/*.json.
-	sidPtr := &fields.sid
-	claudeBadge := sessionBadge(true, sidPtr)
-
-	money := sep
-	if fable {
-		// same orange as the name, full weight, not faint — one colour
-		// says "Fable" twice
-		money = orange
-	}
-
-	badgeSeg := claudeBadge
-	moneySeg := ""
-	if claudeBadge != "" {
-		moneySeg = money + fmtMoney(fields.costCents) + "/" + fmtMoney(total) + reset
-	} else {
-		moneySeg = money + fmtMoney(fields.costCents) + reset
+	if p.Sessions.Waiting > 0 {
+		if badgeSeg != "" {
+			badgeSeg += " "
+		}
+		badgeSeg += yellow + "○ " + strconv.Itoa(p.Sessions.Waiting) + reset
 	}
 
 	styleSeg := ""
@@ -1025,45 +811,16 @@ func runStatusline(_ []string) {
 		styleSeg = gray + "⊙ " + fields.styleName + reset
 	}
 
-	// Split the work identity from session-wide information for Pi's card layout.
-	identity := modelSeg
-	split := os.Getenv("PI_STATUSLINE_LAYOUT") == "split"
-	if split {
-		modelSeg, modelSegSlim = "", ""
-	}
 	// --- render ----------------------------------------------------------
-	var out string
-	switch {
-	case cols < 60:
-		computeLimits(g, now, false, false, fields, debugAll) // sample accumulation only
-		left := add(modelSegSlim, ctxSeg)
-		out = joinEdges(left, badgeSeg, cols, margin, g)
-	case cols < 80:
-		limits := computeLimits(g, now, false, false, fields, debugAll)
-		left := add(modelSegSlim, ctxSeg)
-		out = joinEdges(left, add(badgeSeg, limits), cols, margin, g)
-	case cols < 100:
-		limits := computeLimits(g, now, false, true, fields, debugAll)
-		left := add(modelSegSlim, ctxSeg)
-		right := add(badgeSeg, moneySeg)
-		right = add(right, limits)
-		out = joinEdges(left, right, cols, margin, g)
-	default:
-		limits := computeLimits(g, now, true, true, fields, debugAll)
-		left := add(modelSeg, ctxSeg)
-		if styleSeg != "" {
-			left = add(left, styleSeg)
-		}
-		right := add(cacheSeg, badgeSeg)
-		right = add(right, moneySeg)
-		right = add(right, limits)
-		out = joinEdges(left, right, cols, margin, g)
+	limits := computeLimits(g, now, cols >= 100, fields, debugAll)
+	left := add(modelSeg, ctxSeg)
+	right := badgeSeg
+	if cols >= 100 {
+		left = add(left, styleSeg)
+		right = add(cacheSeg, right)
 	}
-	if split {
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"identity": identity, "info": out})
-	} else {
-		fmt.Print(out)
-	}
+	right = add(right, limits)
+	fmt.Print(joinEdges(left, right, cols, margin, g))
 }
 
 var fableRe = regexp.MustCompile(`[Ff]able`)
