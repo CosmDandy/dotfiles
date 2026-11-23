@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Local DNS forwarder for the Claude domains (see claude-isolation.sh).
 
 Listens on 127.0.0.1:5354 over UDP and forwards every query to the upstream over
