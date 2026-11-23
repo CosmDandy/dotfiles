@@ -435,21 +435,23 @@ try {
     assert.doesNotMatch(body(call), /DEVOPS/, "compound shell should keep its normal preview");
   }
   const ssh = tool("bash", {
-    command: "ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab.example 'echo PRIVATE_PAYLOAD;\n uptime'",
-  }, "devops-ssh");
-  assert.doesNotMatch(body(ssh), /PRIVATE_PAYLOAD/, "never preview the SSH tail while args stream");
+    command: "ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab.example uptime",
+  }, "ssh-tail");
   ssh.setArgsComplete();
-  finish(ssh, "remote output");
-  assert.match(body(ssh), /ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab\.example/);
-  assert.match(body(ssh), /Remote command hidden/);
-  assert.doesNotMatch(body(ssh), /PRIVATE_PAYLOAD|remote output/);
+  ssh.markExecutionStarted();
+  assert.match(body(ssh), /^ *\$ ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab\.example uptime/);
+  const sshOutput = Array.from({ length: 12 }, (_, i) => `\x1b[32mremote line ${i + 1}\x1b[0m`).join("\n");
+  const sshTail = ["… 3 earlier lines", ...Array.from({ length: 9 }, (_, i) => `remote line ${i + 4}`)];
+  ssh.updateResult({ content: [{ type: "text", text: sshOutput }] }, true);
+  assert.deepEqual(rows(ssh).slice(1).map(row => row.trim()), sshTail);
+  finish(ssh, sshOutput, false, undefined, 520);
+  assert.deepEqual(rows(ssh).slice(1).map(row => row.trim()), sshTail);
+  assert.doesNotMatch(ssh.render(100).join(""), /\x1b\[32m/);
   ssh.setExpanded(true);
-  assert.match(body(ssh), /PRIVATE_PAYLOAD/);
-  assert.match(body(ssh), /remote output/);
-  const complexSsh = tool("bash", { command: "ssh -T lab.example \"$(build_payload)\"" }, "devops-ssh-complex");
-  finish(complexSsh, "");
-  assert.match(body(complexSsh), /SSH arguments hidden/);
-  assert.doesNotMatch(body(complexSsh), /build_payload/);
+  assert.match(ssh.render(100).join(""), /\x1b\[32mremote line 1\x1b\[0m/);
+  assert.doesNotMatch(body(ssh), /earlier lines/);
+  ssh.setExpanded(false);
+  assert.deepEqual(rows(ssh).slice(1).map(row => row.trim()), sshTail);
   const shellGrep = tool("bash", { command: "rg -n 'needle' src", timeout: 20 }, "shell-rg");
   finish(shellGrep, "a.ts:1: needle\nb.ts:3: needle", false, undefined, 1250);
   const shellFind = tool("bash", { command: "find src -name '*.ts'" }, "shell-find");
