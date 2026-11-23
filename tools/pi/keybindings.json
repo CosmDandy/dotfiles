@@ -4,5 +4,6 @@
   "app.thinking.cycle": "alt+t",
   "app.model.select": ["ctrl+l", "alt+p"],
   "app.session.resume": "alt+s",
+  "tui.input.newLine": ["shift+enter", "ctrl+j"],
   "app.clear": []
 }
