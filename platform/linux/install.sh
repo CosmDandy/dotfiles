@@ -149,8 +149,8 @@ HM_CONFIG="$(whoami)-${PROFILE}-$(uname -m)-linux"
 # to the same value the baked generation is already what a switch would produce
 # — out-of-store symlinks resolve through ~/dotfiles and start pointing into the
 # fresh clone by themselves — so the switch and every activation hook are
-# skipped. Freshness is not this script's job: upd and the nightly
-# devpod-update.sh still switch unconditionally.
+# skipped. The nightly sync updates the checkout only; package changes need
+# an explicit switch or a workspace recreated from the updated image.
 #
 # NOTE: the hash must be computed identically here and in
 # platform/linux/Dockerfile.
@@ -240,7 +240,7 @@ else
   echo "$CURRENT_GEN" > "$GEN_FILE"
 fi
 
-# Profile marker, read by automation/cron/devpod-update.sh
+# Keep the selected profile for the next install.
 echo "$PROFILE" > "$HOME/.dotfiles-profile"
 
 # System level (sudo): outside home-manager's reach. Already done in the

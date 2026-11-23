@@ -1,72 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG_PREFIX="[devpod-update]"
-
-CONTAINERS=$(docker ps -a --filter "label=devpod.user" --format '{{.Names}} {{.State}}')
-
-if [[ -z "$CONTAINERS" ]]; then
-  echo "$LOG_PREFIX No devpod containers found"
-  exit 0
-fi
-
-while read -r name state; do
-  [[ -z "$name" ]] && continue
-  workspace=$(docker inspect "$name" --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' | grep '\.devpod/agent' | sed 's|.*/workspaces/||;s|/content||')
-  was_stopped=false
-
-  # NOTE: devpod creates containers with no restart policy, so the Sunday apt-upgrade
-  # reboot left every workspace stopped, and `ds` rightly refuses to start a stopped one
-  # on reconnect — the tabs came back to nothing. unless-stopped brings back exactly
-  # what was running and leaves alone what `dps` (a plain docker stop) stopped, including
-  # the containers this script stops back below. Set here, nightly, because devpod has
-  # no way to pass it at creation; a workspace created after tonight's run is covered
-  # from the next one.
-  docker update --restart unless-stopped "$name" > /dev/null \
-    || echo "$LOG_PREFIX WARN: could not set restart policy: $name ($workspace)"
-
-  if [[ "$state" != "running" ]]; then
-    echo "$LOG_PREFIX Starting stopped container: $name ($workspace)"
-    docker start "$name"
-    was_stopped=true
-    sleep 5
-  fi
-
-  echo "$LOG_PREFIX Updating: $name ($workspace)"
-  docker exec -u cosmdandy -e HOME=/home/cosmdandy -e USER=cosmdandy "$name" bash -c '
-    . ~/.nix-profile/etc/profile.d/nix.sh
-    cd ~/dotfiles
-    git remote set-url origin https://github.com/CosmDandy/dotfiles.git
-    git -c submodule.recurse=false fetch origin
-    # NOTE: `git checkout @{u} -- .` overwrites the working tree WITHOUT warning — an edit
-    # made in the container and not yet committed vanished at 02:50 without a trace, across
-    # every container at once. So the guard checks exactly what checkout can destroy:
-    # changes to TRACKED files. Untracked files and submodule working trees are excluded, or
-    # one stray file would put the container into permanent SKIPPED with nobody to notice.
-    if [[ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all -- . ':!tools/claude/custom')" ]]; then
-      git status --short --untracked-files=no --ignore-submodules=all -- . ':!tools/claude/custom' | head -20
-      exit 3
-    fi
-    git checkout @{u} -- . ':!tools/claude/custom'
-    if [[ ! -f ~/.dotfiles-profile ]]; then
-      echo "legacy container (pre-home-manager) — recreate workspace to migrate"
+# A stopped workspace stays stopped. A racing stop makes exec fail, not start it.
+containers=$(docker ps --filter 'label=devpod.user' --format '{{.Names}}')
+rc=0
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
+  echo "[devpod-update] $name"
+  docker exec -u cosmdandy -e HOME=/home/cosmdandy "$name" sh -ec '
+    cd "$HOME/dotfiles"
+    branch=$(git branch --show-current)
+    # A previous pull can advance a gitlink without updating its private checkout.
+    changes=$(git status --porcelain --untracked-files=normal --ignore-submodules=all)
+    if [ "$branch" != main ] || [ -n "$changes" ] || ! git diff --cached --quiet --ignore-submodules=dirty; then
+      echo "Skipping: not a clean main checkout"
       exit 0
     fi
-    PROFILE=$(cat ~/.dotfiles-profile)
-    home-manager switch --flake ~/dotfiles/platform/nix#$(whoami)-$PROFILE-$(uname -m)-linux -b hm-backup
-  ' && rc=0 || rc=$?
-  # NOTE: the code is captured immediately — inside `if ! cmd` it would be the negation.
-  # 3 is a deliberate skip because of uncommitted work, not a failure.
-  case "$rc" in
-    0) echo "$LOG_PREFIX OK: $name ($workspace)" ;;
-    3) echo "$LOG_PREFIX SKIPPED (незакоммиченные изменения): $name ($workspace)" ;;
-    *) echo "$LOG_PREFIX FAILED (код $rc): $name ($workspace)" ;;
-  esac
-
-  if $was_stopped; then
-    echo "$LOG_PREFIX Stopping container back: $name ($workspace)"
-    docker stop "$name"
-  fi
-done <<< "$CONTAINERS"
-
-echo "$LOG_PREFIX Done"
+    # Cron has no SSH agent. Keep the interactive origin and private submodules untouched.
+    GIT_TERMINAL_PROMPT=0 git -c submodule.recurse=false pull --ff-only --no-recurse-submodules https://github.com/CosmDandy/dotfiles.git main
+  ' || { echo "[devpod-update] FAILED: $name" >&2; rc=1; }
+done <<< "$containers"
+exit "$rc"
