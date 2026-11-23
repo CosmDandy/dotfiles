@@ -60,8 +60,12 @@ class TmuxEnterTest(unittest.TestCase):
         self.assertIn("select-window -t test:1", commands)
         self.assertEqual(commands[-1], "attach -t test")
 
-    def test_default_agent_is_claude_after_ide_lock_or_timeout(self):
+    def test_default_agent_is_pi(self):
         _, commands = self.run_script("test")
+        self.assertIn("send-keys -t test:2 pi C-m", commands)
+
+    def test_explicit_claude_starts_after_ide_lock_or_timeout(self):
+        _, commands = self.run_script("test", agent_env="claude")
         agent = [c for c in commands if c.startswith("send-keys -t test:2 ")][0]
         line = agent.removeprefix("send-keys -t test:2 ").removesuffix(" C-m")
         with tempfile.TemporaryDirectory() as home:

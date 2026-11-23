@@ -10,13 +10,13 @@
 # second, and the first one selected.
 #
 # Usage: tmux-enter.sh <session-name> [dir] [agent]
-#   agent: claude | pi — defaults to $WORKSPACE_AGENT, then claude.
+#   agent: claude | pi — defaults to $WORKSPACE_AGENT, then pi.
 #   `ds` passes the mac's $WORKSPACE_AGENT explicitly: no env var survives the
 #   ssh hop into the container.
 
 name=${1:-dev}
 dir=${2:-}
-agent=${3:-${WORKSPACE_AGENT:-claude}}
+agent=${3:-${WORKSPACE_AGENT:-pi}}
 
 case $agent in
   claude | pi) ;;
