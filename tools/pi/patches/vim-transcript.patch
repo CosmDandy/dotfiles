@@ -1,0 +1,1051 @@
+diff --git a/packages/coding-agent/src/modes/interactive/components/bash-execution.ts b/packages/coding-agent/src/modes/interactive/components/bash-execution.ts
+index a279223..bfb29eb 100644
+--- a/packages/coding-agent/src/modes/interactive/components/bash-execution.ts
++++ b/packages/coding-agent/src/modes/interactive/components/bash-execution.ts
+@@ -27,6 +27,7 @@ export class BashExecutionComponent extends Container {
+ 	private truncationResult?: TruncationResult;
+ 	private fullOutputPath?: string;
+ 	private expanded = false;
++	private resultHidden = false;
+ 	private contentContainer: Container;
+ 	/** `dim` marks `!!` commands, whose output is excluded from the model context. */
+ 	private readonly colorKey: "dim" | "bashMode";
+@@ -65,11 +66,21 @@ export class BashExecutionComponent extends Container {
+ 	/**
+ 	 * Set whether the output is expanded (shows full output) or collapsed (preview only).
+ 	 */
++	get isExpanded(): boolean {
++		return this.expanded;
++	}
++
+ 	setExpanded(expanded: boolean): void {
+ 		this.expanded = expanded;
+ 		this.updateDisplay();
+ 	}
+ 
++	setResultHidden(hidden: boolean): void {
++		if (hidden === this.resultHidden) return;
++		this.resultHidden = hidden;
++		this.updateDisplay();
++	}
++
+ 	setOutputPad(outputPad: number): void {
+ 		this.outputPad = outputPad;
+ 		this.updateDisplay();
+@@ -120,6 +131,11 @@ export class BashExecutionComponent extends Container {
+ 	}
+ 
+ 	private updateDisplay(): void {
++		this.contentContainer.clear();
++		const header = new Text(theme.fg(this.colorKey, theme.bold(`$ ${this.command}`)), this.outputPad, 0);
++		this.contentContainer.addChild(header);
++		if (this.resultHidden) return;
++
+ 		// Apply truncation for LLM context limits (same limits as bash tool)
+ 		const fullOutput = this.outputLines.join("\n");
+ 		const contextTruncation = truncateTail(fullOutput, {
+@@ -134,13 +150,6 @@ export class BashExecutionComponent extends Container {
+ 		const previewLogicalLines = availableLines.slice(-PREVIEW_LINES);
+ 		const hiddenLineCount = availableLines.length - previewLogicalLines.length;
+ 
+-		// Rebuild content container
+-		this.contentContainer.clear();
+-
+-		// Command header
+-		const header = new Text(theme.fg(this.colorKey, theme.bold(`$ ${this.command}`)), this.outputPad, 0);
+-		this.contentContainer.addChild(header);
+-
+ 		// Output
+ 		if (availableLines.length > 0) {
+ 			if (this.expanded) {
+diff --git a/packages/coding-agent/src/modes/interactive/components/custom-editor.ts b/packages/coding-agent/src/modes/interactive/components/custom-editor.ts
+index 1f0c539..53af06f 100644
+--- a/packages/coding-agent/src/modes/interactive/components/custom-editor.ts
++++ b/packages/coding-agent/src/modes/interactive/components/custom-editor.ts
+@@ -1,4 +1,4 @@
+-import { Editor, type EditorOptions, type EditorTheme, type TUI, visibleWidth } from "@earendil-works/pi-tui";
++import { Editor, type EditorOptions, type EditorTheme, matchesKey, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+ import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
+ import type { StatusIndicator } from "./status-indicator.ts";
+ 
+@@ -18,6 +18,7 @@ export class CustomEditor extends Editor {
+ 
+ 	// Special handlers that can be dynamically replaced
+ 	public onEscape?: () => void;
++	public onTranscriptEscape?: () => boolean;
+ 	public onCtrlD?: () => void;
+ 	public onPasteImage?: () => void;
+ 	/** Handler for extension-registered shortcuts. Returns true if handled. */
+@@ -107,7 +108,7 @@ export class CustomEditor extends Editor {
+ 			return;
+ 		}
+ 
+-		// Check app keybindings first
++		if (matchesKey(data, "escape") && !this.isShowingAutocomplete() && this.onTranscriptEscape?.()) return;
+ 
+ 		// Escape/interrupt - only if autocomplete is NOT active
+ 		if (this.keybindings.matches(data, "app.interrupt")) {
+diff --git a/packages/coding-agent/src/modes/interactive/components/tool-execution.ts b/packages/coding-agent/src/modes/interactive/components/tool-execution.ts
+index f043d08..f4ea5df 100644
+--- a/packages/coding-agent/src/modes/interactive/components/tool-execution.ts
++++ b/packages/coding-agent/src/modes/interactive/components/tool-execution.ts
+@@ -45,6 +45,7 @@ export class ToolExecutionComponent extends Container {
+ 	private toolCallId: string;
+ 	private args: any;
+ 	private expanded = false;
++	private resultHidden = false;
+ 	private showImages: boolean;
+ 	private imageWidthCells: number;
+ 	private outputPad: number;
+@@ -133,7 +134,7 @@ export class ToolExecutionComponent extends Container {
+ 			executionStarted: this.executionStarted,
+ 			argsComplete: this.argsComplete,
+ 			isPartial: this.isPartial,
+-			expanded: this.expanded,
++			expanded: this.expanded && !this.resultHidden,
+ 			showImages: this.showImages,
+ 			isError: this.result?.isError ?? false,
+ 			durationMs: this.isPartial ? undefined : this.result?.durationMs,
+@@ -144,7 +145,7 @@ export class ToolExecutionComponent extends Container {
+ 	}
+ 
+ 	private createCallFallback(): Component {
+-		return new Text(formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded), 0, 0);
++		return new Text(formatToolCallWithArgs(this.toolName, this.args, theme, this.expanded && !this.resultHidden), 0, 0);
+ 	}
+ 
+ 	private createResultFallback(): Component | undefined {
+@@ -208,11 +209,25 @@ export class ToolExecutionComponent extends Container {
+ 		this.updateDisplay();
+ 	}
+ 
++	get isExpanded(): boolean {
++		return this.expanded;
++	}
++
++	get isHidden(): boolean {
++		return this.hideComponent;
++	}
++
+ 	setExpanded(expanded: boolean): void {
+ 		this.expanded = expanded;
+ 		this.updateDisplay();
+ 	}
+ 
++	setResultHidden(hidden: boolean): void {
++		if (hidden === this.resultHidden) return;
++		this.resultHidden = hidden;
++		this.updateDisplay();
++	}
++
+ 	setOutputPad(outputPad: number): void {
+ 		this.outputPad = outputPad;
+ 		this.updateDisplay();
+@@ -313,7 +328,7 @@ export class ToolExecutionComponent extends Container {
+ 				}
+ 			}
+ 
+-			if (this.result) {
++			if (this.result && !this.resultHidden) {
+ 				const resultRenderer = this.getResultRenderer();
+ 				if (!resultRenderer) {
+ 					const component = this.createResultFallback();
+@@ -361,7 +376,7 @@ export class ToolExecutionComponent extends Container {
+ 		}
+ 		this.imageSpacers = [];
+ 
+-		if (this.result) {
++		if (this.result && !this.resultHidden) {
+ 			const imageBlocks = this.result.content.filter((c) => c.type === "image");
+ 			const caps = getCapabilities();
+ 			for (const img of imageBlocks) {
+@@ -406,6 +421,7 @@ export class ToolExecutionComponent extends Container {
+ 	}
+ 
+ 	private formatToolExecution(): string {
++		if (this.resultHidden) return formatToolCallWithArgs(this.toolName, this.args, theme, false);
+ 		let text = theme.fg("toolTitle", theme.bold(this.toolName));
+ 		const content = JSON.stringify(this.args, null, 2);
+ 		if (content) {
+diff --git a/packages/coding-agent/src/modes/interactive/interactive-mode.ts b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+index e8b8552..01ff8bc 100644
+--- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
++++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+@@ -145,6 +145,8 @@ import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
+ import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+ import { reportBug } from "./bug-report.ts";
+ import { createChatViewport } from "./chat-viewport.ts";
++import { paintVimFrame } from "./vim-dock.ts";
++import { VimTranscript } from "./vim-transcript.ts";
+ import { ArminComponent } from "./components/armin.ts";
+ import { AssistantMessageComponent } from "./components/assistant-message.ts";
+ import { BashExecutionComponent } from "./components/bash-execution.ts";
+@@ -523,7 +525,7 @@ export class InteractiveMode {
+ 	private ui: TUI;
+ 	private mainScreenRenderState: TuiMainScreenRenderState | undefined;
+ 	private loadedResourcesContainer: Container;
+-	private chatContainer: Container;
++	private chatContainer: VimTranscript;
+ 	private documentContainer: Container;
+ 	private transcriptScrollView: TuiLayouts.ScrollView | undefined;
+ 	private fullscreenLayoutRoot: Component | undefined;
+@@ -558,6 +560,8 @@ export class InteractiveMode {
+ 	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
+ 
+ 	private lastSigintTime = 0;
++	private lastInterruptAt = -Infinity;
++	private interruptCount = 0;
+ 	private lastEscapeTime = 0;
+ 	private changelogMarkdown: string | undefined = undefined;
+ 	private extensionChangelogUpdates: ExtensionChangelogUpdate[] = [];
+@@ -712,8 +716,14 @@ export class InteractiveMode {
+ 		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
+ 		this.headerContainer = new Container();
+ 		this.loadedResourcesContainer = new Container();
+-		this.chatContainer = new Container();
+ 		this.documentContainer = new Container();
++		this.chatContainer = new VimTranscript(
++			() => this.renderer.mode === "fullscreen" ? this.transcriptScrollView : undefined,
++			() => this.documentContainer.getRenderedChildRow(this.chatContainer),
++			() => this.ui.requestRender(),
++			() => this.ui.setFocus(this.editor),
++			(error) => this.showError(String(error)),
++		);
+ 		this.documentContainer.addChild(this.headerContainer);
+ 		this.documentContainer.addChild(this.loadedResourcesContainer);
+ 		this.documentContainer.addChild(this.chatContainer);
+@@ -971,6 +981,15 @@ export class InteractiveMode {
+ 
+ 	private mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void {
+ 		for (const component of components) tui.addChild(component);
++		tui.addInputListener((data) => this.handleInterruptKey(tui, data));
++		if (tui instanceof TuiAltScreen) {
++			tui.decorateFrame = (screen, layout) => {
++				const mode = this.chatContainer.mode;
++				if (!mode) return;
++				const transcript = paintVimFrame(screen, layout, this.editorContainer, mode, this.chatContainer.openRows());
++				if (transcript) this.chatContainer.paintVisible(screen, layout.width, transcript);
++			};
++		}
+ 		if (TuiLayouts.isViewportTUI(tui)) {
+ 			if (!this.fullscreenLayoutRoot) throw new Error("Fullscreen layout is not initialized");
+ 			tui.setLayoutRoot(this.fullscreenLayoutRoot);
+@@ -991,6 +1010,7 @@ export class InteractiveMode {
+ 		if (mode === previousUi.mode) return true;
+ 		if (previousUi.hasOverlayEntries) return false;
+ 
++		if (this.chatContainer.focused) this.chatContainer.leave();
+ 		const components = [...previousUi.children];
+ 		const focus = previousUi.getFocusedComponent();
+ 		const terminal = previousUi.terminal;
+@@ -1108,9 +1128,10 @@ export class InteractiveMode {
+ 			// "Pi vX" line instead, with the key hints below it.
+ 			const showLogo = supportsPiLogo();
+ 			const withLogo = (hints: string) => {
+-				if (!showLogo) return `${piWordmark()} ${theme.fg("dim", `v${this.version}`)}\n${hints}`;
++				const versionLabel = theme.fg("dim", `v${this.version}/cosm`);
++				if (!showLogo) return `${piWordmark()} ${versionLabel}\n${hints}`;
+ 				const [top, bottom] = piLogoLines();
+-				return `${top} ${theme.fg("dim", `v${this.version}`)}\n${bottom} ${hints}`;
++				return `${top} ${versionLabel}\n${bottom} ${hints}`;
+ 			};
+ 
+ 			// Build startup instructions using keybinding hint helpers
+@@ -3083,6 +3104,7 @@ export class InteractiveMode {
+ 				if (!customEditor.onEscape) {
+ 					customEditor.onEscape = () => this.defaultEditor.onEscape?.();
+ 				}
++				customEditor.onTranscriptEscape = () => this.defaultEditor.onTranscriptEscape?.();
+ 				if (!customEditor.onCtrlD) {
+ 					customEditor.onCtrlD = () => this.defaultEditor.onCtrlD?.();
+ 				}
+@@ -3250,6 +3272,11 @@ export class InteractiveMode {
+ 	// =========================================================================
+ 
+ 	private setupKeyHandlers(): void {
++		this.defaultEditor.onTranscriptEscape = () => {
++			if (!this.session.isIdle || this.isBashMode || this.session.isBashRunning || !this.chatContainer.enter()) return false;
++			this.ui.setFocus(this.chatContainer);
++			return true;
++		};
+ 		// Set up handlers on defaultEditor - they use this.editor for text access
+ 		// so they work correctly regardless of which editor is active
+ 		this.defaultEditor.onEscape = () => {
+@@ -4496,6 +4523,31 @@ export class InteractiveMode {
+ 	// Key handlers
+ 	// =========================================================================
+ 
++	private handleInterruptKey(tui: TuiMainScreen | TuiAltScreen, data: string): { consume: true } | undefined {
++		if (TuiLayouts.isKeyRelease(data)) return;
++		if (!matchesKey(data, "ctrl+c")) {
++			this.interruptCount = 0;
++			return;
++		}
++		const now = performance.now();
++		this.interruptCount = now - this.lastInterruptAt <= 650 ? this.interruptCount + 1 : 1;
++		this.lastInterruptAt = now;
++		if (this.interruptCount >= 2) {
++			void this.shutdown();
++			return { consume: true };
++		}
++		const focused = tui.getFocusedComponent();
++		if (focused === this.chatContainer) {
++			this.chatContainer.leave();
++			return { consume: true };
++		}
++		if (focused === this.editor) {
++			if (!this.session.isIdle || this.session.isBashRunning || this.isBashMode) this.defaultEditor.onEscape?.();
++			return { consume: true };
++		}
++		return undefined;
++	}
++
+ 	private handleCtrlC(): void {
+ 		const now = Date.now();
+ 		if (now - this.lastSigintTime < 500) {
+diff --git a/packages/coding-agent/src/modes/interactive/vim-dock.ts b/packages/coding-agent/src/modes/interactive/vim-dock.ts
+new file mode 100644
+index 0000000..8dc1828
+--- /dev/null
++++ b/packages/coding-agent/src/modes/interactive/vim-dock.ts
+@@ -0,0 +1,131 @@
++import {
++	backgroundAnsi,
++	type Color,
++	colorToRgb,
++	type Component,
++	compositeTuiLine,
++	foregroundAnsi,
++	getTerminalColorMode,
++	indexedColor,
++	isImageLine,
++	type LayoutFrame,
++	mixColors,
++	rgbColor,
++	stripTerminalSequences,
++	visibleWidth,
++} from "@earendil-works/pi-tui";
++import { theme } from "./theme/theme.ts";
++
++function grayscale(color: Color): Color {
++	const { r, g, b } = colorToRgb(color);
++	const gray = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
++	return rgbColor(gray, gray, gray);
++}
++
++const faders = new Map<boolean, { colors: typeof theme.colors; mode: ReturnType<typeof getTerminalColorMode>; paint: (line: string) => string }>();
++
++function frameFader(dock: boolean): (line: string) => string {
++	const mode = getTerminalColorMode();
++	const colors = theme.colors;
++	const previous = faders.get(dock);
++	if (previous?.colors === colors && previous.mode === mode) return previous.paint;
++	const canvas = dock ? colors.userMessageBg : grayscale(colors.userMessageBg);
++	const text = dock ? colors.text : grayscale(colors.text);
++	const foreground = mixColors(canvas, text, dock ? 0.38 : 0.88, "srgb");
++	const fade = (color: Color, background: boolean) => {
++		const gray = grayscale(color);
++		const muted = dock ? mixColors(gray, color, 0.25, "srgb") : gray;
++		return background ? mixColors(canvas, muted, dock ? 0.22 : 0.45, "srgb")
++			: mixColors(foreground, muted, dock ? 0.07 : 0.12, "srgb");
++	};
++	const defaultFg = foregroundAnsi(foreground, mode);
++	const sgr = /\x1b\[([0-9;]*)m/g;
++	const emit = (color: Color, background: boolean) =>
++		(background ? backgroundAnsi : foregroundAnsi)(fade(color, background), mode);
++	const cache = new Map<string, string>();
++	const recolor = (line: string) => defaultFg + line.replace(sgr, (_match, parameters: string) => {
++		const cached = cache.get(parameters);
++		if (cached !== undefined) return cached;
++		const values = parameters.split(";").map(Number);
++		let painted = "";
++		for (let index = 0; index < values.length; index++) {
++			const code = values[index]!;
++			if (code === 0 || code === 39) painted += (code === 0 ? "\x1b[0m" : "") + defaultFg;
++			else if (dock && (code === 1 || code === 2)) continue;
++			else if (code >= 30 && code <= 37) painted += emit(indexedColor(code - 30), false);
++			else if (code >= 40 && code <= 47) painted += emit(indexedColor(code - 40), true);
++			else if (code >= 90 && code <= 97) painted += emit(indexedColor(code - 82), false);
++			else if (code >= 100 && code <= 107) painted += emit(indexedColor(code - 92), true);
++			else if ((code === 38 || code === 48) && values[index + 1] === 5 && index + 2 < values.length) {
++				painted += emit(indexedColor(values[index + 2]!), code === 48);
++				index += 2;
++			} else if ((code === 38 || code === 48) && values[index + 1] === 2 && index + 4 < values.length) {
++				painted += emit(rgbColor(values[index + 2]!, values[index + 3]!, values[index + 4]!), code === 48);
++				index += 4;
++			} else painted += `\x1b[${code}m`;
++		}
++		if (cache.size >= 512) cache.clear();
++		cache.set(parameters, painted);
++		return painted;
++	});
++	const lines = new Map<string, string>();
++	const paint = (line: string) => {
++		const cached = lines.get(line);
++		if (cached !== undefined) return cached;
++		const painted = recolor(line);
++		if (lines.size >= 512) lines.clear();
++		lines.set(line, painted);
++		return painted;
++	};
++	faders.set(dock, { colors, mode, paint });
++	return paint;
++}
++
++function fadeRows(
++	screen: string[], start: number, height: number, fade: (line: string) => string, keep?: readonly [number, number],
++): void {
++	for (let row = start; row < start + height; row++) {
++		if (keep && row >= keep[0] && row < keep[1]) continue;
++		const line = screen[row] ?? "";
++		if (!isImageLine(line)) screen[row] = fade(line);
++	}
++}
++
++export interface TranscriptPaintRegion {
++	top: number;
++	bottom: number;
++	offset: number;
++}
++
++export function paintVimFrame(
++	screen: string[], frame: LayoutFrame, editor: Component, mode: "NORMAL" | "VISUAL",
++	openRows?: readonly [number, number],
++): TranscriptPaintRegion | undefined {
++	const transcript = frame.primaryScrollView && frame.root.children.find((box) => box.scrollView === frame.primaryScrollView);
++	let region: TranscriptPaintRegion | undefined;
++	if (transcript?.scrollView) {
++		const { y, height } = transcript.clip;
++		const offset = transcript.rect.y - transcript.scrollView.scrollTop;
++		const keep = openRows && [openRows[0] + offset, openRows[1] + offset] as const;
++		fadeRows(screen, y, height, frameFader(false), keep);
++		region = { top: y, bottom: y + height, offset };
++	}
++	const dock = frame.root.children.find((box) => box.children.some((child) => child.component === editor));
++	const input = dock?.children.find((child) => child.component === editor);
++	if (!dock || !input) return region;
++	fadeRows(screen, dock.clip.y, dock.clip.height, frameFader(true));
++	const label = theme.style(` ${mode} `, { fg: "accent", bg: "selectedBg", bold: true });
++	const labelWidth = visibleWidth(label);
++	// The custom editor has a status row; the stock editor just has a border. Never paint over status text.
++	for (let offset = 0; offset < Math.min(2, input.clip.height); offset++) {
++		const row = input.clip.y + offset;
++		const line = screen[row] ?? "";
++		const plain = stripTerminalSequences(line);
++		const slot = plain.match(new RegExp(`${offset === 0 ? "[ ─]" : "─"}{${labelWidth + 2},}`));
++		if (slot?.index === undefined) continue;
++		const column = visibleWidth(plain.slice(0, slot.index)) + 1;
++		screen[row] = compositeTuiLine(line, label, column, labelWidth, frame.width);
++		break;
++	}
++	return region;
++}
+diff --git a/packages/coding-agent/src/modes/interactive/vim-text.ts b/packages/coding-agent/src/modes/interactive/vim-text.ts
+new file mode 100644
+index 0000000..16c1e89
+--- /dev/null
++++ b/packages/coding-agent/src/modes/interactive/vim-text.ts
+@@ -0,0 +1,129 @@
++import { getGraphemeSegmenter, isImageLine, stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
++
++export interface VimPoint {
++	row: number;
++	index: number;
++}
++
++type WordMotion = "w" | "b" | "e";
++
++interface TextRow {
++	graphemes: string[];
++	columns: number[];
++}
++
++function compare(a: VimPoint, b: VimPoint): number {
++	return a.row - b.row || a.index - b.index;
++}
++
++export class VimText {
++	readonly lines: readonly string[];
++	readonly first: number;
++	private readonly rows = new Map<number, TextRow>();
++
++	constructor(lines: readonly string[], first: number) {
++		this.lines = lines;
++		this.first = first;
++	}
++
++	private row(row: number): TextRow {
++		const cached = this.rows.get(row);
++		if (cached) return cached;
++		const raw = this.lines[row] ?? "";
++		const plain = isImageLine(raw) ? "" : stripTerminalSequences(raw).trimEnd();
++		const graphemes = Array.from(getGraphemeSegmenter().segment(plain), ({ segment }) => segment);
++		const columns = [0];
++		for (const grapheme of graphemes) columns.push(columns.at(-1)! + visibleWidth(grapheme));
++		const result = { graphemes, columns };
++		this.rows.set(row, result);
++		return result;
++	}
++
++	clamp(point: VimPoint): VimPoint {
++		const row = Math.max(this.first, Math.min(point.row, this.lines.length - 1));
++		return { row, index: Math.max(0, Math.min(point.index, this.row(row).graphemes.length - 1)) };
++	}
++
++	firstNonblank(row: number): VimPoint {
++		const index = this.row(row).graphemes.findIndex((char) => /\S/u.test(char));
++		return { row, index: Math.max(index, 0) };
++	}
++
++	columns(point: VimPoint): [number, number] {
++		const { columns } = this.row(point.row);
++		const start = columns[point.index] ?? 0;
++		return [start, Math.max(start + 1, columns[point.index + 1] ?? start)];
++	}
++
++	vertical(point: VimPoint, delta: number, column: number): VimPoint {
++		const row = this.clamp({ row: point.row + delta, index: 0 }).row;
++		const { columns } = this.row(row);
++		const index = Math.max(0, columns.findLastIndex((col) => col <= column));
++		return this.clamp({ row, index });
++	}
++
++	private step(point: VimPoint, direction: 1 | -1): VimPoint | undefined {
++		const max = Math.max(0, this.row(point.row).graphemes.length - 1);
++		const index = point.index + direction;
++		if (index >= 0 && index <= max) return { row: point.row, index };
++		const row = point.row + direction;
++		if (row < this.first || row >= this.lines.length) return undefined;
++		return this.clamp({ row, index: direction === 1 ? 0 : Infinity });
++	}
++
++	private kind(point: VimPoint, big: boolean): number {
++		const char = this.row(point.row).graphemes[point.index] ?? " ";
++		return /\s/u.test(char) ? 0 : big || /[\p{L}\p{N}\p{M}_]/u.test(char) ? 1 : 2;
++	}
++
++	private wordOnce(point: VimPoint, motion: WordMotion, big: boolean): VimPoint {
++		const direction = motion === "b" ? -1 : 1;
++		let next = this.step(point, direction);
++		if (motion === "w") {
++			const kind = this.kind(point, big);
++			while (kind && next && next.row === point.row && this.kind(next, big) === kind) next = this.step(next, 1);
++		}
++		while (next && !this.kind(next, big)) next = this.step(next, direction);
++		if (!next) return motion === "b" ? { row: this.first, index: 0 } : this.clamp({ row: Infinity, index: Infinity });
++		if (motion === "w") return next;
++		const row = next.row;
++		const kind = this.kind(next, big);
++		let end = next;
++		while ((next = this.step(end, direction)) && next.row === row && this.kind(next, big) === kind) end = next;
++		return end;
++	}
++
++	word(point: VimPoint, motion: WordMotion, big: boolean, count: number): VimPoint {
++		for (let step = 0; step < count; step++) {
++			const next = this.wordOnce(point, motion, big);
++			if (compare(next, point) === 0) break;
++			point = next;
++		}
++		return point;
++	}
++
++	private selection(row: number, a: VimPoint, b: VimPoint, linewise: boolean): [number, number] | undefined {
++		const [start, end] = compare(a, b) <= 0 ? [a, b] : [b, a];
++		if (row < start.row || row > end.row) return undefined;
++		const from = !linewise && row === start.row ? start.index : 0;
++		const to = !linewise && row === end.row ? end.index + 1 : this.row(row).graphemes.length;
++		return [from, to];
++	}
++
++	selectionColumns(row: number, anchor: VimPoint, point: VimPoint, linewise: boolean): [number, number] | undefined {
++		const span = this.selection(row, anchor, point, linewise);
++		if (!span) return undefined;
++		const { columns } = this.row(row);
++		return [columns[span[0]] ?? 0, columns[span[1]] ?? columns.at(-1)!];
++	}
++
++	text(anchor: VimPoint, point: VimPoint, linewise: boolean): string {
++		const from = Math.min(anchor.row, point.row), to = Math.max(anchor.row, point.row);
++		const lines: string[] = [];
++		for (let row = from; row <= to; row++) {
++			const span = this.selection(row, anchor, point, linewise)!;
++			lines.push(this.row(row).graphemes.slice(...span).join(""));
++		}
++		return lines.join("\n") + (linewise ? "\n" : "");
++	}
++}
+diff --git a/packages/coding-agent/src/modes/interactive/vim-transcript.ts b/packages/coding-agent/src/modes/interactive/vim-transcript.ts
+new file mode 100644
+index 0000000..c2193d1
+--- /dev/null
++++ b/packages/coding-agent/src/modes/interactive/vim-transcript.ts
+@@ -0,0 +1,398 @@
++import { stripVTControlCharacters } from "node:util";
++import {
++	compositeTuiLine,
++	Container,
++	extractAnsiCode,
++	isImageLine,
++	matchesKey,
++	mixColors,
++	parseKey,
++	rgbColor,
++	type ScrollView,
++	sliceByColumn,
++	visibleWidth,
++} from "@earendil-works/pi-tui";
++import { copyToClipboard } from "../../utils/clipboard.ts";
++import { AssistantMessageComponent } from "./components/assistant-message.ts";
++import { BashExecutionComponent } from "./components/bash-execution.ts";
++import { ToolExecutionComponent } from "./components/tool-execution.ts";
++import { theme } from "./theme/theme.ts";
++import type { TranscriptPaintRegion } from "./vim-dock.ts";
++import { type VimPoint, VimText } from "./vim-text.ts";
++
++type ToolBlock = ToolExecutionComponent | BashExecutionComponent;
++type Block = ToolBlock | AssistantMessageComponent;
++interface Position {
++	block: Block;
++	row: number;
++	lines: readonly string[];
++	first: number;
++}
++interface Detail {
++	block: Block;
++	wasExpanded?: boolean;
++	text?: VimText;
++	point?: VimPoint;
++	anchor?: VimPoint;
++	linewise: boolean;
++	preferredColumn?: number;
++}
++
++function isTool(child: unknown): child is ToolBlock {
++	return (child instanceof ToolExecutionComponent && !child.isHidden) || child instanceof BashExecutionComponent;
++}
++
++function firstContentRow(lines: readonly string[]): number {
++	return Math.max(0, lines.findIndex((line) => !isImageLine(line) && stripVTControlCharacters(line).trim().length > 0));
++}
++
++function between(value: number, a: number, b: number): boolean {
++	return value >= Math.min(a, b) && value <= Math.max(a, b);
++}
++
++function tintLine(line: string, width: number, style: (text: string) => string): string {
++	let result = "";
++	let start = 0;
++	for (let index = 0; index < line.length;) {
++		const ansi = extractAnsiCode(line, index);
++		if (!ansi) { index++; continue; }
++		if (index > start) result += style(line.slice(start, index));
++		result += ansi.code;
++		index += ansi.length;
++		start = index;
++	}
++	const trailing = line.slice(start) + " ".repeat(Math.max(0, width - visibleWidth(line)));
++	return trailing ? result + style(trailing) : result;
++}
++
++function tintSpan(line: string, [start, end]: [number, number], width: number, style: (text: string) => string): string {
++	const size = Math.min(end, width) - start;
++	if (size <= 0) return line;
++	return compositeTuiLine(line, tintLine(sliceByColumn(line, start, size, true), size, style), start, size, width);
++}
++
++function firstBlockAtOrAfter(positions: Position[], row: number): number {
++	let lo = 0;
++	let hi = positions.length;
++	while (lo < hi) {
++		const mid = (lo + hi) >>> 1;
++		const item = positions[mid]!;
++		if (item.row + item.first < row) lo = mid + 1;
++		else hi = mid;
++	}
++	return lo;
++}
++
++export class VimTranscript extends Container {
++	focused = false;
++
++	get mode(): "NORMAL" | "VISUAL" | undefined {
++		if (!this.focused || !this.selected) return undefined;
++		return this.anchor !== undefined || this.detail?.anchor !== undefined ? "VISUAL" : "NORMAL";
++	}
++
++	private selected?: Block;
++	private anchor?: Block;
++	private detail?: Detail;
++	private count = "";
++	private revealPending = false;
++	private followOnLeave = false;
++	private notice = "";
++	private copied?: symbol;
++
++	private readonly viewport: () => ScrollView | undefined;
++	private positionCache?: {
++		layout: NonNullable<VimTranscript["childLines"]>;
++		offset: number;
++		positions: Position[];
++		indices: Map<Block, number>;
++	};
++	private readonly chatRow: () => number | undefined;
++	private readonly requestRender: () => void;
++	private readonly focusEditor: () => void;
++	private readonly onCopyError: (error: unknown) => void;
++
++	constructor(
++		viewport: () => ScrollView | undefined,
++		chatRow: () => number | undefined,
++		requestRender: () => void,
++		focusEditor: () => void,
++		onCopyError: (error: unknown) => void,
++	) {
++		super();
++		this.viewport = viewport;
++		this.chatRow = chatRow;
++		this.requestRender = requestRender;
++		this.focusEditor = focusEditor;
++		this.onCopyError = onCopyError;
++	}
++
++	enter(): boolean {
++		const selected = this.positions().at(-1)?.block ?? this.children.findLast(isTool);
++		const viewport = this.viewport();
++		if (!selected || !viewport) return false;
++		this.closeDetail();
++		this.selected = selected;
++		this.anchor = undefined;
++		this.count = this.notice = "";
++		this.followOnLeave = viewport.isFollowingEnd;
++		viewport.scrollTo(viewport.scrollTop, { disableFollow: true });
++		this.revealPending = true;
++		this.requestRender();
++		return true;
++	}
++
++	leave(): void {
++		this.closeDetail();
++		this.selected = this.anchor = this.copied = undefined;
++		this.revealPending = false;
++		if (this.followOnLeave) this.viewport()?.scrollToEnd();
++		this.focusEditor();
++		this.requestRender();
++	}
++
++	openRows(): readonly [number, number] | undefined {
++		const detail = this.detail;
++		const layout = this.childLines;
++		if (!detail || !layout) return undefined;
++		const item = this.positionOf(detail.block);
++		return item && [item.row, item.row + item.lines.length];
++	}
++
++	private positions(): Position[] {
++		const layout = this.childLines;
++		const offset = this.chatRow() ?? 0;
++		if (this.positionCache && this.positionCache.layout === layout && this.positionCache.offset === offset) {
++			return this.positionCache.positions;
++		}
++		const positions: Position[] = [];
++		const indices = new Map<Block, number>();
++		let row = offset;
++		if (layout) {
++			for (let index = 0; index < layout.children.length; index++) {
++				const child = layout.children[index]!;
++				const lines = layout.parts[index]!;
++				if (lines.length && (isTool(child) || child instanceof AssistantMessageComponent)) {
++					indices.set(child, positions.length);
++					positions.push({ block: child, row, lines, first: firstContentRow(lines) });
++				}
++				row += lines.length;
++			}
++			this.positionCache = { layout, offset, positions, indices };
++		} else this.positionCache = undefined;
++		return positions;
++	}
++
++	private positionIndex(block: Block | undefined): number {
++		return block ? this.positionCache?.indices.get(block) ?? -1 : -1;
++	}
++
++	private positionOf(block: Block | undefined): Position | undefined {
++		const positions = this.positions();
++		return positions[this.positionIndex(block)];
++	}
++
++	private closeDetail(): void {
++		const detail = this.detail;
++		if (!detail) return;
++		if (isTool(detail.block)) detail.block.setExpanded(detail.wasExpanded ?? false);
++		this.detail = undefined;
++	}
++
++	private prepareText(detail: Detail, item: Position): { text: VimText; point: VimPoint } {
++		if (!detail.text || detail.text.lines !== item.lines) detail.text = new VimText(item.lines, item.first);
++		const text = detail.text;
++		const point = detail.point = text.clamp(detail.point ?? text.firstNonblank(item.first));
++		if (detail.anchor) detail.anchor = text.clamp(detail.anchor);
++		return { text, point };
++	}
++
++	private reveal(): void {
++		const viewport = this.viewport();
++		const item = this.positionOf(this.selected);
++		if (!viewport || !item) return;
++		const absolute = item.row + (this.detail ? this.prepareText(this.detail, item).point.row : item.first);
++		const top = viewport.scrollTop;
++		if (absolute < top) viewport.scrollTo(absolute, { disableFollow: true });
++		else if (absolute >= top + viewport.viewportHeight) {
++			viewport.scrollTo(absolute - Math.max(0, viewport.viewportHeight - 1), { disableFollow: true });
++		}
++	}
++
++	private copy(lines: readonly string[]): void {
++		this.copyText(lines.filter((line) => !isImageLine(line)).map((line) => stripVTControlCharacters(line).trimEnd()).join("\n"));
++	}
++
++	private copyText(text: string): void {
++		if (!text) return;
++		const token = this.copied = Symbol();
++		void copyToClipboard(text).then(() => {
++			if (this.copied !== token) return;
++			this.notice = "✓";
++			this.requestRender();
++		}, (error) => {
++			if (this.copied !== token) return;
++			this.notice = "!";
++			this.onCopyError(error);
++			this.requestRender();
++		});
++	}
++
++	private scrollBlocks(viewport: ScrollView, positions: Position[], amount: number): void {
++		viewport.scrollTo(viewport.scrollTop + amount, { disableFollow: true });
++		const top = viewport.scrollTop;
++		const bottom = top + viewport.viewportHeight;
++		const first = firstBlockAtOrAfter(positions, top);
++		const end = firstBlockAtOrAfter(positions, bottom);
++		const index = this.positionIndex(this.selected);
++		if (first === end || (index >= first && index < end)) return;
++		this.selected = positions[amount < 0 ? end - 1 : first]!.block;
++	}
++
++	private jumpBlock(viewport: ScrollView, positions: Position[], index: number, delta: number): void {
++		const item = positions[index]!;
++		const top = viewport.scrollTop;
++		const bottom = top + viewport.viewportHeight;
++		let target = index + delta;
++		if (item.row + item.first < top || item.row + item.first >= bottom) {
++			// If paging left the cursor off-screen, the first step starts at the viewport, not at the old tool.
++			const start = delta < 0 ? firstBlockAtOrAfter(positions, bottom) - 1 : firstBlockAtOrAfter(positions, top);
++			target = start + delta - Math.sign(delta);
++		}
++		this.selected = positions[Math.max(0, Math.min(positions.length - 1, target))]!.block;
++		this.revealPending = true;
++	}
++
++	handleInput(data: string): void {
++		const key = (id: Parameters<typeof matchesKey>[1]) => matchesKey(data, id);
++		const viewport = this.viewport();
++		const positions = this.positions();
++		const index = this.positionIndex(this.selected);
++		if (!viewport || index === -1 || key("i") || key("q") || key("ctrl+c")) return this.leave();
++		this.notice = "";
++		this.copied = undefined;
++		const digit = parseKey(data);
++		if (digit && /^[0-9]$/.test(digit) && (digit !== "0" || this.count)) {
++			this.count = (this.count + digit).slice(0, 6);
++			this.requestRender();
++			return;
++		}
++		const count = Number(this.count) || 1;
++		this.count = "";
++		const down = key("down") || key("j");
++		const up = key("up") || key("k");
++		const half = key("ctrl+u") || key("ctrl+d");
++		const page = half || key("ctrl+b") || key("ctrl+f");
++		const delta = (down || up ? 1 : half ? Math.ceil(viewport.viewportHeight / 2) : viewport.viewportHeight)
++			* (up || key("ctrl+u") || key("ctrl+b") ? -count : count);
++		const item = positions[index]!;
++		const select = key("v") || key("shift+v");
++		if (this.detail) {
++			const detail = this.detail;
++			const { text, point } = this.prepareText(detail, item);
++			const word = key("w") || key("shift+w") ? "w" : key("b") || key("shift+b") ? "b" : key("e") || key("shift+e") ? "e" : undefined;
++			let next: VimPoint | undefined;
++			const vertical = up || down || page;
++			if (vertical) {
++				detail.preferredColumn ??= text.columns(point)[0];
++				next = text.vertical(point, delta, detail.preferredColumn);
++			} else if (word) next = text.word(point, word, key("shift+w") || key("shift+b") || key("shift+e"), count);
++			else if (key("h") || key("l")) next = { ...point, index: point.index + (key("h") ? -count : count) };
++			else if (key("0") || key("home")) next = { ...point, index: 0 };
++			else if (key("^")) next = text.firstNonblank(point.row);
++			else if (key("$") || key("end")) next = { row: point.row + count - 1, index: Infinity };
++			else if (key("ctrl+a")) next = text.firstNonblank(item.first);
++			else if (select) {
++				const linewise = key("shift+v");
++				detail.anchor = detail.anchor && detail.linewise === linewise ? undefined : detail.anchor ?? point;
++				detail.linewise = linewise;
++			} else if (key("y")) {
++				this.copyText(text.text(detail.anchor ?? point, point, !detail.anchor || detail.linewise));
++				detail.anchor = undefined;
++			} else if (key("escape") && detail.anchor) detail.anchor = undefined;
++			else if (key("escape") || key("return") || key("left")) {
++				this.closeDetail();
++				this.revealPending = true;
++			}
++			if (next) {
++				detail.point = text.clamp(next);
++				if (!vertical) detail.preferredColumn = undefined;
++				this.revealPending = true;
++			}
++		} else if (up || down) this.jumpBlock(viewport, positions, index, delta);
++		else if (page) this.scrollBlocks(viewport, positions, delta);
++		else if (key("ctrl+a")) this.scrollBlocks(viewport, positions, -viewport.scrollTop);
++		else if (key("escape")) this.anchor = undefined;
++		else if (select) this.anchor = this.anchor ? undefined : item.block;
++		else if (key("return") || key("right")) {
++			this.anchor = undefined;
++			this.detail = { block: item.block, linewise: false };
++			if (isTool(item.block)) {
++				this.detail.wasExpanded = item.block.isExpanded;
++				item.block.setExpanded(true);
++			}
++			this.revealPending = true;
++		} else if (key("y")) {
++			const anchor = this.anchor ? positions.findIndex(({ block }) => block === this.anchor) : index;
++			const start = anchor === -1 ? index : anchor;
++			this.copy(positions.slice(Math.min(start, index), Math.max(start, index) + 1).flatMap(({ lines, first }) => lines.slice(first)));
++			this.anchor = undefined;
++		}
++		this.requestRender();
++	}
++
++	override render(width: number): readonly string[] {
++		const selected = this.focused ? this.selected : undefined;
++		for (const tool of this.children.filter(isTool)) tool.setResultHidden(selected !== undefined && tool !== this.detail?.block);
++		const source = super.render(width);
++		if (selected && this.revealPending) {
++			this.revealPending = false;
++			queueMicrotask(() => { if (this.focused) this.reveal(); });
++		}
++		return source;
++	}
++
++	paintVisible(screen: string[], width: number, { top, bottom, offset }: TranscriptPaintRegion): void {
++		const positions = this.positions();
++		const index = this.positionIndex(this.selected);
++		if (index === -1 || width < 1) return;
++		const anchor = this.positionIndex(this.anchor);
++		const detail = this.detail;
++		const textView = detail ? this.prepareText(detail, positions[index]!) : undefined;
++		const detailAnchor = detail?.anchor;
++		const background = mixColors(theme.colors.selectedBg, rgbColor(42, 161, 152), theme.appearance === "dark" ? 0.3 : 0.2);
++		const highlight = (text: string) => theme.style(text, { bg: background });
++		const highlightSelection = (text: string) => theme.bg("selectedBg", text);
++		const start = textView ? index : firstBlockAtOrAfter(positions, top - offset);
++		const stop = textView ? index + 1 : firstBlockAtOrAfter(positions, bottom - offset);
++		for (let block = start; block < stop; block++) {
++			const item = positions[block]!;
++			const origin = offset + item.row;
++			const first = Math.max(item.first, top - origin);
++			const end = Math.min(textView ? item.lines.length : item.first + 1, bottom - origin);
++			for (let row = first; row < end; row++) {
++				const y = origin + row;
++				const line = screen[y] ?? "";
++				if (isImageLine(line)) continue;
++				const current = block === index && row === (textView?.point.row ?? item.first);
++				const span = textView && detailAnchor
++					? textView.text.selectionColumns(row, detailAnchor, textView.point, detail?.linewise ?? false) : undefined;
++				const selected = !!span || (!textView && anchor >= 0 && between(block, anchor, index));
++				const label = (current ? this.notice || this.count || (textView ? "│" : "▸")
++					: String(Math.abs(textView ? row - textView.point.row : block - index))).slice(0, width);
++				const caret = current && textView ? textView.text.columns(textView.point) : undefined;
++				const badgeWidth = visibleWidth(label);
++				const badge = theme.style(label, {
++					fg: current || selected ? "text" : "error",
++					bg: current ? background : selected ? theme.colors.selectedBg : theme.colors.userMessageBg,
++					bold: true,
++				});
++				let painted = current ? tintLine(line, width, highlight) : line;
++				if (span) painted = detail?.linewise ? tintLine(painted, width, highlightSelection) : tintSpan(painted, span, width, highlightSelection);
++				if (caret) painted = tintSpan(painted, caret, width, (text) => theme.inverse(text));
++				// Anchor annotations to the same edge even over tables and unpadded wrapped lines.
++				screen[y] = compositeTuiLine(painted, caret && caret[0] < badgeWidth ? theme.inverse(badge) : badge, 0, badgeWidth, width);
++			}
++		}
++	}
++}
+diff --git a/packages/tui/src/index.ts b/packages/tui/src/index.ts
+index 8b4f9ea..8999da6 100644
+--- a/packages/tui/src/index.ts
++++ b/packages/tui/src/index.ts
+@@ -154,6 +154,7 @@ export {
+ 	setCapabilityOverrides,
+ 	setCellDimensions,
+ 	type TerminalCapabilities,
++	isImageLine,
+ } from "./terminal-image.ts";
+ export {
+ 	type Component,
+@@ -182,10 +183,13 @@ export {
+ 	type TuiStopOptions,
+ 	type ViewportTUI,
+ } from "./tui.ts";
++export type { LayoutFrame } from "./layout.ts";
+ export { TuiAltScreen, type TuiAltScreenOptions } from "./tui-alt-screen.ts";
+ export { TuiMainScreen, type TuiMainScreenRenderState } from "./tui-main-screen.ts";
+ // Utilities
+ export {
++	extractAnsiCode,
++	getGraphemeSegmenter,
+ 	getOsc8LinkAtColumn,
+ 	replaceControlCharacters,
+ 	sliceByColumn,
+diff --git a/packages/tui/src/tui-alt-screen.ts b/packages/tui/src/tui-alt-screen.ts
+index 885874f..ad73c7e 100644
+--- a/packages/tui/src/tui-alt-screen.ts
++++ b/packages/tui/src/tui-alt-screen.ts
+@@ -209,6 +209,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
+ 	private previousScreenHeight = 0;
+ 	private layoutRoot: Component | undefined;
+ 	private currentLayout: LayoutFrame | undefined;
++	decorateFrame?: (screen: string[], layout: LayoutFrame) => void;
+ 	private readonly implicitDocument: Component;
+ 	private readonly implicitScrollView: ScrollView;
+ 	private readonly flashes: AltScreenFlashContainer;
+@@ -1708,6 +1709,7 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
+ 		// Resolve fake cursors before highlighting and compositing, which only track SGR codes
+ 		let screen = this.resolveFakeCursors(nextLayout.lines.map((line) => line.replace(OSC133_ZONE_PREFIX, "")));
+ 		screen = this.applySearchHighlights(screen, nextLayout);
++		this.decorateFrame?.(screen, nextLayout);
+ 		screen = this.compositeScrollToEndIndicator(screen, nextLayout, width);
+ 		screen = this.compositeOverlays(screen, width, height);
+ 		if (screen.length > height) screen = screen.slice(screen.length - height);
+diff --git a/packages/tui/src/tui.ts b/packages/tui/src/tui.ts
+index 6672529..bc1141d 100644
+--- a/packages/tui/src/tui.ts
++++ b/packages/tui/src/tui.ts
+@@ -433,7 +433,18 @@ export function dispatchMouseToChildLines(
+  */
+ export class Container implements Component {
+ 	children: Component[] = [];
+-	private childLines?: ChildLines;
++	protected childLines?: ChildLines;
++
++	getRenderedChildRow(child: Component): number | undefined {
++		const layout = this.childLines;
++		if (!layout) return undefined;
++		let row = 0;
++		for (let index = 0; index < layout.children.length; index++) {
++			if (layout.children[index] === child) return row;
++			row += layout.parts[index]!.length;
++		}
++		return undefined;
++	}
+ 
+ 	addChild(component: Component): void {
+ 		this.children.push(component);

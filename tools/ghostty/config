@@ -51,7 +51,7 @@ bell-features = audio
 # в заголовке вкладки.
 bell-audio-path = /System/Library/Sounds/Blow.aiff
 bell-audio-volume = 0.4
-keybind = shift+enter=text:\x1b\r
+keybind = shift+enter=text:\x1b[13;2u
 
 # Quick Terminal (Quake-стиль): выезжает сверху по глобальному Option+F5, поверх любого приложения.
 quick-terminal-position = top
