@@ -441,8 +441,9 @@ export default function (pi: ExtensionAPI) {
         return new StatusEditor(editorTui, editorTheme, keybindings);
       });
       update();
+      let layout: { line: string; columns: number; lightColor?: string; rows: string[] } | undefined;
       return {
-        invalidate() {},
+        invalidate() { layout = undefined; },
         render(columns: number) {
           const margin = frameInset(columns);
           const inset = " ".repeat(margin);
@@ -450,8 +451,10 @@ export default function (pi: ExtensionAPI) {
           if (width !== innerWidth) { width = innerWidth; update(); }
           const theme = ctx.ui.theme;
           // On light backgrounds the ribbon's ANSI gray plus faint loses too much contrast.
-          const output = theme.appearance === "light"
-            ? line.replaceAll("\x1b[2;38;5;11m", theme.getFgAnsi("thinkingText")).replaceAll("\x1b[2;", "\x1b[")
+          const lightColor = theme.appearance === "light" ? theme.getFgAnsi("thinkingText") : undefined;
+          if (layout && layout.line === line && layout.columns === columns && layout.lightColor === lightColor) return layout.rows;
+          const output = lightColor !== undefined
+            ? line.replaceAll("\x1b[2;38;5;11m", lightColor).replaceAll("\x1b[2;", "\x1b[")
             : line;
           const rows = output.split("\n");
           if (rows.length === 1) {
@@ -464,8 +467,10 @@ export default function (pi: ExtensionAPI) {
               if (size > 0) rows[0] = row.slice(0, gap.index) + " ".repeat(size) + row.slice(gap.index + gap[0].length);
             }
           }
-          return rows.flatMap(row => wrapTextWithAnsi(row, innerWidth))
+          const rendered = rows.flatMap(row => wrapTextWithAnsi(row, innerWidth))
             .map(row => inset + truncateToWidth(row, innerWidth, "", true) + inset);
+          layout = { line, columns, lightColor, rows: rendered };
+          return rendered;
         },
         dispose() {
           disposed = true;

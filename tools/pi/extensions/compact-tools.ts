@@ -997,12 +997,21 @@ export default function compactTools(pi: ExtensionAPI) {
           if (tailRows) {
             if (!output.trim()) return [];
             const indent = padding + " ";
-            const rows = wrapTextWithAnsi(output.replace(/\n+$/, ""), Math.max(1, width - indent.length));
-            const overflow = rows.length > tailRows;
+            const columns = Math.max(1, width - indent.length);
+            const lines = output.replace(/\n+$/, "").split("\n");
+            const start = Math.max(0, lines.length - tailRows);
+            let earlier = 0;
+            // The collapsed log is sanitized. Short printable ASCII lines occupy exactly one row.
+            for (let i = 0; i < start; i++) {
+              const line = lines[i];
+              earlier += line.length <= columns && !/[^ -~]/.test(line) ? 1 : wrapTextWithAnsi(line, columns).length;
+            }
+            const rows = wrapTextWithAnsi(lines.slice(start).join("\n"), columns);
+            const overflow = earlier + rows.length > tailRows;
             const visible = overflow ? tailRows - 1 : tailRows;
             const tail = rows.slice(-visible).map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
             if (!overflow) return tail;
-            const hint = quietMetadata(theme, `… ${rows.length - visible} earlier lines`);
+            const hint = quietMetadata(theme, `… ${earlier + rows.length - visible} earlier lines`);
             return [truncateToWidth(indent + hint, width), ...tail];
           }
           if (toolName === "bash" || codemode) {
