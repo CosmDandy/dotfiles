@@ -133,7 +133,20 @@
           pkgs = import nixpkgs { inherit system; };
         in
         {
-          agent = pkgs.callPackage "${pi-source}/nix/package.nix" { source = pi-source; };
+          agent = pkgs.callPackage "${pi-source}/nix/package.nix" {
+            source = pi-source;
+            stdenv = pkgs.stdenv // {
+              # Patch the workspace before it builds both the JS modules and the bundled CLI.
+              mkDerivation =
+                args:
+                pkgs.stdenv.mkDerivation (
+                  args
+                  // pkgs.lib.optionalAttrs (args.pname == "pi-workspace-packages") {
+                    patches = (args.patches or [ ]) ++ [ ../../tools/pi/patches/vim-transcript.patch ];
+                  }
+                );
+            };
+          };
           statusline = pkgs.buildGoModule {
             pname = "pi-statusline";
             version = "0.1.0";
