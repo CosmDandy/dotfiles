@@ -618,7 +618,16 @@ export default function compactTools(pi: ExtensionAPI) {
     pending.clear();
   }
 
+  let paneHidden = false;
+  let unsubscribe: (() => void)[] = [];
+  const invalidatePending = () => { for (const invalidate of pending.values()) invalidate(); };
   pi.on("session_start", (_event, ctx) => {
+    for (const off of unsubscribe) off();
+    paneHidden = false;
+    unsubscribe = [
+      pi.events.on("dotfiles:pane-hidden", value => { paneHidden = value === true; }),
+      pi.events.on("dotfiles:animation-tick", invalidatePending),
+    ];
     stop();
     active = false;
     projectRoots.clear();
@@ -638,6 +647,8 @@ export default function compactTools(pi: ExtensionAPI) {
     stop();
   });
   pi.on("session_shutdown", () => {
+    for (const off of unsubscribe) off();
+    unsubscribe = [];
     clearFinishedRows();
     interactive = false;
     active = false;
@@ -674,7 +685,7 @@ export default function compactTools(pi: ExtensionAPI) {
           context.state.pulseStartedAt ??= Date.now();
           pending.set(context.toolCallId, context.invalidate);
           timer ??= setInterval(() => {
-            for (const invalidate of pending.values()) invalidate();
+            if (!paneHidden) invalidatePending();
           }, pulseInterval);
           timer.unref();
         } else {

@@ -17,7 +17,9 @@ const { mixColors, rgbColor, visibleWidth } = await load("@earendil-works/pi-tui
 const { generateDiffString, generateUnifiedPatch } = await load("@earendil-works/pi-coding-agent/dist/core/tools/edit-diff.js");
 themes.initTheme("dark", false);
 const extensionPath = fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url));
-const loaded = await loadExtensions([extensionPath], "/tmp");
+const { createEventBus } = await load("@earendil-works/pi-coding-agent/dist/core/event-bus.js");
+const events = createEventBus();
+const loaded = await loadExtensions([extensionPath], "/tmp", events);
 assert.deepEqual(loaded.errors, []);
 const extension = loaded.extensions[0];
 assert.equal(extension.tools.size, 0, "rendering must not replace tool execution");
@@ -70,6 +72,13 @@ try {
   assert.equal(plain(animated), plain(old), "animation does not add characters or cells");
   assert.ok(animated.includes(themes.theme.style(":2-31", darkMetadata)), "read range stays quiet during animation");
   assert.ok(redraws > 0);
+  events.emit("dotfiles:pane-hidden", true);
+  const beforeHidden = redraws;
+  for (let i = 0; i < 8; i++) for (const tick of timers.values()) tick();
+  assert.equal(redraws, beforeHidden);
+  events.emit("dotfiles:animation-tick", undefined);
+  assert.ok(redraws > beforeHidden);
+  events.emit("dotfiles:pane-hidden", false);
   const shortPulse = tool("bash", { command: "sleep 1" }, "pulse-short");
   const longPulse = tool("bash", { command: "printf 'a much longer command header for comparison'" }, "pulse-long");
   shortPulse.markExecutionStarted();
