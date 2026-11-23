@@ -40,6 +40,8 @@ var (
 	blue   = esc + "[2;34m"
 	orange = esc + "[2;38;5;9m"
 	cyan   = esc + "[2;36m"
+	warn   = esc + "[33m"
+	danger = esc + "[1;31m"
 	// Solarized's secondary foreground follows both terminal appearances in slot 11.
 	gray = esc + "[2;38;5;11m"
 	dim  = gray
@@ -61,7 +63,9 @@ const (
 	// The 5h window is always visible: it drains in bursts (a batch of
 	// workflow agents eats tens of percent in minutes), and without a
 	// baseline the acceleration is noticed too late.
-	fiveHourShow = 0
+	fiveHourShow   = 0
+	fiveHourYellow = 70
+	fiveHourRed    = 90
 	// NOTE: no percentage threshold on the deviation on purpose. "How much
 	// is spent" and "will it last" are different questions, and tying the
 	// second to the first is always late: parallel agents drive the window
@@ -70,11 +74,8 @@ const (
 	devFlatSec  = 300  // band around zero where the deviation itself drives the colour
 	trendLag    = 900  // how far back the deviation is compared against for the trend
 	trendMinSec = 300  // smaller shifts are noise
-	// The week is a budget, the 5h window only a speed limit — so the goal
-	// here is to sit at zero, and an underspend is as much a signal as an
-	// overspend.
-	weekSeconds = 604800
-	weekFlatSec = 43200 // ±half a day counts as on schedule
+	weekSeconds = 7 * 24 * 3600
+	weekWarnSec = 16 * 3600 // One day minus eight hours of sleep.
 	// NOTE: an hour is too short an arm against a week — extrapolation
 	// amplifies it x168 and any early burst draws a deviation several
 	// times the truth.
@@ -216,7 +217,7 @@ type statuslineFields struct {
 	agent         string
 	fivePct100    *int64
 	fiveReset     *int64
-	weekPct       *int64
+	weekPct       *float64
 	weekReset     *int64
 	sid           string
 	modelID       string
@@ -268,10 +269,7 @@ func parseFields(p *statuslinePayload) statuslineFields {
 		n := int64(*v)
 		f.fiveReset = &n
 	}
-	if v := p.RateLimits.SevenDay.UsedPercentage; v != nil {
-		n := int64(math.Floor(*v))
-		f.weekPct = &n
-	}
+	f.weekPct = p.RateLimits.SevenDay.UsedPercentage
 	if v := p.RateLimits.SevenDay.ResetsAt; v != nil {
 		n := int64(*v)
 		f.weekReset = &n
@@ -313,19 +311,22 @@ func fmtDev(s int64) string {
 	return fmt.Sprintf("%s%dм", sign, s/60)
 }
 
-// fmtDevDays is the same for the weekly window, in days. The tenth matters:
-// whole days are too coarse on a week-long arm and hours are unreadable.
-func fmtDevDays(s int64) string {
-	sign := "+"
-	if s < 0 {
-		sign = "-"
-		s = -s
+func usageColor(pct, yellowAt, redAt int64) string {
+	switch {
+	case pct >= redAt:
+		return danger
+	case pct >= yellowAt:
+		return warn
+	default:
+		return green
 	}
-	t := s * 10 / 86400
-	if t == 0 {
-		return "0.0д"
+}
+
+func fmtHoursRemaining(seconds int64) string {
+	if seconds < 3600 {
+		return "<1ч"
 	}
-	return fmt.Sprintf("%s%d.%dд", sign, t/10, t%10)
+	return fmt.Sprintf("%dч", seconds/3600)
 }
 
 type fiveHourResult struct {
@@ -549,12 +550,12 @@ func readSamples(path string) []awkSample {
 
 // Percentages come from the provider payload; local history only estimates the forecast.
 func computeLimits(g glyphSet, now int64, wantETA bool, fields statuslineFields, debugAll bool) string {
-	fiveSeg := dim + g.fiveHour + " —" + reset
+	fiveSeg := ""
 	if fields.fivePct100 != nil {
 		res := fiveHourDev(*fields.fivePct100, fields.fiveReset, now)
 		fivePct := res.pct100 / 100
 		if fivePct >= fiveHourShow || debugAll {
-			// NOTE: the colour follows the TREND, not the position — the
+			// NOTE: the forecast colour follows the TREND, not the position — the
 			// sign is already in the number. That gives two independent
 			// measurements in one segment: "-12m" in red is "not going to
 			// make it and accelerating", in green "not going to make it
@@ -582,7 +583,7 @@ func computeLimits(g glyphSet, now int64, wantETA bool, fields statuslineFields,
 			}
 			if fivePct >= 100 {
 				// Window fully spent: only the release time still matters.
-				fiveSeg = red + g.refresh
+				fiveSeg = danger + g.refresh
 				if res.reset != nil {
 					fiveSeg += " " + fmtClock(*res.reset)
 				}
@@ -593,7 +594,7 @@ func computeLimits(g glyphSet, now int64, wantETA bool, fields statuslineFields,
 				// reset; with a positive dev it would land after the
 				// reset, i.e. describe a window that opens before it is
 				// exhausted.
-				fiveSeg = color + g.fiveHour + " " + strconv.FormatInt(fivePct, 10) + "%"
+				fiveSeg = usageColor(fivePct, fiveHourYellow, fiveHourRed) + g.fiveHour + " " + strconv.FormatInt(fivePct, 10) + "%" + reset + color
 				var eta *int64
 				if res.dev != nil && *res.dev < devShowSec && wantETA {
 					fiveSeg += " " + fmtDev(*res.dev)
@@ -614,32 +615,33 @@ func computeLimits(g glyphSet, now int64, wantETA bool, fields statuslineFields,
 		}
 	}
 
-	weekSeg := dim + g.week + " —" + reset
+	weekSeg := ""
 	if fields.weekPct != nil {
-		// NOTE: the weekly deviation is a comparison against a LINEAR
-		// schedule, not an extrapolated rate — dividing by the percentage
-		// produced +53d and -3.8d out of nowhere on a small percentage or
-		// a short arm. Only a shortfall is shown: the goal is to consume
-		// the subscription, so a surplus interests nobody.
-		color := dim
-		var weekDev *int64
+		used := *fields.weekPct
+		color, forecast := dim, ""
 		if fields.weekReset != nil {
-			elapsed := weekSeconds - (*fields.weekReset - now)
-			if elapsed >= weekMinElapsed {
-				d := elapsed - *fields.weekPct*weekSeconds/100
-				if d < 0 {
-					weekDev = &d
-					if d < -weekFlatSec {
-						color = red
+			untilReset := *fields.weekReset - now
+			elapsed := weekSeconds - untilReset
+			if elapsed >= 0 && untilReset > 0 {
+				// Convert overspend against the linear budget into hours of that budget.
+				over := used*weekSeconds/100 - float64(elapsed)
+				if over > 0 {
+					color = warn
+					if over > weekWarnSec {
+						color = danger
+					}
+					forecast = " " + fmtDev(-int64(over))
+					if elapsed >= weekMinElapsed && used < 100 {
+						untilEmpty := float64(elapsed) * (100 - used) / used
+						// Show the countdown only as the projected early exhaustion approaches.
+						if 2*untilEmpty <= float64(untilReset) {
+							forecast += " " + g.arrow + " " + fmtHoursRemaining(int64(untilEmpty))
+						}
 					}
 				}
 			}
 		}
-		weekSeg = color + g.week + " " + strconv.FormatInt(*fields.weekPct, 10) + "%"
-		if weekDev != nil {
-			weekSeg += " " + fmtDevDays(*weekDev)
-		}
-		weekSeg += reset
+		weekSeg = color + g.week + " " + strconv.FormatInt(int64(used), 10) + "%" + forecast + reset
 	}
 
 	segs := fiveSeg
@@ -767,13 +769,7 @@ func runStatusline(_ []string) {
 	}
 
 	// --- context -------------------------------------------------------
-	ctxColor := green
-	if fields.usedPct >= ctxYellow {
-		ctxColor = yellow
-	}
-	if fields.usedPct >= ctxRed {
-		ctxColor = red
-	}
+	ctxColor := usageColor(fields.usedPct, ctxYellow, ctxRed)
 	ctxSeg := ctxColor + strconv.FormatInt(fields.usedPct, 10) + "%" + reset
 
 	// --- cache ----------------------------------------------------------

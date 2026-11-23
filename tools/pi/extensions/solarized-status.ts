@@ -37,11 +37,13 @@ function summarizeTurn(turn: TurnTiming, ended: number, aborted: boolean) {
 const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
 
 type Window = { used_percentage: number; resets_at: number };
+type WindowName = "five_hour" | "seven_day";
+const windowNames = ["five_hour", "seven_day"] as const;
 // Only actual subscription-window headers, never requests/minute or tokens/minute.
 export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000) {
   const h = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k.toLowerCase(), v]));
-  const result: { five_hour?: Window; seven_day?: Window } = {};
-  const number = (key: string) => h[key] == null ? NaN : Number(h[key]);
+  const result: Partial<Record<WindowName, Window | null>> = {};
+  const number = (key: string) => h[key]?.trim() ? Number(h[key]) : NaN;
   for (const name of ["primary", "secondary"]) {
     const prefix = `x-codex-${name}-`;
     const used = number(prefix + "used-percent");
@@ -53,6 +55,10 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
     const key = minutes === 300 ? "five_hour" : minutes === 10080 ? "seven_day" : undefined;
     if (key) result[key] = { used_percentage: used, resets_at: reset };
   }
+  // A zero-length slot beside a valid weekly window explicitly disables the short window.
+  if (result.seven_day && !result.five_hour &&
+    (number("x-codex-primary-window-minutes") === 0 || number("x-codex-secondary-window-minutes") === 0))
+    result.five_hour = null;
   for (const [suffix, key] of [["5h", "five_hour"], ["7d", "seven_day"]] as const) {
     const prefix = `anthropic-ratelimit-unified-${suffix}-`;
     const utilization = number(prefix + "utilization"), reset = number(prefix + "reset");
@@ -62,18 +68,31 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
   return result;
 }
 
-type ObservedLimits = { five_hour?: Window & { observedAt: number }; seven_day?: Window & { observedAt: number } };
+type Observation = { observedAt: number } & (Window | { absent: true });
+type ObservedLimits = Partial<Record<WindowName, Observation>>;
 
-// Share the current provider's subscription observations across projects and conversations.
-export function loadSharedLimits(cache: string, provider: string, now = Date.now()) {
+function observe(parsed: ReturnType<typeof parseLimits>, observedAt: number): ObservedLimits {
+  const record: ObservedLimits = {};
+  for (const name of windowNames) {
+    const window = parsed[name];
+    if (window !== undefined) record[name] = window === null ? { observedAt, absent: true } : { ...window, observedAt };
+  }
+  return record;
+}
+
+// Select the newest observation before checking expiry, so an older window cannot resurface.
+function loadSharedObservations(cache: string, provider: string, now: number) {
   const latest: ObservedLimits = {};
   const merge = (record: ObservedLimits) => {
-    for (const name of ["five_hour", "seven_day"] as const) {
+    for (const name of windowNames) {
       const window = record[name];
-      if (!window || !Number.isFinite(window.observedAt) || window.observedAt > now ||
-        !Number.isFinite(window.used_percentage) || window.used_percentage < 0 ||
-        !Number.isFinite(window.resets_at) || window.resets_at <= now / 1000) continue;
-      if (!latest[name] || window.observedAt > latest[name]!.observedAt) latest[name] = window;
+      if (!window || !Number.isFinite(window.observedAt) || window.observedAt > now) continue;
+      if ("absent" in window ? window.absent !== true :
+        !Number.isFinite(window.used_percentage) || window.used_percentage < 0 || !Number.isFinite(window.resets_at)) continue;
+      const previous = latest[name];
+      // A millisecond tie must not let a parallel snapshot resurrect a disabled window.
+      if (!previous || window.observedAt > previous.observedAt ||
+        (window.observedAt === previous.observedAt && "absent" in window)) latest[name] = window;
     }
   };
   const directory = join(cache, encodeURIComponent(provider));
@@ -89,10 +108,20 @@ export function loadSharedLimits(cache: string, provider: string, now = Date.now
     if (diagnostic.provider === provider) {
       const observedAt = diagnostic.observedAt ?? Date.parse(diagnostic.at);
       const parsed = parseLimits(diagnostic.subscriptionHeaders ?? {}, observedAt / 1000);
-      merge(Object.fromEntries(Object.entries(parsed).map(([name, window]) => [name, { ...window, observedAt }])));
+      merge(observe(parsed, observedAt));
     }
   } catch { /* Diagnostics are optional; provider snapshots remain authoritative. */ }
   return latest;
+}
+
+export function loadSharedLimits(cache: string, provider: string, now = Date.now()) {
+  const latest = loadSharedObservations(cache, provider, now);
+  const active: Partial<Record<WindowName, Window & { observedAt: number }>> = {};
+  for (const name of windowNames) {
+    const window = latest[name];
+    if (window && !("absent" in window) && window.resets_at > now / 1000) active[name] = window;
+  }
+  return active;
 }
 
 // Show the total number of working runtimes, including this one, only from two onward.
@@ -198,8 +227,9 @@ export default function (pi: ExtensionAPI) {
           + (timing.parallel >= 50 ? ` · overlap ${seconds(timing.parallel)}` : ""));
       }
     }
-    const fg = theme.appearance === "light" ? mixColors(theme.colors.borderMuted, rgbColor(255, 249, 234), 0.27, "srgb") : "borderMuted";
-    const text = lines.map((line, i) => (i ? "  " : "") + theme.style(line, { fg, dim: true })).join("\n");
+    const light = theme.appearance === "light";
+    const fg = light ? mixColors(theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb") : rgbColor(89, 102, 106);
+    const text = lines.map((line, i) => (i ? "  " : "") + theme.style(line, { fg, dim: light })).join("\n");
     return new Text(text, 2, 0);
   });
   pi.registerCommand("statusline-metrics", {
@@ -518,9 +548,8 @@ export default function (pi: ExtensionAPI) {
     const provider = ctx.model?.provider ?? "unknown";
     const directory = join(cache, encodeURIComponent(provider));
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    if (Object.keys(next).length) {
-      const snapshot = { ...loadSharedLimits(cache, provider),
-        ...Object.fromEntries(Object.entries(next).map(([name, window]) => [name, { ...window, observedAt }])) };
+    const snapshot = { ...loadSharedObservations(cache, provider, observedAt), ...observe(next, observedAt) };
+    if (Object.keys(snapshot).length) {
       // Each process owns one atomic snapshot, so parallel writers cannot overwrite each other.
       const path = join(directory, `limits-${process.pid}.json`);
       writeFileSync(path + ".tmp", JSON.stringify(snapshot), { mode: 0o600 });

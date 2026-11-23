@@ -52,8 +52,8 @@ func TestFooterPaletteIsMuted(t *testing.T) {
 		}
 	}
 	out := renderStatus(t, `{"model":{"display_name":"GPT"},"effort":{"level":"max"},"context_window":{"used_percentage":80}}`, "100")
-	if !strings.Contains(out, gray+"GPT"+reset) || !strings.Contains(out, red+"max"+reset) || !strings.Contains(out, red+"80%"+reset) {
-		t.Fatalf("model and red warnings must use muted colors: %q", out)
+	if !strings.Contains(out, gray+"GPT"+reset) || !strings.Contains(out, red+"max"+reset) || !strings.Contains(out, danger+"80%"+reset) {
+		t.Fatalf("model and effort must stay muted next to urgent context: %q", out)
 	}
 }
 
@@ -88,12 +88,54 @@ func TestRibbonLayout(t *testing.T) {
 }
 
 func TestContextColors(t *testing.T) {
-	for pct, color := range map[int]string{0: green, 29: green, 30: yellow, 44: yellow, 45: red, 99: red} {
+	for pct, color := range map[int]string{0: green, 29: green, 30: warn, 44: warn, 45: danger, 99: danger} {
 		data, _ := json.Marshal(map[string]any{"context_window": map[string]int{"used_percentage": pct}})
 		out := renderStatus(t, string(data), "100")
 		if !strings.Contains(out, color) {
 			t.Errorf("%d: missing color %q in %q", pct, color, out)
 		}
+	}
+}
+
+func TestFiveHourContrastDoesNotReplaceForecastColor(t *testing.T) {
+	for pct, color := range map[int]string{69: green, 70: warn, 89: warn, 90: danger} {
+		out := renderStatus(t, fmt.Sprintf(`{"rate_limits":{"five_hour":{"used_percentage":%d,"resets_at":1003600}}}`, pct), "100")
+		if !strings.Contains(out, fmt.Sprintf("%s5h %d%%%s", color, pct, reset)) ||
+			!(strings.Contains(out, reset+dim+" (") || strings.Contains(out, reset+cyan+" (") ||
+				strings.Contains(out, reset+green+" (") || strings.Contains(out, reset+red+" (")) {
+			t.Errorf("%d: expected independent usage and forecast colors: %q", pct, out)
+		}
+	}
+}
+
+func TestWeeklyBudgetAndCountdown(t *testing.T) {
+	const now = 1000000
+	for _, tc := range []struct {
+		name       string
+		used       float64
+		elapsed    int64
+		color, end string
+	}{
+		{"under budget", 49, 84 * 3600, dim, ""},
+		{"on schedule", 50, 84 * 3600, dim, ""},
+		{"exactly 16h over", 50, 68 * 3600, warn, " -16ч00м"},
+		{"fractional percent crosses threshold", 50.1, 68 * 3600, danger, " -16ч10м"},
+		{"fractional overspend", 1.13, 6800, warn, " 0м"},
+		{"forecast held back", 75, 101 * 3600, danger, " -25ч00м"},
+		{"fractional second still before countdown", 70, 325662, danger, " -27ч08м"},
+		{"first visible forecast", 75, 100*3600 + 48*60, danger, " -25ч12м -> 33ч"},
+		{"imminent exhaustion", 99, 120 * 3600, danger, " -46ч19м -> 1ч"},
+		{"less than an hour", 99.9, 120 * 3600, danger, " -47ч49м -> <1ч"},
+		{"too early to forecast", 75, 3600, danger, " -125ч00м"},
+		{"already exhausted", 100, 120 * 3600, danger, " -48ч00м"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := renderStatus(t, fmt.Sprintf(`{"rate_limits":{"seven_day":{"used_percentage":%.2f,"resets_at":%d}}}`, tc.used, now+weekSeconds-tc.elapsed), "100")
+			want := fmt.Sprintf("%s7d %d%%%s%s", tc.color, int(tc.used), tc.end, reset)
+			if !strings.Contains(out, want) {
+				t.Fatalf("missing %q in %q", want, out)
+			}
+		})
 	}
 }
 
@@ -167,9 +209,13 @@ func TestResetJitterDoesNotFreezeProviderPercentage(t *testing.T) {
 	}
 }
 
-func TestUnknownLimitsHavePlaceholders(t *testing.T) {
+func TestOnlyObservedLimitsAreShown(t *testing.T) {
 	plain := ansiRe.ReplaceAllString(renderStatus(t, `{}`, "100"), "")
-	if !strings.Contains(plain, "5h —") || !strings.Contains(plain, "7d —") || strings.Contains(plain, "5h 0%") || strings.Contains(plain, "7d 0%") {
+	if strings.Contains(plain, "5h") || strings.Contains(plain, "7d") {
+		t.Fatal(plain)
+	}
+	plain = ansiRe.ReplaceAllString(renderStatus(t, `{"rate_limits":{"seven_day":{"used_percentage":0}}}`, "100"), "")
+	if strings.Contains(plain, "5h") || !strings.Contains(plain, "7d 0%") {
 		t.Fatal(plain)
 	}
 }

@@ -15,7 +15,8 @@ const testHome = mkdtempSync(join(tmpdir(), "pi-frame-"));
 const originalHome = process.env.HOME;
 const agentDir = join(testHome, ".pi", "agent");
 mkdirSync(join(agentDir, "bin"), { recursive: true });
-symlinkSync(realpathSync(join(installedAgentDir, "bin", "solarized-statusline")), join(agentDir, "bin", "solarized-statusline"));
+symlinkSync(realpathSync(process.env.PI_TEST_STATUSLINE ?? join(installedAgentDir, "bin", "solarized-statusline")),
+  join(agentDir, "bin", "solarized-statusline"));
 process.env.HOME = testHome;
 const extensionPath = fileURLToPath(new URL("../extensions/solarized-status.ts", import.meta.url));
 const themesPath = fileURLToPath(new URL("../themes/", import.meta.url));
@@ -247,10 +248,7 @@ try {
   assert.equal(footer.render(151).length, 1);
   assert.equal(widgets.size, 0, "no panel edges or padding widgets");
   assert.match(top().trim(), /Ready$/);
-  await waitForRibbon(/^ {3}GPT-6\.1 SOL · medium · 24%[^\n]*\S {3}$/);
-  const insetRibbon = plain(footer.render(151)[0]);
-  assert.match(insetRibbon, /^ {3}GPT-6\.1 SOL/);
-  assert.match(insetRibbon, /\S {3}$/, "footer limits align with the right inset of the editor status row");
+  await waitForRibbon(/^ {3}GPT-6\.1 SOL · medium · 24% +$/);
   assert.match(footer.render(151)[0], /\x1b\[2;38;5;11mmedium\x1b\[0m/);
   assert.match(footer.render(151)[0], /\x1b\[2;38;5;11mGPT-6\.1 SOL\x1b\[0m/);
   assert.doesNotMatch(plain(footer.render(151)[0]), /\$|[░█]|ctrl\+l|shift\+tab/);
@@ -404,9 +402,9 @@ try {
     assert.equal(editor.render(151).at(-1), ` ${themes.theme.fg("borderMuted", `╰${"─".repeat(147)}╯`)} `);
     await emit("agent_settled", { aborted: false });
     const light = appearance === "light";
-    const timingFg = light ? mixColors(themes.theme.colors.borderMuted, rgbColor(255, 249, 234), 0.27, "srgb") : "borderMuted";
+    const timingFg = light ? mixColors(themes.theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb") : rgbColor(89, 102, 106);
     for (const row of timingRows(true)) {
-      assert.ok(row.includes(themes.theme.style(plain(row).trim(), { fg: timingFg, dim: true })));
+      assert.ok(row.includes(themes.theme.style(plain(row).trim(), { fg: timingFg, dim: light })));
     }
     assert.ok(editor.render(151)[0].includes(themes.theme.style("· Ready", { fg: light ? rgbColor(152, 161, 106) : "success", dim: !light })));
     assert.doesNotMatch(top(), /tok\/s/);
@@ -477,7 +475,7 @@ try {
   await delay(100);
   assert.match(plain(footer.render(151)[0]), /GPT-6.1 SOL · high · 24%/);
   assert.match(footer.render(151)[0], /\x1b\[2;33mhigh\x1b\[0m/);
-  assert.match(footer.render(151).map(plain).join("\n"), /—.*—/);
+  assert.doesNotMatch(footer.render(151).map(plain).join("\n"), /—/);
   const reset = Math.floor(new Date().getTime() / 1000) + 3600;
   await emit("after_provider_response", { status: 200, headers: {
     "x-codex-primary-used-percent": "22", "x-codex-primary-window-minutes": "300", "x-codex-primary-reset-at": String(reset),
@@ -488,6 +486,7 @@ try {
     for (const row of footer.render(width)) assert.ok(visibleWidth(row) <= width, `limits overflow at ${width}`);
     if (width <= 40) assert.ok(footer.render(width).length > 1, "narrow footer must wrap instead of hiding limits");
   }
+  await waitForRibbon(/22%[^\n]*9%(?:[^\n]*\S)? {3}$/);
   const providerDir = join(agentDir, "cache", "statusline", ctx.model.provider);
   const ownLimits = JSON.parse(readFileSync(join(providerDir, `limits-${process.pid}.json`), "utf8"));
   assert.equal(ownLimits.five_hour.used_percentage, 22);
@@ -507,8 +506,7 @@ try {
   await waitForRibbon(/35%[\s\S]*44%/);
   ctx.model.provider = "another-provider";
   await emit("model_select");
-  await waitForRibbon(/—[\s\S]*—/);
-  assert.doesNotMatch(footer.render(151).map(plain).join("\n"), /35%|44%/);
+  await waitForRibbon(/^(?![\s\S]*(?:35%|44%|—))(?=[\s\S]*24%)/);
   ctx.model.provider = "openai";
   ctx.model.id = initialModel;
   ctx.sessionManager.getSessionId = initialSessionId;
@@ -527,10 +525,39 @@ try {
   const beforeExpiry = wall;
   wall = (reset + 1) * 1000;
   await emit("model_select");
-  await waitForRibbon(/—[\s\S]*44%/);
+  await waitForRibbon(/^(?![\s\S]*(?:35%|—))[\s\S]*44%/);
   wall = beforeExpiry;
   await emit("model_select");
   await waitForRibbon(/35%[\s\S]*44%/);
+
+  const weekly = {
+    "x-codex-primary-used-percent": "0", "x-codex-primary-window-minutes": "10080",
+    "x-codex-primary-reset-at": String(reset + 604800),
+  };
+  const disabled = { ...weekly, "x-codex-secondary-window-minutes": "0", "x-codex-secondary-reset-at": "" };
+  // A partial response does not say the old short window is gone.
+  wall++;
+  await emit("after_provider_response", { status: 200, headers: weekly });
+  await waitForRibbon(/35%[\s\S]*0%/);
+  writeFileSync(join(providerDir, "limits-999997.json"), JSON.stringify({ five_hour: snapshot(99, wall).five_hour }));
+  await emit("after_provider_response", { status: 200, headers: disabled });
+  const weekOnly = /^(?![\s\S]*(?:35%|99%|—))[\s\S]*0%/;
+  await waitForRibbon(weekOnly);
+  await emit("after_provider_response", { status: 200, headers: {} });
+  await emit("session_shutdown");
+  footer.dispose();
+  await emit("session_start");
+  await waitForRibbon(weekOnly);
+  await extension.commands.get("statusline-limits").handler("", ctx);
+  const afterDisable = JSON.parse(messages.at(-1).content.match(/```json\n([\s\S]*?)\n```/)[1]);
+  assert.equal(afterDisable.sharedLimits.five_hour, undefined);
+  assert.equal(afterDisable.sharedLimits.seven_day.used_percentage, 0);
+  wall++;
+  await emit("after_provider_response", { status: 200, headers: {
+    ...weekly, "x-codex-secondary-used-percent": "27", "x-codex-secondary-window-minutes": "300",
+    "x-codex-secondary-reset-at": String(reset),
+  } });
+  await waitForRibbon(/27%[\s\S]*0%/);
   for (const width of [1, 2, 3, 4, 5, 6, 8, 12, 40, 60, 80, 85, 100, 151, 200]) {
     const lines = editor.render(width);
     assert.ok(visibleWidth(lines[0]) <= width, `top overflow at ${width}`);
