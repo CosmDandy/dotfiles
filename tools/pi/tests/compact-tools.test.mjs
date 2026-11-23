@@ -348,6 +348,20 @@ try {
     component.setExpanded(true);
     assert.ok(body(component).includes(detail));
   }
+  for (const [name, args, data, details, summary, expanded] of [
+    ["tool_search", { query: "docs" }, undefined, { loaded: ["lookup"] }, "1 tool", "lookup"],
+    ["list_mcp_resources", {}, { resources: [], errors: [{ server: "docs", error: "offline" }] }, {}, "0 resources · 1 failed", "docs: offline"],
+    ["list_mcp_resource_templates", { server: "docs" }, { resourceTemplates: [{ server: "docs", name: "Guide", uriTemplate: "doc://{id}" }], nextCursor: "next" }, {}, "1 template", "Next cursor: next"],
+    ["read_mcp_resource", { server: "docs", uri: "doc://42" }, { contents: [{ text: "Guide contents" }] }, {}, "1 part", "Guide contents"],
+  ]) {
+    const c = tool(name, args);
+    c.updateResult({ content: [{ type: "text", text: name === "tool_search" ? "lookup" : name === "read_mcp_resource" ? "Guide contents" : JSON.stringify(data) }], details, structuredContent: data, durationMs: 50 }, false);
+    await Promise.resolve();
+    assert.ok(body(c).includes(summary));
+    c.setExpanded(true);
+    assert.ok(body(c).includes(expanded));
+    assert.ok(c.render(18).every(row => visibleWidth(row) <= 18));
+  }
   const failedProposal = tool("mcp__knowledge__propose_note", { title: "Missing" });
   finish(failedProposal, "Permission denied", true);
   assert.match(body(failedProposal), /Permission denied/);
