@@ -159,6 +159,51 @@ test('colored two-digit labels stay on the left over tables and wrapped continua
   assert.deepEqual(transcript.openRows(), [4, 5 + rows.length], 'the index is rebuilt when the layout changes');
 });
 
+test('a theme notification retries stale terminal colors once', async () => {
+  const { InteractiveThemeController } = await load('pi-coding-agent/dist/modes/interactive/theme/theme-controller.js');
+  const { theme } = await load('pi-coding-agent/dist/modes/interactive/theme/theme.js');
+  const dark = { background: { r: 0, g: 43, b: 54 } };
+  const light = { background: { r: 253, g: 246, b: 227 } };
+  let reply = dark;
+  let notify;
+  let queries = 0;
+  const ui = {
+    onTerminalColorSchemeChange(callback) { notify = callback; return () => {}; },
+    async queryTerminalColors() { queries++; return reply; },
+    setTerminalColorSchemeNotifications() {}, invalidate() {}, requestRender() {},
+  };
+  const controller = new InteractiveThemeController(ui, {
+    initialThemeSetting: 'light/dark', getSettingsManager: () => ({}),
+    showError: assert.fail, onChanged() {},
+  });
+  try {
+    controller.applyFromSettings();
+    await controller.waitForTerminalColors();
+    assert.equal(theme.name, 'dark');
+    notify('light');
+    await controller.waitForTerminalColors();
+    assert.equal(theme.name, 'dark');
+    assert.equal(queries, 2);
+    reply = light;
+    await delay(400);
+    assert.equal(theme.name, 'light');
+    assert.equal(queries, 3);
+    reply = dark;
+    notify('dark');
+    await controller.waitForTerminalColors();
+    assert.equal(theme.name, 'dark');
+    await delay(400);
+    assert.equal(queries, 4, 'a matching response does not need a retry');
+    notify('light');
+    await controller.waitForTerminalColors();
+    controller.setThemeName('dark');
+    await delay(400);
+    assert.equal(queries, 5, 'disabling auto-sync cancels the retry');
+  } finally {
+    controller.dispose();
+  }
+});
+
 test('fullscreen Vim navigation operates on the real transcript and preserves the prompt draft', async () => {
   assert.ok(process.env.PI_TEST_BIN, 'PI_TEST_BIN must point to the patched Pi executable');
   const directory = mkdtempSync(join(tmpdir(), 'pi-vim-'));
