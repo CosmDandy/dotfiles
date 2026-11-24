@@ -1146,3 +1146,44 @@ index 6672529..bc1141d 100644
  		}
  		if (this.refreshStatusMessage) {
  			this.listContainer.addChild(new Spacer(1));
+diff --git a/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts b/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts
+index 3e2a786..ca49ba5 100644
+--- a/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts
++++ b/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts
+@@ -23,6 +23,7 @@ type ThemeResult = { success: boolean; error?: string };
+  * answer neither. Replies arriving later still apply.
+  */
+ const TERMINAL_QUERY_TIMEOUT_MS = 100;
++const TERMINAL_COLOR_RETRY_MS = 300;
+ 
+ /**
+  * Query the terminal's colors and pass them to `apply` when the query completes or times out, and again
+@@ -65,6 +66,7 @@ export class InteractiveThemeController {
+ 	private terminalColors: TerminalColors | undefined;
+ 	private activeThemeName: string | undefined;
+ 	private autoSyncEnabled = false;
++	private terminalColorRetry: ReturnType<typeof setTimeout> | undefined;
+ 	private terminalColorSchemeUnsubscribe: (() => void) | undefined;
+ 	// Settles when the latest color query completed or timed out, and its colors applied.
+ 	private terminalColorQuery: Promise<void> = Promise.resolve();
+@@ -225,6 +227,7 @@ export class InteractiveThemeController {
+ 	private setAutoSync(enabled: boolean): void {
+ 		if (this.autoSyncEnabled === enabled) return;
+ 		this.autoSyncEnabled = enabled;
++		if (!enabled) clearTimeout(this.terminalColorRetry);
+ 		this.ui.setTerminalColorSchemeNotifications(enabled);
+ 	}
+ 
+@@ -244,6 +247,12 @@ export class InteractiveThemeController {
+ 		setTerminalColorScheme(terminalTheme);
+ 		if (getTerminalTheme() !== previous) this.reapplyForTerminal();
+ 		this.queryTerminalColors();
++		clearTimeout(this.terminalColorRetry);
++		// tmux can deliver the appearance notification before its OSC 11 cache is updated.
++		this.terminalColorRetry = setTimeout(() => {
++			this.terminalColorRetry = undefined;
++			if (getTerminalTheme() !== terminalTheme) this.queryTerminalColors();
++		}, TERMINAL_COLOR_RETRY_MS);
+ 	}
+ 
+ 	private notifyChanged(): void {
