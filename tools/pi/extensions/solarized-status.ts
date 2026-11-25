@@ -3,7 +3,7 @@ import { Marked, mixColors, rgbColor, Text, truncateToWidth, visibleWidth, wrapT
 import { execFile, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 const lightReady = rgbColor(152, 161, 106);
@@ -35,6 +35,7 @@ function summarizeTurn(turn: TurnTiming, ended: number, aborted: boolean) {
 }
 
 const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
+const captionText = (text: string) => stripVTControlCharacters(text).replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
 
 type Window = { used_percentage: number; resets_at: number };
 type WindowName = "five_hour" | "seven_day";
@@ -191,6 +192,8 @@ export default function (pi: ExtensionAPI) {
   }
   let generatingSince: number | undefined;
   let phase: "Waiting" | "Thinking" | "Generating" | "Preparing" = "Waiting";
+  let summaryPrefix: string | undefined;
+  let thinkingTitle = "";
   let stream: { firstOutput?: number; firstText?: number; lastText?: number; textChunks: number; toolCall: boolean } = { textChunks: 0, toolCall: false };
   let lastResponse: {
     seconds: number; speed?: number; firstOutputSeconds?: number; firstTextSeconds?: number;
@@ -384,12 +387,15 @@ export default function (pi: ExtensionAPI) {
               fg: light && !["Ready", "Thinking", "Active"].includes(state) ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
               dim: !light,
             });
-            const toolNames = activeTools.size ? theme.fg(secondary, [...new Set(activeTools.values())].join(", ")) : "";
+            const activity = state === "Running" ? [...new Set(activeTools.values())].join(", ") : state === "Thinking" ? thinkingTitle : "";
             const badges = [error ? theme.style("error", { fg: "error", dim: !light }) : "", ctx.hasPendingMessages() ? theme.style("queued", { fg: "warning", dim: !light }) : "", this.hiddenAbove ? `↑ ${this.hiddenAbove} more` : ""].filter(Boolean);
             const statuses = data.getExtensionStatuses();
             const otherStatuses = [...statuses].filter(([key]) => key !== "work-mode").map(([, value]) => value);
-            const left = [modeLabel, toolNames, ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
-            const right = truncateToWidth(stateLabel, columns, "");
+            const left = [modeLabel, ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
+            const stateOnly = truncateToWidth(stateLabel, columns, "");
+            const room = columns - visibleWidth(left) - visibleWidth(stateOnly) - 4;
+            const caption = activity && room >= 8 ? truncateToWidth(activity, room, "…") : "";
+            const right = (caption ? theme.fg(secondary, caption + " · ") : "") + stateOnly;
             const gap = columns - visibleWidth(right);
             return truncateToWidth(left, Math.max(0, gap - 1), "", true) + (gap ? " " : "") + right;
           }
@@ -516,7 +522,22 @@ export default function (pi: ExtensionAPI) {
     if (!busy || activeTools.size) return;
     generatingSince = performance.now();
     phase = "Waiting";
+    thinkingTitle = "";
+    summaryPrefix = undefined;
     redraw?.();
+  });
+  pi.on("provider_stream_event", ({ data }) => {
+    if (!data || typeof data !== "object" || !("type" in data)) return;
+    if (data.type === "response.reasoning_summary_part.added") {
+      thinkingTitle = "";
+      summaryPrefix = "";
+    } else if (data.type === "response.reasoning_summary_text.delta" && summaryPrefix !== undefined && "delta" in data && typeof data.delta === "string") {
+      // Only the summary's opening heading belongs in the status, never its body or raw reasoning.
+      summaryPrefix += data.delta.slice(0, 256 - summaryPrefix.length);
+      const heading = /^\s*\*\*([^*\r\n]+)\*\*/.exec(summaryPrefix);
+      if (heading) thinkingTitle = captionText(heading[1]);
+      if (heading || summaryPrefix.length === 256 || /\S[^\n]*\n/.test(summaryPrefix)) summaryPrefix = undefined;
+    }
   });
   pi.on("message_start", event => {
     if (event.message.role !== "assistant") return;
@@ -548,7 +569,9 @@ export default function (pi: ExtensionAPI) {
     if (turnTiming && !event.parentToolCallId) {
       toolStarts.set(event.toolCallId, { from: performance.now(), phase: event.toolName === "bash" ? "bash" : "tools" });
     }
-    activeTools.set(event.toolCallId, event.toolName);
+    const verb = event.toolName === "read" ? "Reading" : event.toolName === "edit" ? "Editing" : event.toolName === "write" ? "Writing" : undefined;
+    const file = verb && typeof event.args?.path === "string" ? captionText(basename(event.args.path)) : "";
+    activeTools.set(event.toolCallId, file ? `${verb} ${file}` : captionText(event.toolName));
     redraw?.();
   });
   pi.on("tool_execution_end", event => {
@@ -569,6 +592,8 @@ export default function (pi: ExtensionAPI) {
     busy = false;
     generatingSince = undefined;
     interrupted = event.aborted;
+    thinkingTitle = "";
+    summaryPrefix = undefined;
     activeTools.clear();
     publishSession();
     redraw?.();
