@@ -93,14 +93,14 @@ const assistant = (overrides = {}) => ({
 });
 const sessionFile = join(agentDir, "cache", "statusline", "sessions", `${process.pid}.json`);
 const ownSession = () => JSON.parse(readFileSync(sessionFile, "utf8"));
+const wave = /^\s*[⠂⠒⠲⠴⠤⠠]\s*$/;
 async function start() {
   now = 10_000;
   await emit("agent_start");
   assert.equal(ownSession().state, "running");
-  assert.match(top(), /Active/);
-  assert.doesNotMatch(top(), /Waiting/);
+  assert.match(top(), wave);
   await emit("before_provider_request");
-  assert.match(top(), /Waiting/);
+  assert.match(top(), wave);
   await emit("message_start", { message: assistant({ timestamp: wall - 200 }) });
 }
 async function delta(type, at, text = "chunk") {
@@ -282,29 +282,32 @@ try {
   queued = false;
 
   await start();
-  assert.match(top().trim(), /Waiting$/);
+  assert.match(top(), wave);
   const waiting = editor.render(151)[0];
   const summary = (type, delta) => emit("provider_stream_event", { data: { type: `response.${type}`, delta } });
   await summary("reasoning_text.delta", "**Private reasoning**");
   await delta("thinking_delta", 10_100, "**Private reasoning**");
-  assert.doesNotMatch(top(), /Private reasoning/);
+  assert.match(top().trim(), /^[·✢*✶✻✽]$/);
   await summary("reasoning_summary_part.added");
   await summary("reasoning_summary_text.delta", "**Checking ");
   assert.doesNotMatch(top(), /Checking/);
   await summary("reasoning_summary_text.delta", "the \x1b[31meditor**\n\nbody");
-  assert.match(top(), /Checking the editor · . Thinking/);
+  assert.match(top(), /[·✢*✶✻✽] Checking the editor {3}$/);
   assert.doesNotMatch(top(), /body|\*\*/);
   assert.equal(visibleWidth(top(24)), 24);
-  assert.match(top(24), /Thinking {3}$/);
+  assert.match(top(24), /[·✢*✶✻✽] Checking.*… {3}$/);
+  assert.match(top(12).trim(), /^[·✢*✶✻✽]$/);
   await summary("reasoning_summary_part.added");
   assert.doesNotMatch(top(), /Checking the editor/);
   await summary("reasoning_summary_text.delta", "**Comparing results**");
   assert.match(top(), /Comparing results/);
   const thinking = editor.render(151)[0];
-  assert.match(plain(thinking), /Thinking {3}$/);
+  assert.match(plain(thinking), /[·✢*✶✻✽] Comparing results {3}$/);
+  await emit("message_update", { assistantMessageEvent: { type: "thinking_end" } });
+  assert.match(top(), wave);
   await delta("text_delta", 10_200);
   const generating = editor.render(151)[0];
-  assert.match(plain(generating), /Generating/);
+  assert.match(plain(generating), wave);
   assert.doesNotMatch(plain(generating), /Comparing results/);
   assert.notEqual(waiting, thinking);
   assert.notEqual(thinking, generating);
@@ -332,16 +335,16 @@ try {
   await emit("tool_execution_start", { toolCallId: "a", toolName: "bash" });
   now = 11_400;
   await emit("tool_execution_start", { toolCallId: "b", toolName: "read", args: { path: "/private/AGENTS.md" } });
-  assert.match(top(), /^ {3}bash, read {2,}. Running {3}$/);
+  assert.match(top(), /^ {3}bash, read {2,}[⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
   assert.doesNotMatch(top(), /private|Comparing results/);
   now = 11_600;
   await emit("tool_execution_end", { toolCallId: "a", isError: true });
-  assert.match(top(), /^ {3}read {2,}. Running {3}$/);
+  assert.match(top(), /^ {3}read {2,}[⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
   assert.doesNotMatch(top(), /error/);
   assert.doesNotMatch(top(), /bash/);
   now = 11_800;
   await emit("tool_execution_end", { toolCallId: "b", isError: false });
-  assert.match(top(), /Active/);
+  assert.match(top(), wave);
   assert.doesNotMatch(top(), /Running|Waiting|bash|AGENTS\.md|Comparing results/);
   now = 11_900;
   await emit("agent_settled", { aborted: false });
@@ -378,7 +381,7 @@ try {
   }
   await start();
   await delta("toolcall_delta", 10_100);
-  assert.match(top(), /Preparing/);
+  assert.match(top(), wave);
   await emit("message_end", { message: assistant() });
   assert.match((await metrics()).speedUnavailableReason, /tool-call/);
   await emit("agent_settled", { aborted: true });
@@ -448,28 +451,24 @@ try {
       assert.doesNotMatch(footer.render(151)[0], /\x1b\[2;/);
     }
     await start();
-    const phaseColors = [
-      { type: undefined, label: "Waiting", frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], token: "thinkingLow" },
-      { type: "thinking_delta", label: "Thinking", frames: ["·", "✢", "*", "✶", "✻", "✽", "✽", "✻", "✶", "*", "✢", "·"], token: "thinkingText" },
-      { type: "text_delta", label: "Generating", frames: ["⠖", "⠲", "⢲", "⢰", "⣰", "⣠", "⣄", "⣆", "⡆", "⡖"], token: "thinkingMedium" },
-      { type: "toolcall_delta", label: "Preparing", frames: ["·", "•", "●", "•"], token: "warning" },
-    ];
-    for (const phase of phaseColors) {
-      if (phase.type) await delta(phase.type, now + 200);
-      const frame = phase.frames[Math.floor(now / 150) % phase.frames.length];
-      const color = themes.theme.colors[phase.token];
-      const fg = light && phase.label !== "Thinking" ? mixColors(color, rgbColor(253, 246, 227), 0.23, "srgb") : color;
-      const expected = themes.theme.style(`${frame} ${phase.label}`, { fg, dim: !light });
-      assert.ok(editor.render(151)[0].includes(expected), `${appearance}: ${phase.label} should use its dimmed theme color`);
+    const waves = [..."⠂⠒⠲⠴⠤⠠"];
+    for (const [type, frames] of [[undefined, waves], ["thinking_delta", [..."·✢*✶✻✽✽✻✶*✢·"]], ["text_delta", waves], ["toolcall_delta", waves]]) {
+      if (type) await delta(type, now + 200);
+      for (let i = 0; i < frames.length; i++, now += 150) {
+        assert.equal(top().trim(), frames[Math.floor(now / 150) % frames.length], `${appearance}: ${type ?? "waiting"}`);
+      }
     }
     statuses.set("work-mode", "EXECUTE · PAIR");
     await emit("tool_execution_start", { toolCallId: "one", toolName: "bash" });
     await emit("tool_execution_start", { toolCallId: "two", toolName: "read", args: { path: "/private/input" } });
     await emit("tool_execution_start", { toolCallId: "three", toolName: "read", args: { path: "/private/other" } });
-    assert.match(top(), /^ {3}EXECUTE bash, read {2,}. Running {3}$/);
+    const rotations = "⠁⠂⠄⡀⢀⠠⠐⠈";
+    for (let i = 0; i < rotations.length; i++, now += 150) {
+      assert.equal(top().trim().replace(/ +/g, " "), `EXECUTE bash, read ${rotations[Math.floor(now / 150) % rotations.length]}`);
+    }
     assert.ok(editor.render(151)[0].includes(themes.theme.fg(light ? "thinkingText" : "dim", "bash, read")));
     assert.equal(visibleWidth(top(32)), 32);
-    assert.match(top(32), / Running {3}$/);
+    assert.match(top(32), / [⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
     await emit("tool_execution_end", { toolCallId: "three" });
     assert.match(top(), /EXECUTE bash, read /);
     await emit("tool_execution_end", { toolCallId: "one" });

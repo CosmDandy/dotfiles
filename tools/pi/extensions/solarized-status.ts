@@ -370,21 +370,18 @@ export default function (pi: ExtensionAPI) {
             const theme = ctx.ui.theme;
             const light = theme.appearance === "light";
             const secondary = light ? "thinkingText" : "dim";
-            const state = activeTools.size ? "Running" : generatingSince !== undefined ? phase : busy ? "Active" : interrupted ? "Interrupted" : "Ready";
-            const phases = {
-              Waiting: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors.thinkingLow },
+            const state = activeTools.size ? "Running" : generatingSince !== undefined && phase === "Thinking" ? "Thinking"
+              : busy || generatingSince !== undefined ? "Working" : interrupted ? "Interrupted" : "Ready";
+            const animations = {
+              Working: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors.thinkingLow },
               Thinking: { frames: thinkingFrames, color: theme.colors.thinkingText },
-              // Leave the top Braille dot row empty so the spinner sits closer to the text baseline.
-              Generating: { frames: ["⠖", "⠲", "⢲", "⢰", "⣰", "⣠", "⣄", "⣆", "⡆", "⡖"], color: theme.colors.thinkingMedium },
-              Preparing: { frames: ["·", "•", "●", "•"], color: theme.colors.warning },
               Running: { frames: ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"], color: theme.colors.warning },
-              Active: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors[secondary] },
             };
-            const animation = state in phases ? phases[state as keyof typeof phases] : undefined;
+            const animation = state === "Ready" || state === "Interrupted" ? undefined : animations[state];
             const frame = animation?.frames[Math.floor(performance.now() / 150) % animation.frames.length];
             const phaseColor = animation?.color ?? (interrupted ? theme.colors.warning : light ? lightReady : theme.colors.success);
-            const stateLabel = theme.style(animation ? `${frame} ${state}` : `${interrupted ? "■" : "·"} ${state}`, {
-              fg: light && !["Ready", "Thinking", "Active"].includes(state) ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
+            const stateLabel = theme.style(frame ?? (interrupted ? "■ Interrupted" : "· Ready"), {
+              fg: light && state !== "Ready" && state !== "Thinking" ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
               dim: !light,
             });
             const tools = activeTools.size ? theme.fg(secondary, [...new Set(activeTools.values())].join(", ")) : "";
@@ -393,9 +390,9 @@ export default function (pi: ExtensionAPI) {
             const otherStatuses = [...statuses].filter(([key]) => key !== "work-mode").map(([, value]) => value);
             const left = [[modeLabel, tools].filter(Boolean).join(" "), ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
             const stateOnly = truncateToWidth(stateLabel, columns, "");
-            const room = columns - visibleWidth(left) - visibleWidth(stateOnly) - 4;
+            const room = columns - visibleWidth(left) - visibleWidth(stateOnly) - 2;
             const caption = state === "Thinking" && room >= 8 ? truncateToWidth(thinkingTitle, room, "…") : "";
-            const right = (caption ? theme.fg(secondary, caption + " · ") : "") + stateOnly;
+            const right = stateOnly + (caption ? " " + theme.fg(secondary, caption) : "");
             const gap = columns - visibleWidth(right);
             return truncateToWidth(left, Math.max(0, gap - 1), "", true) + (gap ? " " : "") + right;
           }
@@ -561,6 +558,8 @@ export default function (pi: ExtensionAPI) {
       } else if (update.type === "thinking_delta") phase = "Thinking";
       else { stream.toolCall = true; phase = "Preparing"; }
     } else if (update.type === "thinking_start") phase = "Thinking";
+    else if (update.type === "thinking_end") phase = "Waiting";
+    else if (update.type === "text_start") phase = "Generating";
     else if (update.type === "toolcall_start") { stream.toolCall = true; phase = "Preparing"; }
     redraw?.();
   });
