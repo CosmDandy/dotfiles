@@ -135,7 +135,7 @@ try {
   activeTools = [...buildTools, "subagent"];
   await modeEvent("session_start");
   assert.deepEqual(activeTools, buildTools, "resumed tools cannot enable Agents by default");
-  assert.match(top(), /^ {3}EXECUTE · PAIR +· Ready {3}$/);
+  assert.match(top(), /^ {3}EXECUTE +· Ready {3}$/);
   const sections = {};
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /Pair.*wait for the user/);
@@ -143,8 +143,7 @@ try {
   assert.doesNotMatch(sections.work_mode, /subagent/);
   const coral = rgbColor(217, 126, 116);
   assert.ok(editor.render(151)[0].includes(themes.theme.style("EXECUTE", { fg: coral })));
-  const pairColor = mixColors(themes.theme.colors.muted, themes.theme.colors.dim, 0.65, "srgb");
-  assert.ok(editor.render(151)[0].includes(themes.theme.style("PAIR", { fg: pairColor })));
+  assert.doesNotMatch(top(), /PAIR/);
   const profileShortcut = mode.shortcuts.get("alt+r");
   const agentsShortcut = mode.shortcuts.get("alt+g");
   await mode.commands.get("execute").handler("", modeContext);
@@ -195,7 +194,7 @@ try {
   assert.match(top(), /^ {3}EXPLORE/);
   idle = true;
   await shortcut.handler(modeContext);
-  assert.match(top(), /^ {3}EXECUTE · PAIR · AGENTS/);
+  assert.match(top(), /^ {3}EXECUTE · AGENTS/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /Pair.*may use the subagent tool/);
   assert.match(sections.work_mode, /Every scope, once: a subagent reviews the diff/);
@@ -215,7 +214,7 @@ try {
   }
   idle = false;
   await agentsShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · PAIR · AGENTS/);
+  assert.match(top(), /EXECUTE · AGENTS/);
   assert.equal(notifications.length, 2);
   idle = true;
   await profileShortcut.handler(modeContext);
@@ -231,9 +230,9 @@ try {
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.doesNotMatch(sections.work_mode, /subagent/);
   await profileShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · PAIR/);
+  assert.match(top(), /^ {3}EXECUTE +· Ready/);
   await agentsShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · PAIR · AGENTS/);
+  assert.match(top(), /EXECUTE · AGENTS/);
   await shortcut.handler(modeContext);
   await modeEvent("session_shutdown", { reason: "reload" });
   assert.deepEqual(activeTools, buildTools);
@@ -333,11 +332,11 @@ try {
   await emit("tool_execution_start", { toolCallId: "a", toolName: "bash" });
   now = 11_400;
   await emit("tool_execution_start", { toolCallId: "b", toolName: "read", args: { path: "/private/AGENTS.md" } });
-  assert.match(top(), /bash, Reading AGENTS\.md · . Running {3}$/);
+  assert.match(top(), /^ {3}bash, read {2,}. Running {3}$/);
   assert.doesNotMatch(top(), /private|Comparing results/);
   now = 11_600;
   await emit("tool_execution_end", { toolCallId: "a", isError: true });
-  assert.match(top(), /Reading AGENTS\.md · . Running {3}$/);
+  assert.match(top(), /^ {3}read {2,}. Running {3}$/);
   assert.doesNotMatch(top(), /error/);
   assert.doesNotMatch(top(), /bash/);
   now = 11_800;
@@ -463,7 +462,22 @@ try {
       const expected = themes.theme.style(`${frame} ${phase.label}`, { fg, dim: !light });
       assert.ok(editor.render(151)[0].includes(expected), `${appearance}: ${phase.label} should use its dimmed theme color`);
     }
+    statuses.set("work-mode", "EXECUTE · PAIR");
+    await emit("tool_execution_start", { toolCallId: "one", toolName: "bash" });
+    await emit("tool_execution_start", { toolCallId: "two", toolName: "read", args: { path: "/private/input" } });
+    await emit("tool_execution_start", { toolCallId: "three", toolName: "read", args: { path: "/private/other" } });
+    assert.match(top(), /^ {3}EXECUTE bash, read {2,}. Running {3}$/);
+    assert.ok(editor.render(151)[0].includes(themes.theme.fg(light ? "thinkingText" : "dim", "bash, read")));
+    assert.equal(visibleWidth(top(32)), 32);
+    assert.match(top(32), / Running {3}$/);
+    await emit("tool_execution_end", { toolCallId: "three" });
+    assert.match(top(), /EXECUTE bash, read /);
+    await emit("tool_execution_end", { toolCallId: "one" });
+    assert.match(top(), /EXECUTE read /);
+    await emit("tool_execution_end", { toolCallId: "two" });
     await emit("agent_settled", { aborted: false });
+    assert.match(top(), /^ {3}EXECUTE +· Ready {3}$/);
+    statuses.clear();
   }
 
   const testProvider = `pi-test-${process.pid}`;

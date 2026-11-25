@@ -3,7 +3,7 @@ import { Marked, mixColors, rgbColor, Text, truncateToWidth, visibleWidth, wrapT
 import { execFile, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
 const lightReady = rgbColor(152, 161, 106);
@@ -387,14 +387,14 @@ export default function (pi: ExtensionAPI) {
               fg: light && !["Ready", "Thinking", "Active"].includes(state) ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
               dim: !light,
             });
-            const activity = state === "Running" ? [...new Set(activeTools.values())].join(", ") : state === "Thinking" ? thinkingTitle : "";
+            const tools = activeTools.size ? theme.fg(secondary, [...new Set(activeTools.values())].join(", ")) : "";
             const badges = [error ? theme.style("error", { fg: "error", dim: !light }) : "", ctx.hasPendingMessages() ? theme.style("queued", { fg: "warning", dim: !light }) : "", this.hiddenAbove ? `↑ ${this.hiddenAbove} more` : ""].filter(Boolean);
             const statuses = data.getExtensionStatuses();
             const otherStatuses = [...statuses].filter(([key]) => key !== "work-mode").map(([, value]) => value);
-            const left = [modeLabel, ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
+            const left = [[modeLabel, tools].filter(Boolean).join(" "), ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
             const stateOnly = truncateToWidth(stateLabel, columns, "");
             const room = columns - visibleWidth(left) - visibleWidth(stateOnly) - 4;
-            const caption = activity && room >= 8 ? truncateToWidth(activity, room, "…") : "";
+            const caption = state === "Thinking" && room >= 8 ? truncateToWidth(thinkingTitle, room, "…") : "";
             const right = (caption ? theme.fg(secondary, caption + " · ") : "") + stateOnly;
             const gap = columns - visibleWidth(right);
             return truncateToWidth(left, Math.max(0, gap - 1), "", true) + (gap ? " " : "") + right;
@@ -421,10 +421,9 @@ export default function (pi: ExtensionAPI) {
             const coral = light ? rgbColor(170, 72, 66) : rgbColor(217, 126, 116);
             const blue = light ? rgbColor(43, 108, 150) : rgbColor(111, 172, 207);
             const modeColor = mode === "EXPLORE" ? blue : mode === "EXECUTE" ? coral : undefined;
-            const profileColor = profile === "AUTONOMOUS" ? coral : mixColors(theme.colors.muted, theme.colors.dim, 0.65, "srgb");
             const modeLabel = modeColor ? [
               theme.style(mode, { fg: modeColor }),
-              profile ? theme.style(profile, { fg: profileColor }) : "",
+              profile === "AUTONOMOUS" ? theme.style(profile, { fg: coral }) : "",
               agents ? theme.fg("accent", agents) : "",
             ].filter(Boolean).join(theme.fg("dim", " · ")) : "";
             const borderColor = modeColor ? mixColors(theme.colors.borderMuted, modeColor, 0.5, "srgb") : undefined;
@@ -569,9 +568,7 @@ export default function (pi: ExtensionAPI) {
     if (turnTiming && !event.parentToolCallId) {
       toolStarts.set(event.toolCallId, { from: performance.now(), phase: event.toolName === "bash" ? "bash" : "tools" });
     }
-    const verb = event.toolName === "read" ? "Reading" : event.toolName === "edit" ? "Editing" : event.toolName === "write" ? "Writing" : undefined;
-    const file = verb && typeof event.args?.path === "string" ? captionText(basename(event.args.path)) : "";
-    activeTools.set(event.toolCallId, file ? `${verb} ${file}` : captionText(event.toolName));
+    activeTools.set(event.toolCallId, captionText(event.toolName));
     redraw?.();
   });
   pi.on("tool_execution_end", event => {
