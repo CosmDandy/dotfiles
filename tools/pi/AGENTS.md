@@ -24,15 +24,17 @@ exception — the connective that carries the logic is not a spare word.
   open, if anything. Summarize the outcome, not the sequence of actions. For an
   interactive report, 20 lines is a ceiling, not a target.
 - One topic per block, never returned to. Use only the report blocks that apply:
-  `✔` what changed or was verified, `✘` what I tried that did not work, `!` what
-  turned out wrong, `?` a fork that needs your word, `»` something only you can run.
-  Put the symbol on a separate heading line above the text, even for a one-block
-  report. A short Russian label may accompany it; the wording is not fixed.
-  Leave a blank line before the body so Markdown keeps the heading separate.
+  `✔ Done` what changed or was verified, `✘ Failed` what I tried that did not
+  work, `! Found` what turned out wrong, `? Decide` a decision that needs your
+  word, `» Act` an action only you can take.
+  Put the symbol and a short English label on their own bold Markdown line,
+  for example `**✔ Verified**`. Do not use Markdown heading markers (`#`).
+  Leave a blank line before the body. Use a more specific verb when it fits,
+  even in a one-block report. Never use a bare symbol.
 - Overflowing the shape means the question has a fork in it: answer the top level,
   name the fork, ask which way to dig.
 - One line before the first tool call — what you are about to do — then silence until
-  the report. Mid-run text is only a `?` fork; status, hypotheses and nudges
+  the report. Mid-run text is only a labeled `?` fork; status, hypotheses and nudges
   that I "have not heard from you" are not. (INTERACTIVE; a delegated run narrates
   for the job list, not for me.)
 - Code in chat only when the shape is new to this repo. What you wrote to a file is
