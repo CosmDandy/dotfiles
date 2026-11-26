@@ -62,7 +62,10 @@
       640
     ],
     "showSelectionSearch": true,
+    "warnBeforeMovingTabsToProfile": false,
     "shortcuts": {
+      "bookmarkPage": "opt+shift+cmd+d",
+      "togglePinnedRow": "cmd+d",
       "tabSwitcher:forward": "ctrl+tab",
       "tabSwitcher:backward": "ctrl+shift+tab"
     },
