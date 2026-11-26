@@ -88,11 +88,6 @@
     {
       "actions": [
         {
-          "key": "c",
-          "type": "application",
-          "value": "/Applications/Claude.app"
-        },
-        {
           "key": "g",
           "type": "application",
           "value": "/Applications/ChatGPT.app"

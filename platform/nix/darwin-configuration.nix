@@ -103,9 +103,9 @@ in
     onActivation = {
       # autoUpdate/upgrade off: otherwise one commit gives different results on
       # different days and `--rollback` cannot roll casks back. Updates go
-      # through upd. Removing a declaration must not uninstall apps or their data.
+      # through upd. Remove undeclared casks without running their zap steps.
       autoUpdate = false;
-      cleanup = "none";
+      cleanup = "uninstall";
       upgrade = false;
     };
     casks = [
@@ -131,7 +131,6 @@ in
       "utm"
       # AI
       "chatgpt"
-      "claude"
       # "lm-studio"
       # Productivity
       "obsidian"
@@ -153,9 +152,6 @@ in
       # `brew bundle` runs inside activation with none — it hung the whole switch twice
       # (2026-09-11), on install and on uninstall alike.
       "tailscale-app"
-      # sing-box's own GUI client. The cask and not nixpkgs' `sing-box`: the CLI
-      # needs root for its tun device, the app brings a network extension.
-      "sfm"
       "amneziavpn"
       "yandextelemost"
       "horos"
