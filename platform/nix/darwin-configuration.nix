@@ -118,7 +118,6 @@ in
       "orbstack"
       "leader-key"
       # Browsers
-      "arc"
       "ardia-browser/tap/ardia"
       "helium-browser"
       # "netnewswire"
@@ -522,7 +521,8 @@ in
     '';
 
     variables = {
-      BROWSER = "arc";
+      # CLI links follow the same default browser as other macOS apps.
+      BROWSER = "/usr/bin/open";
       LANG = "en_US.UTF-8";
       LC_ALL = "en_US.UTF-8";
       HOMEBREW_NO_ANALYTICS = "1";

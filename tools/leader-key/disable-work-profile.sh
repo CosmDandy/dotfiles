@@ -11,7 +11,7 @@
 # Documentation:
 # @raycast.author CosmDandy
 
-# Only work apps are closed — Telegram, Things, Timing, Ghostty and Arc stay open on
+# Only work apps are closed — Telegram, Things, Timing, Ghostty and Ardia stay open on
 # purpose, they are needed outside work too.
 # NOTE: `|| true` is required — killall on a process that is not running returns 1, and
 # Raycast reported an execution error although the profile had worked.

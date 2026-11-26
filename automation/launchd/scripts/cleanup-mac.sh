@@ -118,7 +118,6 @@ else
 fi
 
 log "Кэши приложений..."
-reclaim "$HOME/Library/Caches/Arc" "кэш Arc"
 reclaim "$HOME/.cache/nvim" "кэш Neovim"
 # Downloaded .vsix files stay behind after an extension installs; CachedData is warmed JS
 # bytecode VS Code rebuilds on the next launch.
