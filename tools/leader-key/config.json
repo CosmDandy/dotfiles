@@ -1,25 +1,9 @@
 {
   "actions": [
     {
-      "actions": [
-        {
-          "key": "a",
-          "label": "Open",
-          "type": "application",
-          "value": "/Applications/Arc.app"
-        },
-        {
-          "iconPath": "/Applications/Arc.app",
-          "key": "s",
-          "label": "Search",
-          "type": "url",
-          "value": "raycast://extensions/the-browser-company/arc/search"
-        }
-      ],
-      "iconPath": "/Applications/Arc.app",
       "key": "a",
-      "label": "Arc",
-      "type": "group"
+      "type": "application",
+      "value": "/Applications/Ardia.app"
     },
     {
       "actions": [
@@ -27,11 +11,6 @@
           "key": "g",
           "type": "application",
           "value": "/Applications/Ghostty.app"
-        },
-        {
-          "key": "v",
-          "type": "application",
-          "value": "/Applications/Visual Studio Code.app"
         },
         {
           "key": "p",
@@ -91,11 +70,6 @@
     {
       "actions": [
         {
-          "key": "s",
-          "type": "application",
-          "value": "/Applications/Screen Studio.app"
-        },
-        {
           "key": "f",
           "type": "application",
           "value": "/Applications/Final Cut Pro Creator Studio.app"
@@ -117,6 +91,11 @@
           "key": "c",
           "type": "application",
           "value": "/Applications/Claude.app"
+        },
+        {
+          "key": "g",
+          "type": "application",
+          "value": "/Applications/ChatGPT.app"
         },
         {
           "key": "s",
@@ -160,7 +139,7 @@
         {
           "key": "y",
           "type": "application",
-          "value": "/Applications/Yandex.Telemost.app"
+          "value": "/Applications/Yandex Telemost.app"
         }
       ],
       "iconPath": "message.badge",
@@ -315,12 +294,6 @@
           "label": "Confetti",
           "type": "url",
           "value": "raycast://confetti"
-        },
-        {
-          "key": "b",
-          "label": "Bounce",
-          "type": "url",
-          "value": "raycast://extensions/raycast/raycast/toggle-bounce-animation"
         },
         {
           "iconPath": "/Applications/BetterDisplay.app",
