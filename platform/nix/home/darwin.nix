@@ -58,6 +58,9 @@ in
     # NOTE: rbw ignores XDG_CONFIG_HOME on macOS and reads its config from
     # Library.
     "Library/Application Support/rbw/config.json".source = link "private/rbw/config.json";
+    # Routes reference private network endpoints and this Mac's Ardia profile IDs.
+    "Library/Application Support/com.ardia.browser/air-traffic.json".source =
+      link "private/ardia/air-traffic.json";
     "Library/Application Support/Cursor/User/settings.json".source = link "tools/vscode/settings.json";
     "Library/Application Support/Cursor/User/keybindings.json".source =
       link "tools/vscode/keybindings.json";
@@ -67,6 +70,7 @@ in
   };
 
   xdg.configFile = {
+    "ardia/config.json".source = link "tools/ardia/config.json";
     "ghostty/config".source = link "tools/ghostty/config";
     # direnvrc lives in files.nix — nix-direnv is needed in the dev container
     # too
