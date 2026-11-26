@@ -127,9 +127,6 @@ setup_app "Visual Studio Code" \
 
 "$DOTFILES_ROOT/tools/vscode/install_common.sh"
 
-setup_app "Claude" \
-    "Login to account"
-
 setup_app "Telegram" \
     "Login to My account" \
     "Login to Work account"
