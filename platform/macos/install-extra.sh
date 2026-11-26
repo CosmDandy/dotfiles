@@ -117,10 +117,8 @@ setup_app "AeroSpace" \
 setup_app "Timing" \
     "Login to account"
 
-setup_app "Arc" \
-    "Login to account"
-
-"$DOTFILES_ROOT/platform/macos/install-arc-extension.sh"
+setup_app "Ardia" \
+    "Settings → General → Default browser → Set Ardia as Default"
 
 setup_app "Visual Studio Code" \
     "Cmd + Shift + P → Shell Command: Install 'code' command in PATH"

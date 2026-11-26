@@ -180,14 +180,14 @@ if.app-id = 'com.tinyapp.TablePlus'
 run = 'move-node-to-workspace 0'
 
 # 1
-# NOTE: the Arc picture-in-picture rule must stay ABOVE the general Arc rule —
+# NOTE: the picture-in-picture rule must stay ABOVE the general browser rule —
 # first match wins, and otherwise the PiP window is dragged off to workspace 1.
 [[on-window-detected]]
-if.app-id = 'company.thebrowser.Browser'
+if.app-id = 'com.ardia.browser'
 if.window-title-regex-substring = 'picture.in.picture'
 run = 'layout floating'
 [[on-window-detected]]
-if.app-id = 'company.thebrowser.Browser'
+if.app-id = 'com.ardia.browser'
 run = 'move-node-to-workspace 1'
 [[on-window-detected]]
 if.app-id = 'app.zen-browser.zen'

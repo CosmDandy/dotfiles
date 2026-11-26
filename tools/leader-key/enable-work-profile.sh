@@ -22,4 +22,4 @@ open /Applications/Timing.app
 open /Applications/Obsidian.app
 open /Applications/Ghostty.app
 open /Applications/Claude.app
-open /Applications/Arc.app
+open /Applications/Ardia.app
