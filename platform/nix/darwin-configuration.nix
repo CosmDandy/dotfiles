@@ -43,6 +43,9 @@ let
   orphanCheckScript = pkgs.writeShellScriptBin "orphan-check" (
     builtins.readFile ../../automation/launchd/scripts/orphan-check.sh
   );
+  knowledgeAutopullScript = pkgs.writeShellScriptBin "knowledge-autopull" (
+    builtins.readFile ../../automation/launchd/scripts/knowledge-autopull.sh
+  );
   waitNixReloadScript = pkgs.writeShellScriptBin "wait-nix-reload" (
     builtins.readFile ../../automation/launchd/scripts/wait-nix-reload.sh
   );
@@ -365,6 +368,12 @@ in
       RunAtLoad = false;
       StandardOutPath = "/Users/${config.system.primaryUser}/Library/Logs/orphan-check.log";
       StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/orphan-check.log";
+    };
+
+    knowledge-autopull.serviceConfig = {
+      ProgramArguments = [ "${knowledgeAutopullScript}/bin/knowledge-autopull" ];
+      StartInterval = 300;
+      StandardErrorPath = "/Users/${config.system.primaryUser}/Library/Logs/knowledge-autopull.log";
     };
 
     # Guards the boot race: /nix mounts ~11s after login items start, so configs
