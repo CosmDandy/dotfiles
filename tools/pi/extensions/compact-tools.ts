@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { fileURLToPath } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 import { formatReadLineRange, getLanguageFromPath, getMarkdownTheme, highlightCode, isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
+import type { CodemodeToolDetails, ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
 const pulseInterval = 120;
@@ -522,6 +522,30 @@ function indentedLines(text: string, padding: string, width: number): string[] {
     .map(row => truncateToWidth(indent + row, width));
 }
 
+function codexSearchLines(call: CodemodeToolDetails["calls"][number], theme: Theme, padding: string, width: number, expanded: boolean, step: number | undefined): string[] {
+  // Pi can truncate the JSON preview in the middle of an escape. Decode only complete characters.
+  const args = call.args.endsWith("...") ? call.args.slice(0, -3) : call.args;
+  const value = /^\{"query":("(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*)(")?/.exec(args);
+  const query = value ? preview({ query: JSON.parse(value[1] + '"') + (value[2] ? "" : "...") }) : "";
+  const title = "search · codex";
+  const status = call.status === "ok" ? theme.fg("success", "✓") : call.status === "error" ? theme.fg("error", "✗")
+    : theme.fg("muted", call.status === "cancelled" ? "⊘" : "…");
+  const time = elapsedLabel(call.durationMs);
+  const badge = " " + status + (time ? quietMetadata(theme, " " + time, expanded) : "");
+  const indent = padding + " ";
+  const room = width - indent.length;
+  const suffix = room >= visibleWidth(title) + visibleWidth(badge) ? badge : "";
+  const limit = Math.max(1, room - visibleWidth(suffix));
+  const heading = theme.fg("toolTitle", theme.bold(title)) + (query ? theme.fg("toolOutput", " " + query) : "");
+  const short = expanded ? heading : truncateToWidth(heading, limit);
+  const text = call.status === "running" && step !== undefined ? runningPulse(short, theme, step, theme.appearance === "light") : short;
+  const rows = expanded ? wrapTextWithAnsi(text, limit) : [text];
+  rows[rows.length - 1] += suffix;
+  const lines = rows.map(row => truncateToWidth(indent + row, width));
+  if (expanded && call.error) lines.push(...indentedLines(theme.fg("error", clean(call.error)), indent, width));
+  return lines;
+}
+
 function cacheLines(render: (width: number) => string[]) {
   let cached: { width: number; lines: string[] } | undefined;
   return {
@@ -873,8 +897,11 @@ export default function compactTools(pi: ExtensionAPI) {
           });
         }
         const deltaOutput = interactive ? delta?.output : undefined;
+        const calls = codemode ? (result.details as CodemodeToolDetails | undefined)?.calls : undefined;
+        const searches = calls?.filter(call => call.name === "codex_web_search");
         const summarize = !isPartial && !context.isError && (list || mcp || search || service) && context.state.outcome === undefined;
-        if (!summarize && !expanded && !showDiff && !context.isError && !tailRows) return new Text("", 0, 0);
+        const showBody = expanded || showDiff || context.isError || tailRows || searches?.length;
+        if (!summarize && !showBody) return new Text("", 0, 0);
         const first = result.content[0];
         const content = codemode && first?.type === "text" && /^Script (?:completed|failed)\nWall time [\d.]+ seconds\nOutput:\n$/.test(first.text)
           ? result.content.slice(1) : result.content;
@@ -903,7 +930,7 @@ export default function compactTools(pi: ExtensionAPI) {
           }
           queueMicrotask(context.invalidate);
         }
-        if (!expanded && !showDiff && !context.isError && !tailRows) return new Text("", 0, 0);
+        if (!showBody) return new Text("", 0, 0);
         const path = context.args?.path ?? context.args?.file_path;
         const language = typeof path === "string" ? getLanguageFromPath(path) : undefined;
         const padding = " ".repeat(context.outputPad);
@@ -935,7 +962,7 @@ export default function compactTools(pi: ExtensionAPI) {
               return paint(indentedLines(lines.join("\n") || "No entries", padding, width));
             }
           }
-          const output = readOutput();
+          const output = codemode && !expanded && !context.isError ? "" : readOutput();
           if (cardTool && !isPartial && !context.isError) {
             const card = knowledgeCard(action, knowledgeResponse(output, result.structuredContent));
             if (card) {
@@ -1015,16 +1042,23 @@ export default function compactTools(pi: ExtensionAPI) {
             return [truncateToWidth(indent + hint, width), ...tail];
           }
           if (toolName === "bash" || codemode) {
-            const color = expanded && codemode && context.isError ? "error" : "toolOutput";
-            const log = theme.fg(color, output) + (output.includes("\x1b[") ? "\x1b[0m" : "");
-            return output ? paint(["", ...indentedLines(log, padding, width)]) : [];
+            const startedAt = context.state.pulseStartedAt;
+            const step = searches?.length && isPartial && interactive && active && typeof startedAt === "number"
+              ? Math.floor(Math.max(0, Date.now() - startedAt) / pulseInterval) : undefined;
+            const lines = searches?.flatMap(call => codexSearchLines(call, theme, padding, width, expanded, step)) ?? [];
+            if (output) {
+              const color = expanded && codemode && context.isError ? "error" : "toolOutput";
+              const log = theme.fg(color, output) + (output.includes("\x1b[") ? "\x1b[0m" : "");
+              lines.push("", ...indentedLines(log, padding, width));
+            }
+            return paint(lines);
           }
           const plain = (text: string) => theme.fg(context.isError && toolName !== "bash" ? "error" : "toolOutput", text);
           const outputLanguage = toolName === "read" && !isPartial && !context.isError ? language : undefined;
           return paint(indentedLines(highlighted(output, outputLanguage, plain), padding, width));
         };
         return isPartial ? cacheLines(render) : finishedComponent(context.state, expanded ? "result:open" : "result:closed",
-          [theme.colors, result.content, result.structuredContent, showDiff, deltaOutput, language, padding, tailRows, context.isError], render);
+          [theme.colors, result.content, result.structuredContent, showDiff, deltaOutput, language, padding, tailRows, context.isError, calls], render);
       },
     };
     return renderers;
