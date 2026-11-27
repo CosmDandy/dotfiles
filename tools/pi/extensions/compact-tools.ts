@@ -13,6 +13,8 @@ const timingInset = 3;
 const minToolTimingMs = 10_000;
 const livePreviewDelayMs = 600;
 const codemodePreviewRows = 8;
+const shellLabel = "shell";
+const shellSeparator = " · ";
 const bashTailRows = 5;
 const sshTailRows = 10;
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -374,11 +376,12 @@ function bashPreviewLine(preview: BashPreview, width: number): string {
 
 function devopsCommandLines(words: string[], width: number): string[] {
   const lines: string[] = [];
-  let line = "$";
+  const prefix = shellLabel + shellSeparator.trimEnd();
+  let line = prefix;
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
     const group = groupedOptions.has(word) && words[i + 1] && !words[i + 1].startsWith("-") ? `${word} ${words[++i]}` : word;
-    if (visibleWidth(line + " " + group) > width && line !== "$") {
+    if (visibleWidth(line + " " + group) > width && line !== prefix) {
       lines.push(line);
       line = " ";
     }
@@ -751,6 +754,7 @@ function nestedBashInputs(calls: readonly CodemodeCall[], parentId: string, reco
 }
 
 function codemodeLabel(name: string): string {
+  if (name === "bash") return shellLabel;
   if (name === "codex_web_search") return "search · codex";
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
   return mcp ? `${mcp[2].replaceAll("_", " ")} · ${mcp[1]}` : name;
@@ -807,11 +811,12 @@ function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, wi
   const room = Math.max(1, width - prefixWidth);
   const suffix = meta && room > visibleWidth(title) + meta.length ? quietMetadata(theme, " " + meta, expanded) : "";
   const limit = Math.max(1, room - visibleWidth(suffix));
-  const targetRoom = limit - visibleWidth(title) - 1;
+  const separator = call.name === "bash" ? shellSeparator : " ";
+  const targetRoom = limit - visibleWidth(title) - separator.length;
   const display = summary ? bashPreviewLine(summary, Math.max(0, targetRoom))
     : !expanded && targetRoom > 0 && (call.name === "read" || call.name === "edit" || call.name === "write")
     ? shortenPath(target, "", 0, targetRoom) : target;
-  const heading = theme.fg("toolTitle", theme.bold(title)) + (display ? theme.fg("toolOutput", " " + display) : "");
+  const heading = theme.fg("toolTitle", theme.bold(title)) + (display ? theme.fg("toolOutput", separator + display) : "");
   const short = expanded ? heading : truncateToWidth(heading, limit);
   const text = call.status === "running" && step !== undefined ? runningPulse(short, theme, step, theme.appearance === "light") : short;
   const rows = expanded ? wrapTextWithAnsi(text, limit) : [text];
@@ -1128,9 +1133,8 @@ export default function compactTools(pi: ExtensionAPI) {
               : highlighted(source, "bash", text => theme.fg("toolOutput", text));
             const [first, ...rest] = shell.split("\n");
             const title = source ? first : "…";
-            const marker = "$";
-            const prompt = (room: number) => room > padding.length + marker.length + 1
-              ? theme.fg(expanded ? (context.isError ? "error" : "toolTitle") : "toolOutput", theme.bold(marker)) + " " : "";
+            const prompt = (room: number) => room > padding.length + shellLabel.length + shellSeparator.length
+              ? theme.fg(expanded ? (context.isError ? "error" : "toolTitle") : "toolOutput", theme.bold(shellLabel) + shellSeparator) : "";
             if (expanded) {
               const prefix = padding + prompt(width);
               const indent = padding + " ";

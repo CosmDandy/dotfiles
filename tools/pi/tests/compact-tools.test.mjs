@@ -85,7 +85,7 @@ try {
   shortPulse.markExecutionStarted();
   longPulse.markExecutionStarted();
   const pulseFrame = component => component.render(100).join("\n").split(/ {2,}/)[0];
-  const prompt = themes.theme.fg("toolOutput", themes.theme.bold("$")) + " ";
+  const prompt = themes.theme.fg("toolOutput", themes.theme.bold("shell") + " · ");
   const pulseRange = (frame, marker = prompt) => {
     const red = [...frame.replace(marker, "").matchAll(/\x1b\[38;2;(\d+);\d+;\d+m/g)].map(match => Number(match[1]));
     return Math.max(...red) - Math.min(...red);
@@ -108,7 +108,7 @@ try {
   bash.setArgsComplete();
   bash.markExecutionStarted();
   assert.equal(rows(bash).length, 1, "a running command has a collapsed header");
-  assert.match(body(bash), /^ *\$ npm test ; echo done/);
+  assert.match(body(bash), /^ *shell · npm test ; echo done/);
   assert.doesNotMatch(body(bash), /bash/);
   bash.setExpanded(true);
   assert.equal(timers.size, 1, "parallel visible tools share one timer");
@@ -120,13 +120,13 @@ try {
   assert.doesNotMatch(read.render(100).join(""), /[✓✕○]|\x1b\[48;/);
   assert.equal(timers.size, 1, "the other tool is still running");
   bash.updateResult({ content: [{ type: "text", text: "still running" }], details: undefined }, true);
-  assert.match(body(bash), /^ *\$ npm test/);
+  assert.match(body(bash), /^ *shell · npm test/);
   assert.match(body(bash), /still running/);
   bash.setExpanded(false);
   assert.doesNotMatch(body(bash), /still running/, "manual expansion bypasses the live preview delay");
   finish(bash, "log line 1\nFAIL: expected 200, received 500", true);
   assert.equal(timers.size, 0);
-  assert.match(body(bash), /^ *\$ npm test ; echo done/);
+  assert.match(body(bash), /^ *shell · npm test ; echo done/);
   assert.doesNotMatch(bash.render(100).join(""), /\x1b\[48;/);
   assert.ok(bash.render(100).join("").includes(prompt));
   assert.ok(bash.render(100).join("").includes(themes.theme.fg("toolOutput", "npm test ; echo done")));
@@ -135,7 +135,7 @@ try {
   assert.match(body(bash), /Failed/);
   const bashClick = bash.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 100, height: 3 });
   assert.equal(bashClick?.handled, true);
-  assert.match(body(bash), /^ *\$ npm test/);
+  assert.match(body(bash), /^ *shell · npm test/);
   assert.match(body(bash), /^ {2}echo done/m);
   for (const commandLine of ["npm test", "echo done"]) {
     assert.ok(bash.render(100).join("").includes(themes.theme.fg("error", commandLine)));
@@ -469,10 +469,10 @@ try {
   assert.match(body(trace), /^ codemode · Running script$/);
   trace.updateResult({ content: [], details: { calls: [nestedRead, nestedBash, nestedSearch, nestedEdit] } }, true);
   assert.equal(rows(trace).length, 1);
-  assert.match(body(trace), /1 read, 1 bash, 1 search · knowledge, 1 edit/);
+  assert.match(body(trace), /1 read, 1 shell, 1 search · knowledge, 1 edit/);
   assert.doesNotMatch(body(trace), /const calls|src\/app/);
   trace.setExpanded(true);
-  assert.match(body(trace), /✓ read src\/app\.ts:2-31[\s\S]*… bash printf "hello"[\s\S]*sleep 2[\s\S]*… search · knowledge Find deployment docs[\s\S]*✓ edit src\/settings\.ts[\s\S]*const calls/);
+  assert.match(body(trace), /✓ read src\/app\.ts:2-31[\s\S]*… shell · printf "hello"[\s\S]*sleep 2[\s\S]*… search · knowledge Find deployment docs[\s\S]*✓ edit src\/settings\.ts[\s\S]*const calls/);
   assert.doesNotMatch(body(trace), /SECRET_OLD_TEXT|\x1b\[2J/);
   trace.setExpanded(false);
   now += 599;
@@ -481,14 +481,14 @@ try {
   now += 121;
   for (const tick of timers.values()) tick();
   const childFrame = prefix => trace.render(100).find(line => plain(line).includes(prefix));
-  const runningChild = childFrame('… bash printf');
+  const runningChild = childFrame('… shell · printf');
   const finishedChild = childFrame('✓ read src/app.ts');
   assert.ok(runningChild && finishedChild, "child rows appear even without a new result update");
   assert.ok(childFrame('… search · knowledge'));
   now += 240;
   for (const tick of timers.values()) tick();
-  assert.notEqual(childFrame('… bash printf'), runningChild);
-  assert.equal(plain(childFrame('… bash printf')), plain(runningChild));
+  assert.notEqual(childFrame('… shell · printf'), runningChild);
+  assert.equal(plain(childFrame('… shell · printf')), plain(runningChild));
   assert.equal(childFrame('✓ read src/app.ts'), finishedChild);
   trace.updateResult({
     content: [{ type: "text", text: "Script completed\nWall time 10.5 seconds\nOutput:\n" }, { type: "text", text: "script answer" }],
@@ -497,11 +497,11 @@ try {
   assert.match(rows(trace)[0], /1 failed · 1 cancelled.*10\.5 s/);
   assert.deepEqual(rows(trace).slice(1).map(line => line.trim()), [
     '✗ search · codex Long query with "quotes" and a cut escape ... 10.0 s',
-    '⊘ bash sleep 99',
+    '⊘ shell · sleep 99',
   ]);
   assert.doesNotMatch(body(trace), /script answer|Search failed|const calls/);
   trace.setExpanded(true);
-  assert.match(body(trace), /✓ read[\s\S]*✓ bash[\s\S]*✓ edit[\s\S]*Search failed[\s\S]*const calls[\s\S]*script answer/);
+  assert.match(body(trace), /✓ read[\s\S]*✓ shell ·[\s\S]*✓ edit[\s\S]*Search failed[\s\S]*const calls[\s\S]*script answer/);
   assert.doesNotMatch(body(trace), /Wall time|Output:/);
 
   const crowded = tool("codemode", { code: "text('crowded');" }, "crowded-trace");
@@ -513,7 +513,7 @@ try {
   now += 720;
   for (const tick of timers.values()) tick();
   assert.equal(rows(crowded).length, 10, "header, eight children and an overflow hint");
-  assert.match(body(crowded), /✗ search · codex[\s\S]*… bash[\s\S]*4 more calls/);
+  assert.match(body(crowded), /✗ search · codex[\s\S]*… shell ·[\s\S]*4 more calls/);
   crowded.setExpanded(true);
   assert.equal(body(crowded).match(/✓ read file-/g)?.length, 10);
   assert.doesNotMatch(body(crowded), /more calls/);
@@ -524,9 +524,9 @@ try {
   const fast = tool("codemode", { code: "const value = 1;" }, "codemode-fast");
   fast.markExecutionStarted();
   finish(fast, "hidden output", false, { calls: [nestedRead, { ...nestedBash, status: "ok" }, { ...nestedRead, args: '{"path":"package.json"}' }] }, 210);
-  assert.match(body(fast), /^ codemode · 2 read, 1 bash$/);
+  assert.match(body(fast), /^ codemode · 2 read, 1 shell$/);
   assert.equal(fast.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 100, height: 2 })?.handled, true);
-  assert.match(body(fast), /✓ read src\/app\.ts[\s\S]*✓ bash[\s\S]*✓ read package\.json[\s\S]*const value[\s\S]*hidden output/);
+  assert.match(body(fast), /✓ read src\/app\.ts[\s\S]*✓ shell ·[\s\S]*✓ read package\.json[\s\S]*const value[\s\S]*hidden output/);
   fast.setExpanded(false);
   assert.equal(rows(fast).length, 1);
   const codeError = tool("codemode", { code: 'text("test");' }, "code-error");
@@ -547,6 +547,7 @@ try {
   assert.doesNotMatch(body(devops), /partial pod list/);
   finish(devops, "pod result", false, undefined, 520);
   assert.match(body(devops), /^ *DEVOPS$/m);
+  assert.match(body(devops), /^ {2}shell · kubectl/m);
   assert.match(body(devops), /--context homelab --namespace monitoring/);
   assert.match(body(devops), /\x27app in \(grafana, prometheus\)\x27 -o wide/);
   assert.doesNotMatch(body(devops), /pod result/);
@@ -580,32 +581,32 @@ try {
     return call;
   }
   const setupShell = shellCase("set -euo pipefail\ncd tools/pi\ngit status --short", "shell-setup");
-  assert.match(body(setupShell), /^\s*\$ git status --short · cwd tools\/pi$/);
+  assert.match(body(setupShell), /^\s*shell · git status --short · cwd tools\/pi$/);
   assert.doesNotMatch(body(setupShell), /set -|cd tools/);
   setupShell.setExpanded(true);
   assert.match(body(setupShell), /set -euo pipefail[\s\S]*cd tools\/pi[\s\S]*git status --short/);
 
   const longDir = "/var/folders/" + "directory/".repeat(22) + "pi-smoke";
   const envShell = shellCase('PI_TEST_ROOT="' + longDir + '" uv run - < "' + longDir + '/smoke.py"', "shell-env");
-  assert.match(body(envShell), /\$ uv run - < "…\/.*smoke\.py" · env/);
+  assert.match(body(envShell), /shell · uv run - < "…\/.*smoke\.py" · env/);
   assert.doesNotMatch(body(envShell), /PI_TEST_ROOT|directory\/directory\/directory/);
   const guarded = shellCase('dir="' + longDir + '"; test -f "$dir/smoke.py" && rm -r -- "$dir" && test ! -e "$dir"', "shell-guarded");
-  assert.match(body(guarded), /\$ rm -r -- "…\/.*pi-smoke"/);
+  assert.match(body(guarded), /shell · rm -r -- "…\/.*pi-smoke"/);
   assert.match(body(guarded), /· guarded/);
   assert.doesNotMatch(body(guarded), /test -f|dir=/);
   const fallback = shellCase("test -f target && mv target saved || echo missing", "shell-boolean-fallback");
-  assert.match(body(fallback), /\$ test -f target && mv target saved · \+1/);
+  assert.match(body(fallback), /shell · test -f target && mv target saved · \+1/);
   assert.doesNotMatch(body(fallback), /guarded/);
   const conditionalCwd = shellCase("test -d subdir && cd subdir; pwd", "shell-conditional-cwd");
-  assert.match(body(conditionalCwd), /\$ test -d subdir && cd subdir · \+1/);
+  assert.match(body(conditionalCwd), /shell · test -d subdir && cd subdir · \+1/);
   assert.doesNotMatch(body(conditionalCwd), /guarded|cwd subdir/);
-  assert.match(body(shellCase("set -- arg; printf '%s' \"$1\"", "shell-set-args")), /\$ set -- arg ; printf/);
+  assert.match(body(shellCase("set -- arg; printf '%s' \"$1\"", "shell-set-args")), /shell · set -- arg ; printf/);
 
   const chain = shellCase("git status; git diff; git log; git branch", "shell-chain");
-  assert.match(body(chain), /\$ git status ; git diff · \+2/);
+  assert.match(body(chain), /shell · git status ; git diff · \+2/);
   assert.doesNotMatch(body(chain), /git log|git branch|[✓✗]/);
   const pipeline = shellCase("rg -n needle src |\n head -n 5", "shell-pipe");
-  assert.match(body(pipeline), /\$ rg -n needle src \| head -n 5/);
+  assert.match(body(pipeline), /shell · rg -n needle src \| head -n 5/);
   assert.doesNotMatch(body(pipeline), /match lines/);
   assert.match(body(shellCase("first |& second; third", "shell-stderr-pipe")), /first \|& second · \+1/);
   assert.match(body(shellCase("first || second", "shell-or")), /first \|\| second/);
@@ -613,27 +614,27 @@ try {
   assert.match(body(shellCase("show \\#not-comment | head # comment", "shell-comment")), /show \\#not-comment \| head/);
 
   const hdoc = shellCase("uv run - <<'PY' | head\nprint('do not render fake | head')\nPY\nprintf 'after'\n", "shell-heredoc");
-  assert.match(body(hdoc), /\$ uv run - \| head · \+1 · heredoc/);
+  assert.match(body(hdoc), /shell · uv run - \| head · \+1 · heredoc/);
   assert.doesNotMatch(body(hdoc), /do not render|<<|after/);
   hdoc.setExpanded(true);
   assert.match(body(hdoc), /<<'PY' \| head[\s\S]*print\('do not render fake \| head'\)[\s\S]*\bPY\b[\s\S]*printf 'after'/);
   assert.match(body(shellCase("node <<-'JS'\n\tA\n\tJS\ntrue", "shell-tab-heredoc")), /node ; true · heredoc/);
-  assert.match(body(shellCase("<<'EOF'\nstdin only\nEOF\nprintf done", "shell-heredoc-only")), /\$ <<'EOF'.*\+3 lines/);
+  assert.match(body(shellCase("<<'EOF'\nstdin only\nEOF\nprintf done", "shell-heredoc-only")), /shell · <<'EOF'.*\+3 lines/);
   const fdContinuation = shellCase("printf '%s\\n' OK 2\\\n>/dev/null; printf after", "shell-fd-continuation");
   assert.match(body(fdContinuation), /2\\.*\+1 lines/);
   assert.doesNotMatch(body(fdContinuation), /2 >|printf after/);
   const nestedQuotes = shellCase('printf %s "${v:-"a|b"}" && printf done', "shell-nested-quoting");
   assert.match(body(nestedQuotes), /"a\|b"}" && printf done/);
   assert.doesNotMatch(body(nestedQuotes), /a \| b|\+1/);
-  assert.match(body(shellCase("echo first | tee >(cat)", "shell-procsub")), /\$ echo first \| tee >\(cat\)/);
+  assert.match(body(shellCase("echo first | tee >(cat)", "shell-procsub")), /shell · echo first \| tee >\(cat\)/);
   assert.doesNotMatch(body(shellCase("set -e; echo ${value:-p|q}", "shell-complex-expansion")), /· setup/);
-  assert.doesNotMatch(body(shellCase("set -e\nif true; then printf '%s' x; fi", "shell-unsupported")), /\$ printf|· setup/);
+  assert.doesNotMatch(body(shellCase("set -e\nif true; then printf '%s' x; fi", "shell-unsupported")), /shell · printf|· setup/);
 
   const nix = shellCase("/nix/store/" + "hash-package/".repeat(7) + "bin/pi --version", "shell-nix-path");
-  assert.match(body(nix), /\$ …\/.*bin\/pi --version/);
+  assert.match(body(nix), /shell · …\/.*bin\/pi --version/);
   assert.doesNotMatch(body(nix), /nix\/store|hash-package\/hash-package/);
   const relative = shellCase("cat ./" + "directory/".repeat(20) + "out.txt", "shell-relative-path");
-  assert.match(body(relative), /\$ cat …\/.*out\.txt/);
+  assert.match(body(relative), /shell · cat …\/.*out\.txt/);
   for (const component of [envShell, guarded, chain, pipeline, hdoc, nix]) {
     for (const width of [1, 2, 8, 19, 32, 50, 70, 100]) {
       assert.ok(component.render(width).every(row => visibleWidth(row) <= width));
@@ -656,10 +657,10 @@ try {
   }
   now += 720;
   for (const tick of timers.values()) tick();
-  assert.match(body(fullTrace), /… bash printf alpha \| head · env[\s\S]*… bash printf beta && wc · env/);
+  assert.match(body(fullTrace), /… shell · printf alpha \| head · env[\s\S]*… shell · printf beta && wc · env/);
   assert.doesNotMatch(body(fullTrace), /TOKEN|xxxxx/);
   finish(fullTrace, "done", false, { calls: [modelRow, precedingRead, childResult("full-trace/2", "ok"), childResult("full-trace/3", "error")] }, 1900);
-  assert.match(body(fullTrace), /✗ bash printf beta && wc · env/);
+  assert.match(body(fullTrace), /✗ shell · printf beta && wc · env/);
   fullTrace.setExpanded(true);
   assert.match(body(fullTrace), /TOKEN="x{18,}[\s\S]*printf alpha \| head[\s\S]*printf beta && wc/);
 
@@ -669,7 +670,7 @@ try {
   await emit("agent_start");
   const restored = tool("codemode", { code: "await launch();" }, "restored");
   finish(restored, "done", false, { calls: [childResult("restored/?", "cancelled")] }, 36);
-  assert.match(body(restored), /⊘ bash printf beta && wc · env/);
+  assert.match(body(restored), /⊘ shell · printf beta && wc · env/);
   restored.setExpanded(true);
   assert.match(body(restored), /TOKEN="x{18,}[\s\S]*printf beta && wc/);
   sessionEntries = [];
@@ -677,7 +678,7 @@ try {
   const missingArgs = tool("codemode", { code: "await launch();" }, "missing-args");
   const fragment = '{"command":"set -e\\nprintf second\\nprintf \\' + "u0...";
   finish(missingArgs, "done", false, { calls: [{ ...childResult("missing-args/1", "error"), args: fragment }] }, 36);
-  assert.match(body(missingArgs), /✗ bash set -e/);
+  assert.match(body(missingArgs), /✗ shell · set -e/);
   assert.doesNotMatch(body(missingArgs), /printf second/);
   missingArgs.setExpanded(true);
   assert.match(body(missingArgs), /set -e[\s\S]*printf second[\s\S]*printf \.\.\./);
@@ -699,7 +700,7 @@ try {
   }, "ssh-tail");
   ssh.setArgsComplete();
   ssh.markExecutionStarted();
-  assert.match(body(ssh), /^ *\$ ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab\.example uptime/);
+  assert.match(body(ssh), /^ *shell · ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab\.example up\.\.\.$/);
   const sshOutput = Array.from({ length: 12 }, (_, i) => `\x1b[32mremote line ${i + 1}\x1b[0m`).join("\n");
   const sshTail = ["… 3 earlier lines", ...Array.from({ length: 9 }, (_, i) => `remote line ${i + 4}`)];
   ssh.updateResult({ content: [{ type: "text", text: sshOutput }] }, true);
@@ -711,6 +712,7 @@ try {
   finish(ssh, sshOutput, false, undefined, 850);
   assert.equal(rows(ssh).length, 1);
   ssh.setExpanded(true);
+  assert.match(body(ssh), /lab\.example uptime/);
   assert.match(ssh.render(100).join(""), /\x1b\[32mremote line 1\x1b\[0m/);
   assert.doesNotMatch(body(ssh), /earlier lines/);
   ssh.setExpanded(false);
@@ -763,7 +765,7 @@ try {
   ]) {
     const call = tool("bash", { command, timeout: limit });
     finish(call, "done", false, undefined, ms);
-    const title = command === "job" ? "$ job" : "DEVOPS";
+    const title = command === "job" ? "shell · job" : "DEVOPS";
     assert.equal(rows(call)[0].trim().replace(/ +/g, " "), [title, expected].filter(Boolean).join(" "));
     call.setExpanded(true);
     assert.ok(body(call).includes("(timeout " + limit + " s)"));
@@ -827,8 +829,11 @@ try {
   finish(timed, "done", false, undefined, 10_340);
   timed.setExpanded(true);
   assert.match(rows(timed, 80)[0], /echo \d+ \(timeout 30 s\) +10\.3 s {3}$/);
-  const narrowTimed = rows(timed, 45).map(row => row.trim());
-  assert.deepEqual(narrowTimed.filter(Boolean), ["$ echo 12345678901234567890 (timeout 30 s)", "10.3 s", "done"]);
+  const narrowTimed = rows(timed, 45).map(row => row.trim()).filter(Boolean);
+  assert.equal(narrowTimed.length, 3);
+  assert.equal(narrowTimed[0], "shell · echo 12345678901234567890");
+  assert.match(narrowTimed[1], /^\(timeout 30 s\) +10\.3 s$/);
+  assert.equal(narrowTimed[2], "done");
   const unsafe = tool("bash", { command: "echo \x1b[31mred\x1b[0m\x07" });
   finish(unsafe, "output\x1b[2J\x07");
   unsafe.setExpanded(true);
