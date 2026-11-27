@@ -387,9 +387,10 @@ function devopsCommandLines(words: string[], width: number): string[] {
   return [...lines, line];
 }
 
-function elapsedLabel(durationMs: number | undefined): string {
-  return durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= minToolTimingMs
-    ? `${(durationMs / 1000).toFixed(1)} s` : "";
+function elapsedLabel(durationMs: number | undefined, limit?: number): string {
+  if (durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= minToolTimingMs)
+    return `${(durationMs / 1000).toFixed(1)}${limit === undefined ? "" : ` / ${limit}`} s`;
+  return limit === undefined ? "" : `limit ${limit} s`;
 }
 
 function mcpSummary(output: string, structured: unknown): string {
@@ -1072,16 +1073,22 @@ export default function compactTools(pi: ExtensionAPI) {
         const program = bash ? shellProgram(command) : undefined;
         const devops = !expanded && complete && program && devopsPrograms.has(program) ? simpleShellWords(command.trimEnd()) : undefined;
         const shellSummary = !expanded && complete && shell && !devops ? storedBashPreview(shell.input) : undefined;
-        const timing = elapsedLabel(context.isPartial ? liveMs : context.durationMs);
-        const status = toolName === "bash" && context.isError && !context.isPartial ? "Failed" : undefined;
-        const metadata = [status ?? (friendlyMcp ? outcome : undefined), timing].filter(Boolean).join(" · ");
-        const timeout = toolName === "bash" && typeof args?.timeout === "number" && Number.isFinite(args.timeout) && args.timeout > 0
-          ? ` (timeout ${args.timeout} s)` : "";
+        const elapsedMs = context.isPartial ? liveMs : context.durationMs;
+        const failed = bash && context.isError && !context.isPartial;
+        const limit = bash && typeof args?.timeout === "number" && Number.isFinite(args.timeout) && args.timeout > 0 ? args.timeout : undefined;
+        const showLimit = limit !== undefined && elapsedMs !== undefined &&
+          elapsedMs >= (context.isPartial ? minToolTimingMs : limit * 1000 * 0.8);
+        const timeout = expanded && limit !== undefined ? ` (timeout ${limit} s)` : "";
         const argumentsText = expanded && !codemode && !list && !friendlyMcp && !["bash", "edit", "read"].includes(toolName)
           ? clean(JSON.stringify(args ?? {}, null, 2)) : "";
         const render = (width: number) => {
+          const timedOut = failed && context.state.bashTimedOut;
+          const status = failed ? timedOut ? "Timed out" : "Failed" : friendlyMcp ? outcome : undefined;
+          const timing = elapsedLabel(elapsedMs, !expanded && (timedOut || showLimit) ? limit : undefined);
+          const metadata = [status, timing].filter(Boolean).join(" · ");
           const available = width - timingInset;
-          const meta = metadata && available >= 16 ? quietMetadata(theme, truncateToWidth(metadata, Math.floor(available * 0.5)), expanded) : "";
+          const metaWidth = timedOut ? available - padding.length - 1 : Math.floor(available * 0.5);
+          const meta = metadata && available >= 16 ? quietMetadata(theme, truncateToWidth(metadata, metaWidth), expanded) : "";
           const compactWidth = Math.max(1, Math.floor(width * 0.7));
           const titleWidth = meta ? Math.min(compactWidth, available - visibleWidth(meta) - 1) : expanded ? width : compactWidth;
           const animate = (text: string) => running ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light") : text;
@@ -1107,7 +1114,7 @@ export default function compactTools(pi: ExtensionAPI) {
           }
           if (devops) {
             const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
-            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title + timeout), Math.max(0, titleWidth - padding.length))), width);
+            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title), Math.max(0, titleWidth - padding.length))), width);
             const lines = devopsCommandLines(devops.map(word => shellDisplayWord(word)), Math.max(1, width - padding.length - 1));
             const script = highlighted(lines.join("\n"), "bash", text => theme.fg("toolOutput", text));
             return [header, ...indentedLines(script, padding, width)];
@@ -1140,17 +1147,16 @@ export default function compactTools(pi: ExtensionAPI) {
               }
               return paint(withLastMeta(rows).map(row => truncateToWidth(row, width)));
             }
-            const limit = timeout && titleWidth - visibleWidth(timeout) >= 6 ? quietMetadata(theme, timeout) : "";
-            const extra = !shellSummary && lines.length > 1 && titleWidth - visibleWidth(limit) >= 18
+            const extra = !shellSummary && lines.length > 1 && titleWidth >= 18
               ? " " + quietMetadata(theme, `+${lines.length - 1} lines`) : "";
             const search = outcome ? theme.fg("muted", ` · ${outcome}`) : "";
-            const availableTitle = titleWidth - visibleWidth(limit) - visibleWidth(extra);
+            const availableTitle = titleWidth - visibleWidth(extra);
             const badge = availableTitle - visibleWidth(search) >= 12 ? search : "";
             const room = availableTitle - visibleWidth(badge);
             const prefix = padding + prompt(room);
             const commandRoom = Math.max(0, room - visibleWidth(prefix));
             const text = shellSummary ? theme.fg("toolOutput", bashPreviewLine(shellSummary, commandRoom)) : truncateToWidth(title, commandRoom);
-            const header = prefix + animate(text) + limit + extra + badge;
+            const header = prefix + animate(text) + extra + badge;
             return paint([truncateToWidth(withMeta(header), width)]);
           }
           const prefix = quiet ? theme.fg("muted", label) : theme.fg(context.isError ? "error" : "toolTitle", theme.bold(label));
@@ -1179,9 +1185,9 @@ export default function compactTools(pi: ExtensionAPI) {
             : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge) + rangeLabel), width)];
           return paint(argumentsText ? [...header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)] : header);
         };
-        if (context.isPartial || codemode) return cacheLines(render);
+        if (context.isPartial || codemode || failed) return cacheLines(render);
         return finishedComponent(context.state, expanded ? "call:open" : "call:closed",
-          [theme.colors, scope, argsPreview, readRange, outcome, padding, command, timing, timeout, argumentsText, context.isError,
+          [theme.colors, scope, argsPreview, readRange, outcome, padding, command, elapsedMs, limit, argumentsText, context.isError,
             shellSummary, stats?.added, stats?.removed, stats?.modified], render);
       },
       renderResult(result, { expanded, isPartial }, theme, context) {
@@ -1222,6 +1228,13 @@ export default function compactTools(pi: ExtensionAPI) {
           };
           return isPartial ? cacheLines(render) : finishedComponent(context.state, expanded ? "result:open" : "result:closed",
             [theme.colors, result.content, result.details, padding, context.isError, source], render);
+        }
+        if (bash && !isPartial && context.isError) {
+          // Bash appends the termination reason after stdout; an earlier line may be command output.
+          const last = result.content.at(-1);
+          const tail = last?.type === "text" ? last.text.slice(last.text.lastIndexOf("\n") + 1) : "";
+          const expected = `Command timed out after ${context.args?.timeout} seconds`;
+          context.state.bashTimedOut = tail === expected || tail.startsWith(expected + ". The shell exited with code ");
         }
         const search = bash && !isPartial && !context.isError && context.state.outcome === undefined
           ? shellSearch(context.args?.command) : undefined;

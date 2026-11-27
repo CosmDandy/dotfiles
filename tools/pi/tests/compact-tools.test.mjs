@@ -739,16 +739,43 @@ try {
   const piped = tool("bash", { command: "rg -n needle src | head" }, "shell-piped");
   finish(piped, "a.ts:1: needle", false, undefined, 25);
   await Promise.resolve();
-  assert.match(body(shellGrep), /rg -n 'needle' src \(timeout 20 s\) · src · 2 match lines +10\.0 s {3}$/);
+  assert.match(body(shellGrep), /rg -n 'needle' src · src · 2 match lines +10\.0 s {3}$/);
   assert.match(body(shellFind), /src · 2 paths$/);
-  for (const text of [" (timeout 20 s)", "10.0 s"]) {
-    assert.ok(shellGrep.render(100).join("").includes(themes.theme.style(text, darkMetadata)));
-  }
-  const pending = tool("bash", { command: "sleep 2", timeout: 5 }, "pending-timeout");
+  assert.ok(shellGrep.render(100).join("").includes(themes.theme.style("10.0 s", darkMetadata)));
+  const pending = tool("bash", { command: "job", timeout: 60 }, "pending-timeout");
+  assert.doesNotMatch(body(pending), /timeout|limit|60 s/);
   pending.markExecutionStarted();
-  assert.match(body(pending), /sleep 2 \(timeout 5 s\)$/);
-  assert.ok(pending.render(100).join("").includes(themes.theme.style(" (timeout 5 s)", darkMetadata)));
-  finish(pending, "");
+  now += 9_999;
+  for (const tick of timers.values()) tick();
+  assert.match(body(pending), /job$/);
+  pending.setExpanded(true);
+  assert.match(body(pending), /job \(timeout 60 s\)/);
+  pending.setExpanded(false);
+  now++;
+  for (const tick of timers.values()) tick();
+  assert.match(body(pending), /job +10\.0 \/ 60 s {3}$/);
+  finish(pending, "done", false, undefined, 12_000);
+  assert.match(body(pending), /job +12\.0 s {3}$/);
+  for (const [command, ms, limit, expected] of [
+    ["job", 11_999, 15, "12.0 s"], ["job", 12_000, 15, "12.0 / 15 s"],
+    ["job", 10, 60, ""], ["job", 4_000, 5, "limit 5 s"],
+    ["kubectl get pods", 12_000, 15, "12.0 / 15 s"], ["kubectl get pods", 12_000, 60, "12.0 s"],
+  ]) {
+    const call = tool("bash", { command, timeout: limit });
+    finish(call, "done", false, undefined, ms);
+    const title = command === "job" ? "$ job" : "DEVOPS";
+    assert.equal(rows(call)[0].trim().replace(/ +/g, " "), [title, expected].filter(Boolean).join(" "));
+    call.setExpanded(true);
+    assert.ok(body(call).includes("(timeout " + limit + " s)"));
+  }
+  const failure = tool("bash", { command: "job", timeout: 5 });
+  for (const suffix of ["", ". The shell exited with code 0 after 1 seconds, but background processes it started kept writing output until the timeout."]) {
+    finish(failure, "partial output\n\nCommand timed out after 5 seconds" + suffix, true, undefined, 5_010);
+    assert.match(body(failure), /job +Timed out · limit 5 s {3}$/);
+    assert.match(rows(failure, 38)[0], /Timed out · limit 5 s {3}$/);
+  }
+  finish(failure, "Command timed out after 5 seconds\n\nCommand exited with code 1", true, undefined, 100);
+  assert.match(body(failure), /job +Failed {3}$/);
   assert.doesNotMatch(body(piped), /match lines|paths|timeout/);
   {
     const call = tool("bash", {}, "bash-stream");
@@ -785,7 +812,7 @@ try {
   assert.doesNotMatch(runningHeader, /\x1b\[48;/);
   finish(long, "done", false, undefined, 10_340);
   const header = rows(long, 100)[0];
-  assert.match(header, /\.\.\. \(timeout 30 s\) +10\.3 s {3}$/);
+  assert.match(header, /\.\.\. +10\.3 s {3}$/);
   assert.equal(visibleWidth(header), 100);
   assert.ok(visibleWidth(header.slice(0, header.indexOf("..."))) + 3 <= 70);
   long.setExpanded(true);
