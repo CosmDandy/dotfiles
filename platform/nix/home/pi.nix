@@ -75,6 +75,12 @@ in
         esac
       fi
     done
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+      if [ ! -e "$HOME/.pi/agent/models.json" ]; then
+        run ${pkgs.coreutils}/bin/install -m 0600 \
+          "${dotfiles}/tools/pi/codex-display-names.json" "$HOME/.pi/agent/models.json"
+      fi
+    ''}
     if [ ! -e "$HOME/.pi/agent/settings.json" ]; then
       run ${pkgs.coreutils}/bin/install -m 0600 \
         "${dotfiles}/tools/pi/settings.json" "$HOME/.pi/agent/settings.json"

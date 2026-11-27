@@ -8,7 +8,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerVirtualModel({
     provider,
     id: "sol-medium",
-    name: "GPT-6.2 Sol (Medium)",
+    name: "6.2 Sol",
     thinkingLevels: ["medium"],
     route(_request, ctx) {
       const model = ctx.modelRegistry.find(provider, sol);

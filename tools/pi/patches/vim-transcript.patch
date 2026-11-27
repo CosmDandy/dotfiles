@@ -1447,12 +1447,12 @@ index 6672529..bc1141d 100644
 +				const prefix = family.split("\0")[1];
 +				const last = i === families.length - 1;
 +				if (prefix) {
-+					rows.push({ ...items[0], tree: { family, label: prefix.toUpperCase(), header: true, branch: last ? "└── " : "├── " } });
++					rows.push({ ...items[0], tree: { family, label: ["openai-codex", "devpod-ws"].includes(items[0].provider) ? prefix.slice(4) : prefix.toUpperCase(), header: true, branch: last ? "└── " : "├── " } });
 +					if (!this.expanded.has(family)) continue;
 +				}
 +				for (const [j,item] of items.entries()) {
 +					const variant = prefix ? item.id.slice(prefix.length + 1) : item.id;
-+					rows.push({ ...item, tree: { family, label: prefix ? variant[0].toUpperCase() + variant.slice(1) : variant,
++					rows.push({ ...item, tree: { family, label: ["openai-codex", "devpod-ws"].includes(item.provider) && /^\d+(\.\d+)? /.test(item.model.name) ? item.model.name + (item.id === "sol-medium" ? " · medium" : "") : prefix ? variant[0].toUpperCase() + variant.slice(1) : variant,
 +						branch: (prefix ? last ? "    " : "│   " : "") + (j === items.length - 1 && (last || prefix) ? "└── " : "├── ") } });
 +				}
 +			}
@@ -1499,7 +1499,7 @@ index 6672529..bc1141d 100644
  		// Show visible slice of filtered models
  		for (let i = startIndex; i < endIndex; i++) {
  			const item = this.filteredModels[i];
-@@ -331,6 +379,16 @@
+@@ -331,8 +379,19 @@
  			const isDefault = this.isDefaultModel(item.model);
  			const defaultBadge = isDefault ? theme.fg("muted", " · default") : "";
  
@@ -1515,8 +1515,13 @@ index 6672529..bc1141d 100644
 +			}
  			const cursor = isSelected ? theme.fg("accent", "→ ") : "  ";
  			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
- 			const modelText = isSelected ? theme.fg("accent", item.id) : item.id;
-@@ -339,7 +397,7 @@
+-			const modelText = isSelected ? theme.fg("accent", item.id) : item.id;
+-			const name = getDistinctModelName({ id: item.id, name: item.model.name });
++			const shortName = ["openai-codex", "devpod-ws"].includes(item.provider) && /^\d+(\.\d+)? /.test(item.model.name) ? item.model.name + (item.id === "sol-medium" ? " · medium" : "") : undefined;
++			const modelText = isSelected ? theme.fg("accent", shortName ?? item.id) : shortName ?? item.id;
++			const name = shortName ? undefined : getDistinctModelName({ id: item.id, name: item.model.name });
+ 			const nameText = name ? theme.fg("muted", ` (${name})`) : "";
+@@ -339,7 +398,7 @@
  			const providerBadge = theme.fg("muted", `[${item.provider}]`);
  			const line = `${cursor}${currentMarker}${modelText}${nameText} ${providerBadge}${defaultBadge}`;
  
