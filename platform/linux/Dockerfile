@@ -73,7 +73,8 @@ WORKDIR /home/cosmdandy
 # requests features. onCreateCommand lives here for the same reason: work
 # repositories have no devcontainer.json, and the label is the only place
 # provisioning can reach them from.
-LABEL devcontainer.metadata='[{"remoteUser":"cosmdandy","onCreateCommand":"/usr/local/bin/dotfiles-provision"}]'
+# Persist conversations without overlaying the Pi config or credentials.
+LABEL devcontainer.metadata='[{"remoteUser":"cosmdandy","onCreateCommand":"/usr/local/bin/dotfiles-provision","mounts":["type=volume,source=pi-sessions-${devcontainerId},target=/home/cosmdandy/.pi/agent/sessions"]}]'
 
 # Nix single-user, version pinned and checksum-verified. This is the `single`
 # mode of platform/linux/install.sh, fixed rather than probed: an image build has
@@ -236,6 +237,7 @@ RUN cd "$HOME/dotfiles" \
   && test "$(git rev-parse HEAD:tools/claude/custom)" = "$(cat "$HOME/.claude/.mcp-baked-from")" \
   && test "$(platform/linux/image-key)" = "$(cat "$HOME/.dotfiles-generation")" \
   && test "$(cat "$HOME/.dotfiles-profile")" = core \
+  && install -d -m 0700 "$HOME/.pi/agent/sessions" \
   && test -r "$HOME/.pi/agent/AGENTS.md" && "$HOME/.local/bin/pi" --version
 
 FROM devops-env AS devops
@@ -248,4 +250,5 @@ RUN cd "$HOME/dotfiles" \
   && test "$(git rev-parse HEAD:tools/claude/custom)" = "$(cat "$HOME/.claude/.mcp-baked-from")" \
   && test "$(platform/linux/image-key)" = "$(cat "$HOME/.dotfiles-generation")" \
   && test "$(cat "$HOME/.dotfiles-profile")" = devops \
+  && install -d -m 0700 "$HOME/.pi/agent/sessions" \
   && test -r "$HOME/.pi/agent/AGENTS.md" && "$HOME/.local/bin/pi" --version
