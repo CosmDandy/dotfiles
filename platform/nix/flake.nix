@@ -147,6 +147,27 @@
                 );
             };
           };
+          subagents = pkgs.buildNpmPackage {
+            pname = "pi-subagents";
+            version = "0.90.0";
+            src = pkgs.lib.fileset.toSource {
+              root = ../../tools/pi/subagents;
+              fileset = pkgs.lib.fileset.unions [
+                ../../tools/pi/subagents/package.json
+                ../../tools/pi/subagents/package-lock.json
+              ];
+            };
+            npmDepsHash = "sha256-hT9cPlzhUsZSaNxJuruKkYufsWkWGJtH9tHUv/jdxSk=";
+            npmFlags = [
+              "--legacy-peer-deps"
+              "--ignore-scripts"
+            ];
+            dontNpmBuild = true;
+            installPhase = ''
+              mkdir -p "$out/lib"
+              cp -r node_modules "$out/lib/"
+            '';
+          };
           statusline = pkgs.buildGoModule {
             pname = "pi-statusline";
             version = "0.1.0";
@@ -275,6 +296,7 @@
         claude-cli = mkCli system;
         pi = (mkPiTools system).agent;
         pi-statusline = (mkPiTools system).statusline;
+        pi-subagents = (mkPiTools system).subagents;
       });
 
       # NOTE: without formatter.<system> the `nix fmt` command does not work at all.

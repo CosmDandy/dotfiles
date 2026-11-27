@@ -455,6 +455,46 @@ try {
   code.setExpanded(true);
   assert.match(body(code), /TAIL[\s\S]*second line[^\n]*\n *\n {2}script result/);
   assert.doesNotMatch(body(code), /Wall time|Output:/);
+  const searchScript = tool("codemode", { code: 'await tools[name]({ query });' }, "codex-search-script");
+  const searchCall = (args, status, details) => ({ id: "codex-search-script/?", name: "codex_web_search", args, status, ...details });
+  const firstSearch = searchCall(JSON.stringify({ query: 'Find "release"\n\x1b[2Jnotes' }), "running");
+  searchScript.markExecutionStarted();
+  assert.doesNotMatch(body(searchScript), /search · codex/);
+  searchScript.updateResult({ content: [], details: { calls: [firstSearch, { ...firstSearch, name: "read" }] } }, true);
+  const searchFrame = () => searchScript.render(100).find(line => plain(line).includes("search · codex"));
+  const searchStart = searchFrame();
+  assert.ok(searchStart, "a nested Codex search is visible while running");
+  assert.match(plain(searchStart), /^ {2}search · codex Find "release" notes …$/);
+  assert.doesNotMatch(searchStart, /\x1b\[2J/);
+  now += 480;
+  for (const tick of timers.values()) tick();
+  assert.notEqual(searchFrame(), searchStart, "the child row animates without script output or further updates");
+  assert.equal(plain(searchFrame()), plain(searchStart));
+  assert.equal(rows(searchScript).length, 2, "unrelated nested tools keep the existing compact layout");
+  const firstDone = { ...firstSearch, id: "codex-search-script/1", status: "ok", durationMs: 480 };
+  searchScript.updateResult({ content: [], details: { calls: [firstDone] } }, true);
+  const finishedChild = searchFrame();
+  assert.match(plain(finishedChild), /✓ 480 ms$/);
+  now += 480;
+  for (const tick of timers.values()) tick();
+  assert.equal(searchFrame(), finishedChild, "the finished child stops animating even while the parent runs");
+  searchScript.updateResult({
+    content: [{ type: "text", text: "Script completed\nWall time 1.5 seconds\nOutput:\n" }, { type: "text", text: "search answer" }],
+    details: { calls: [
+      firstDone,
+      searchCall('{"query":"Long query with \\"quotes\\" and a cut escape \\u0...', "error", { durationMs: 620, error: "Search failed" }),
+      searchCall('{"query":"Another query"}', "cancelled", { durationMs: 200 }),
+    ] }, durationMs: 1500,
+  });
+  assert.deepEqual(rows(searchScript).slice(1).map(line => line.trim()), [
+    'search · codex Find "release" notes ✓ 480 ms',
+    'search · codex Long query with "quotes" and a cut escape ... ✗ 620 ms',
+    'search · codex Another query ⊘ 200 ms',
+  ]);
+  assert.doesNotMatch(body(searchScript), /search answer|Search failed/);
+  searchScript.setExpanded(true);
+  assert.match(body(searchScript), /Search failed[\s\S]*search answer/);
+  assert.doesNotMatch(body(searchScript), /Wall time|Output:/);
   const codeError = tool("codemode", { code: 'text("test");' }, "code-error");
   finish(codeError, "\x1b[38:2::255:0:0mscript failed\x1b[0m", true);
   assert.ok(codeError.render(100).join("").includes(themes.theme.fg("toolOutput", "script failed")));
@@ -610,7 +650,7 @@ try {
     const searchRows = knowledge.render(100).join("\n");
     assert.ok(searchRows.includes(themes.theme.style("2 results · 340 ms", openStyle)));
     assert.ok(searchRows.includes(themes.theme.style("Section: Setup → Local", openStyle)));
-    for (const component of [read, bash, edit, write, mcp, unsafe]) {
+    for (const component of [read, bash, edit, write, mcp, unsafe, searchScript]) {
       component.invalidate();
       for (const expanded of [false, true]) {
         component.setExpanded(expanded);

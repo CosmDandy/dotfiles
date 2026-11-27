@@ -35,6 +35,7 @@ function summarizeTurn(turn: TurnTiming, ended: number, aborted: boolean) {
 }
 
 const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
+const captionText = (text: string) => stripVTControlCharacters(text).replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
 
 type Window = { used_percentage: number; resets_at: number };
 type WindowName = "five_hour" | "seven_day";
@@ -191,6 +192,8 @@ export default function (pi: ExtensionAPI) {
   }
   let generatingSince: number | undefined;
   let phase: "Waiting" | "Thinking" | "Generating" | "Preparing" = "Waiting";
+  let summaryPrefix: string | undefined;
+  let thinkingTitle = "";
   let stream: { firstOutput?: number; firstText?: number; lastText?: number; textChunks: number; toolCall: boolean } = { textChunks: 0, toolCall: false };
   let lastResponse: {
     seconds: number; speed?: number; firstOutputSeconds?: number; firstTextSeconds?: number;
@@ -367,29 +370,29 @@ export default function (pi: ExtensionAPI) {
             const theme = ctx.ui.theme;
             const light = theme.appearance === "light";
             const secondary = light ? "thinkingText" : "dim";
-            const state = activeTools.size ? "Running" : generatingSince !== undefined ? phase : busy ? "Active" : interrupted ? "Interrupted" : "Ready";
-            const phases = {
-              Waiting: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors.thinkingLow },
+            const state = activeTools.size ? "Running" : generatingSince !== undefined && phase === "Thinking" ? "Thinking"
+              : busy || generatingSince !== undefined ? "Working" : interrupted ? "Interrupted" : "Ready";
+            const animations = {
+              Working: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors.thinkingLow },
               Thinking: { frames: thinkingFrames, color: theme.colors.thinkingText },
-              // Leave the top Braille dot row empty so the spinner sits closer to the text baseline.
-              Generating: { frames: ["⠖", "⠲", "⢲", "⢰", "⣰", "⣠", "⣄", "⣆", "⡆", "⡖"], color: theme.colors.thinkingMedium },
-              Preparing: { frames: ["·", "•", "●", "•"], color: theme.colors.warning },
               Running: { frames: ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"], color: theme.colors.warning },
-              Active: { frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], color: theme.colors[secondary] },
             };
-            const animation = state in phases ? phases[state as keyof typeof phases] : undefined;
+            const animation = state === "Ready" || state === "Interrupted" ? undefined : animations[state];
             const frame = animation?.frames[Math.floor(performance.now() / 150) % animation.frames.length];
             const phaseColor = animation?.color ?? (interrupted ? theme.colors.warning : light ? lightReady : theme.colors.success);
-            const stateLabel = theme.style(animation ? `${frame} ${state}` : `${interrupted ? "■" : "·"} ${state}`, {
-              fg: light && !["Ready", "Thinking", "Active"].includes(state) ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
+            const stateLabel = theme.style(frame ?? (interrupted ? "■ Interrupted" : "· Ready"), {
+              fg: light && state !== "Ready" && state !== "Thinking" ? mixColors(phaseColor, lightBackground, 0.23, "srgb") : phaseColor,
               dim: !light,
             });
-            const toolNames = activeTools.size ? theme.fg(secondary, [...new Set(activeTools.values())].join(", ")) : "";
+            const tools = activeTools.size ? theme.fg(secondary, [...new Set(activeTools.values())].join(", ")) : "";
             const badges = [error ? theme.style("error", { fg: "error", dim: !light }) : "", ctx.hasPendingMessages() ? theme.style("queued", { fg: "warning", dim: !light }) : "", this.hiddenAbove ? `↑ ${this.hiddenAbove} more` : ""].filter(Boolean);
             const statuses = data.getExtensionStatuses();
             const otherStatuses = [...statuses].filter(([key]) => key !== "work-mode").map(([, value]) => value);
-            const left = [modeLabel, toolNames, ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
-            const right = truncateToWidth(stateLabel, columns, "");
+            const left = [[modeLabel, tools].filter(Boolean).join(" "), ...badges, ...otherStatuses].filter(Boolean).join(theme.fg("dim", " · "));
+            const stateOnly = truncateToWidth(stateLabel, columns, "");
+            const room = columns - visibleWidth(left) - visibleWidth(stateOnly) - 2;
+            const caption = state === "Thinking" && room >= 8 ? truncateToWidth(thinkingTitle, room, "…") : "";
+            const right = stateOnly + (caption ? " " + theme.fg(secondary, caption) : "");
             const gap = columns - visibleWidth(right);
             return truncateToWidth(left, Math.max(0, gap - 1), "", true) + (gap ? " " : "") + right;
           }
@@ -415,10 +418,9 @@ export default function (pi: ExtensionAPI) {
             const coral = light ? rgbColor(170, 72, 66) : rgbColor(217, 126, 116);
             const blue = light ? rgbColor(43, 108, 150) : rgbColor(111, 172, 207);
             const modeColor = mode === "EXPLORE" ? blue : mode === "EXECUTE" ? coral : undefined;
-            const profileColor = profile === "AUTONOMOUS" ? coral : mixColors(theme.colors.muted, theme.colors.dim, 0.65, "srgb");
             const modeLabel = modeColor ? [
               theme.style(mode, { fg: modeColor }),
-              profile ? theme.style(profile, { fg: profileColor }) : "",
+              profile === "AUTONOMOUS" ? theme.style(profile, { fg: coral }) : "",
               agents ? theme.fg("accent", agents) : "",
             ].filter(Boolean).join(theme.fg("dim", " · ")) : "";
             const borderColor = modeColor ? mixColors(theme.colors.borderMuted, modeColor, 0.5, "srgb") : undefined;
@@ -516,7 +518,22 @@ export default function (pi: ExtensionAPI) {
     if (!busy || activeTools.size) return;
     generatingSince = performance.now();
     phase = "Waiting";
+    thinkingTitle = "";
+    summaryPrefix = undefined;
     redraw?.();
+  });
+  pi.on("provider_stream_event", ({ data }) => {
+    if (!data || typeof data !== "object" || !("type" in data)) return;
+    if (data.type === "response.reasoning_summary_part.added") {
+      thinkingTitle = "";
+      summaryPrefix = "";
+    } else if (data.type === "response.reasoning_summary_text.delta" && summaryPrefix !== undefined && "delta" in data && typeof data.delta === "string") {
+      // Only the summary's opening heading belongs in the status, never its body or raw reasoning.
+      summaryPrefix += data.delta.slice(0, 256 - summaryPrefix.length);
+      const heading = /^\s*\*\*([^*\r\n]+)\*\*/.exec(summaryPrefix);
+      if (heading) thinkingTitle = captionText(heading[1]);
+      if (heading || summaryPrefix.length === 256 || /\S[^\n]*\n/.test(summaryPrefix)) summaryPrefix = undefined;
+    }
   });
   pi.on("message_start", event => {
     if (event.message.role !== "assistant") return;
@@ -541,6 +558,8 @@ export default function (pi: ExtensionAPI) {
       } else if (update.type === "thinking_delta") phase = "Thinking";
       else { stream.toolCall = true; phase = "Preparing"; }
     } else if (update.type === "thinking_start") phase = "Thinking";
+    else if (update.type === "thinking_end") phase = "Waiting";
+    else if (update.type === "text_start") phase = "Generating";
     else if (update.type === "toolcall_start") { stream.toolCall = true; phase = "Preparing"; }
     redraw?.();
   });
@@ -548,7 +567,7 @@ export default function (pi: ExtensionAPI) {
     if (turnTiming && !event.parentToolCallId) {
       toolStarts.set(event.toolCallId, { from: performance.now(), phase: event.toolName === "bash" ? "bash" : "tools" });
     }
-    activeTools.set(event.toolCallId, event.toolName);
+    activeTools.set(event.toolCallId, captionText(event.toolName));
     redraw?.();
   });
   pi.on("tool_execution_end", event => {
@@ -569,6 +588,8 @@ export default function (pi: ExtensionAPI) {
     busy = false;
     generatingSince = undefined;
     interrupted = event.aborted;
+    thinkingTitle = "";
+    summaryPrefix = undefined;
     activeTools.clear();
     publishSession();
     redraw?.();

@@ -1,3 +1,149 @@
+diff --git a/packages/coding-agent/src/core/keybindings.ts b/packages/coding-agent/src/core/keybindings.ts
+index f06a2e6..4d0970b 100644
+--- a/packages/coding-agent/src/core/keybindings.ts
++++ b/packages/coding-agent/src/core/keybindings.ts
+@@ -48,6 +48,7 @@ const APP_KEYBINDINGS = {
+ 	},
+ 	"app.model.select": { defaultKeys: "ctrl+l", description: "Open model selector" },
+ 	"app.tools.expand": { defaultKeys: "ctrl+o", description: "Toggle tool output" },
++	"app.message.toggleFold": { defaultKeys: "alt+o", description: "Toggle the latest long user message" },
+ 	"app.thinking.toggle": {
+ 		defaultKeys: "ctrl+t",
+ 		description: "Toggle thinking blocks",
+diff --git a/packages/coding-agent/src/modes/interactive/components/user-message.ts b/packages/coding-agent/src/modes/interactive/components/user-message.ts
+index 6f01f1d..81f119d 100644
+--- a/packages/coding-agent/src/modes/interactive/components/user-message.ts
++++ b/packages/coding-agent/src/modes/interactive/components/user-message.ts
+@@ -1,4 +1,4 @@
+-import { Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
++import { Container, Markdown, type MarkdownTheme, MouseRegion, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+ import { getMarkdownTheme, theme } from "../theme/theme.ts";
+ import { createMarkdownTransform } from "./markdown-transform.ts";
+@@ -6,6 +6,9 @@ import { createMarkdownTransform } from "./markdown-transform.ts";
+ const OSC133_ZONE_START = "\x1b]133;A\x07";
+ const OSC133_ZONE_END = "\x1b]133;B\x07";
+ const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
++const VERTICAL_PADDING = 1;
++const HEAD_ROWS = 6;
++const TAIL_ROWS = 3;
+ 
+ /**
+  * Component that renders a user message
+@@ -17,7 +20,9 @@ export class UserMessageComponent extends Container {
+ 	private markdownTransformers: readonly MarkdownTransformer[];
+ 	private messageId?: string;
+ 	private timestamp?: string;
+-	private zoneLines?: { source: readonly string[]; lines: string[] };
++	private expanded = false;
++	private zoneLines?: { source: readonly string[]; lines: string[]; foldRow?: number };
++	onFoldClick?: () => void;
+ 
+ 	constructor(
+ 		text: string,
+@@ -42,32 +47,56 @@ export class UserMessageComponent extends Container {
+ 		this.rebuild();
+ 	}
+ 
++	get foldRow(): number | undefined {
++		return this.zoneLines?.foldRow;
++	}
++
++	toggleFold(): void {
++		this.expanded = !this.expanded;
++		this.zoneLines = undefined;
++	}
++
+ 	private rebuild(): void {
+ 		this.clear();
++		this.zoneLines = undefined;
+ 		// The Markdown pads and colors its own background: a Box around it would keep a second full-width copy of every
+ 		// line, with identical output.
+-		this.addChild(
+-			new Markdown(
+-				this.text,
+-				this.outputPad,
+-				1,
+-				this.markdownTheme,
+-				{
+-					color: (content: string) => theme.fg("userMessageText", content),
+-					bgColor: (content: string) => theme.bg("userMessageBg", content),
+-				},
+-				{
+-					preserveOrderedListMarkers: true,
+-					preserveBackslashEscapes: true,
+-					transform: createMarkdownTransform(
+-						"user",
+-						() => false,
+-						this.markdownTransformers,
+-						this.messageId,
+-						this.timestamp,
+-					),
+-				},
+-			),
++		const markdown = new Markdown(
++			this.text,
++			this.outputPad,
++			VERTICAL_PADDING,
++			this.markdownTheme,
++			{
++				color: (content: string) => theme.fg("userMessageText", content),
++				bgColor: (content: string) => theme.bg("userMessageBg", content),
++			},
++			{
++				preserveOrderedListMarkers: true,
++				preserveBackslashEscapes: true,
++				transform: createMarkdownTransform(
++					"user",
++					() => false,
++					this.markdownTransformers,
++					this.messageId,
++					this.timestamp,
++				),
++			},
++		);
++		this.addChild(new MouseRegion(markdown, (event) => {
++			if (event.type !== "click" || event.button !== "left" || event.y !== this.foldRow) return undefined;
++			this.toggleFold();
++			this.onFoldClick?.();
++			return { handled: true };
++		}));
++	}
++
++	private renderFold(width: number, hiddenRows: number): string {
++		const label = truncateToWidth(this.expanded ? " Collapse " : ` ${hiddenRows} hidden lines `, width, "");
++		const space = width - visibleWidth(label);
++		const left = Math.floor(space / 2);
++		return theme.bg(
++			"userMessageBg",
++			theme.fg("muted", "─".repeat(left)) + theme.fg("accent", label) + theme.fg("muted", "─".repeat(space - left)),
+ 		);
+ 	}
+ 
+@@ -77,12 +106,20 @@ export class UserMessageComponent extends Container {
+ 			return lines;
+ 		}
+ 
+-		// Container output is shared across frames; copy it once per change instead of mutating it.
++		// Fold rendered rows, not Markdown source lines, so wrapping and syntax highlighting survive expansion.
+ 		if (this.zoneLines?.source !== lines) {
+-			const zoned = [...lines];
++			const hiddenRows = lines.length - 2 * VERTICAL_PADDING - HEAD_ROWS - TAIL_ROWS;
++			const foldRow = hiddenRows > 1 ? VERTICAL_PADDING + HEAD_ROWS : undefined;
++			const zoned = foldRow === undefined
++				? [...lines]
++				: [
++					...lines.slice(0, foldRow),
++					this.renderFold(width, hiddenRows),
++					...lines.slice(this.expanded ? foldRow : -(TAIL_ROWS + VERTICAL_PADDING)),
++				];
+ 			zoned[0] = OSC133_ZONE_START + zoned[0];
+ 			zoned[zoned.length - 1] = OSC133_ZONE_END + OSC133_ZONE_FINAL + zoned[zoned.length - 1];
+-			this.zoneLines = { source: lines, lines: zoned };
++			this.zoneLines = { source: lines, lines: zoned, foldRow };
+ 		}
+ 		return this.zoneLines.lines;
+ 	}
 diff --git a/packages/coding-agent/src/modes/interactive/components/bash-execution.ts b/packages/coding-agent/src/modes/interactive/components/bash-execution.ts
 index a279223..bfb29eb 100644
 --- a/packages/coding-agent/src/modes/interactive/components/bash-execution.ts
@@ -168,7 +314,7 @@ index f043d08..f4ea5df 100644
  		const content = JSON.stringify(this.args, null, 2);
  		if (content) {
 diff --git a/packages/coding-agent/src/modes/interactive/interactive-mode.ts b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-index e8b8552..01ff8bc 100644
+index 2b0a15c..36d5638 100644
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 @@ -145,6 +145,8 @@ import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
@@ -180,7 +326,7 @@ index e8b8552..01ff8bc 100644
  import { ArminComponent } from "./components/armin.ts";
  import { AssistantMessageComponent } from "./components/assistant-message.ts";
  import { BashExecutionComponent } from "./components/bash-execution.ts";
-@@ -523,7 +525,7 @@ export class InteractiveMode {
+@@ -524,7 +526,7 @@ export class InteractiveMode {
  	private ui: TUI;
  	private mainScreenRenderState: TuiMainScreenRenderState | undefined;
  	private loadedResourcesContainer: Container;
@@ -189,7 +335,7 @@ index e8b8552..01ff8bc 100644
  	private documentContainer: Container;
  	private transcriptScrollView: TuiLayouts.ScrollView | undefined;
  	private fullscreenLayoutRoot: Component | undefined;
-@@ -558,6 +560,8 @@ export class InteractiveMode {
+@@ -559,6 +561,8 @@ export class InteractiveMode {
  	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
  
  	private lastSigintTime = 0;
@@ -198,7 +344,7 @@ index e8b8552..01ff8bc 100644
  	private lastEscapeTime = 0;
  	private changelogMarkdown: string | undefined = undefined;
  	private extensionChangelogUpdates: ExtensionChangelogUpdate[] = [];
-@@ -712,8 +716,14 @@ export class InteractiveMode {
+@@ -713,8 +717,14 @@ export class InteractiveMode {
  		this.ui.setClearOnShrink(this.settingsManager.getClearOnShrink());
  		this.headerContainer = new Container();
  		this.loadedResourcesContainer = new Container();
@@ -214,7 +360,7 @@ index e8b8552..01ff8bc 100644
  		this.documentContainer.addChild(this.headerContainer);
  		this.documentContainer.addChild(this.loadedResourcesContainer);
  		this.documentContainer.addChild(this.chatContainer);
-@@ -971,6 +981,15 @@ export class InteractiveMode {
+@@ -972,6 +982,15 @@ export class InteractiveMode {
  
  	private mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void {
  		for (const component of components) tui.addChild(component);
@@ -230,7 +376,7 @@ index e8b8552..01ff8bc 100644
  		if (TuiLayouts.isViewportTUI(tui)) {
  			if (!this.fullscreenLayoutRoot) throw new Error("Fullscreen layout is not initialized");
  			tui.setLayoutRoot(this.fullscreenLayoutRoot);
-@@ -991,6 +1010,7 @@ export class InteractiveMode {
+@@ -992,6 +1011,7 @@ export class InteractiveMode {
  		if (mode === previousUi.mode) return true;
  		if (previousUi.hasOverlayEntries) return false;
  
@@ -238,7 +384,7 @@ index e8b8552..01ff8bc 100644
  		const components = [...previousUi.children];
  		const focus = previousUi.getFocusedComponent();
  		const terminal = previousUi.terminal;
-@@ -1108,9 +1128,10 @@ export class InteractiveMode {
+@@ -1109,9 +1129,10 @@ export class InteractiveMode {
  			// "Pi vX" line instead, with the key hints below it.
  			const showLogo = supportsPiLogo();
  			const withLogo = (hints: string) => {
@@ -251,7 +397,7 @@ index e8b8552..01ff8bc 100644
  			};
  
  			// Build startup instructions using keybinding hint helpers
-@@ -3083,6 +3104,7 @@ export class InteractiveMode {
+@@ -3089,6 +3110,7 @@ export class InteractiveMode {
  				if (!customEditor.onEscape) {
  					customEditor.onEscape = () => this.defaultEditor.onEscape?.();
  				}
@@ -259,7 +405,7 @@ index e8b8552..01ff8bc 100644
  				if (!customEditor.onCtrlD) {
  					customEditor.onCtrlD = () => this.defaultEditor.onCtrlD?.();
  				}
-@@ -3250,6 +3272,11 @@ export class InteractiveMode {
+@@ -3256,6 +3278,11 @@ export class InteractiveMode {
  	// =========================================================================
  
  	private setupKeyHandlers(): void {
@@ -271,10 +417,76 @@ index e8b8552..01ff8bc 100644
  		// Set up handlers on defaultEditor - they use this.editor for text access
  		// so they work correctly regardless of which editor is active
  		this.defaultEditor.onEscape = () => {
-@@ -4496,6 +4523,31 @@ export class InteractiveMode {
+@@ -3298,6 +3325,7 @@ export class InteractiveMode {
+ 		this.ui.onDebug = () => this.handleDebugCommand();
+ 		this.defaultEditor.onAction("app.model.select", () => this.showModelSelector());
+ 		this.defaultEditor.onAction("app.tools.expand", () => this.toggleToolOutputExpansion());
++		this.defaultEditor.onAction("app.message.toggleFold", () => this.toggleLatestUserMessage());
+ 		this.defaultEditor.onAction("app.thinking.toggle", () => this.toggleThinkingBlockVisibility());
+ 		this.defaultEditor.onAction("app.editor.external", () => void this.handleOpenExternalEditor());
+ 		this.defaultEditor.onAction(
+@@ -4163,28 +4191,23 @@ export class InteractiveMode {
+ 						);
+ 						component.setExpanded(this.toolOutputExpanded);
+ 						this.chatContainer.addChild(component);
+-						// Render user message separately if present
+-						if (skillBlock.userMessage) {
+-							this.chatContainer.addChild(new Spacer(1));
+-							const userComponent = new UserMessageComponent(
+-								skillBlock.userMessage,
+-								this.getMarkdownThemeWithSettings(),
+-								this.outputPad,
+-								this.getMarkdownTransformers(),
+-								options?.messageId,
+-								options?.timestamp,
+-							);
+-							this.chatContainer.addChild(userComponent);
+-						}
+-					} else {
++					}
++					const userText = skillBlock ? skillBlock.userMessage : textContent;
++					if (userText) {
++						if (skillBlock) this.chatContainer.addChild(new Spacer(1));
+ 						const userComponent = new UserMessageComponent(
+-							textContent,
++							userText,
+ 							this.getMarkdownThemeWithSettings(),
+ 							this.outputPad,
+ 							this.getMarkdownTransformers(),
+ 							options?.messageId,
+ 							options?.timestamp,
+ 						);
++						userComponent.onFoldClick = () => {
++							// Keep the clicked row in view instead of following the expanded transcript to the end.
++							const viewport = this.transcriptScrollView;
++							if (viewport?.isFollowingEnd) viewport.scrollTo(viewport.scrollTop, { disableFollow: true });
++						};
+ 						this.chatContainer.addChild(userComponent);
+ 					}
+ 					if (options?.populateHistory) {
+@@ -4504,6 +4527,50 @@ export class InteractiveMode {
  	// Key handlers
  	// =========================================================================
  
++	private toggleLatestUserMessage(): void {
++		const message = this.chatContainer.children.findLast(
++			(child): child is UserMessageComponent => child instanceof UserMessageComponent && child.foldRow !== undefined,
++		);
++		const foldRow = message?.foldRow;
++		if (!message || foldRow === undefined) return;
++		message.toggleFold();
++		const viewport = this.renderer.mode === "fullscreen" ? this.transcriptScrollView : undefined;
++		if (viewport) {
++			const chatRow = this.documentContainer.getRenderedChildRow(this.chatContainer);
++			const messageRow = this.chatContainer.getRenderedChildRow(message);
++			if (chatRow !== undefined && messageRow !== undefined) {
++				const row = chatRow + messageRow + foldRow - Math.floor(viewport.viewportHeight / 3);
++				viewport.scrollTo(row, { disableFollow: true });
++			}
++		}
++		this.ui.requestRender();
++	}
++
 +	private handleInterruptKey(tui: TuiMainScreen | TuiAltScreen, data: string): { consume: true } | undefined {
 +		if (TuiLayouts.isKeyRelease(data)) return;
 +		if (!matchesKey(data, "ctrl+c")) {
@@ -303,6 +515,22 @@ index e8b8552..01ff8bc 100644
  	private handleCtrlC(): void {
  		const now = Date.now();
  		if (now - this.lastSigintTime < 500) {
+@@ -7093,6 +7160,7 @@ export class InteractiveMode {
+ 		const cycleModelForward = this.getAppKeyDisplay("app.model.cycleForward");
+ 		const selectModel = this.getAppKeyDisplay("app.model.select");
+ 		const expandTools = this.getAppKeyDisplay("app.tools.expand");
++		const toggleUserMessage = this.getAppKeyDisplay("app.message.toggleFold");
+ 		const toggleThinking = this.getAppKeyDisplay("app.thinking.toggle");
+ 		const externalEditor = this.getAppKeyDisplay("app.editor.external");
+ 		const cycleModelBackward = this.getAppKeyDisplay("app.model.cycleBackward");
+@@ -7138,6 +7206,7 @@ export class InteractiveMode {
+ | \`${cycleModelForward}\` / \`${cycleModelBackward}\` | Cycle models |
+ | \`${selectModel}\` | Open model selector |
+ | \`${expandTools}\` | Toggle tool output expansion |
++| \`${toggleUserMessage}\` | Toggle the latest long user message |
+ | \`${toggleThinking}\` | Toggle thinking block visibility |
+ | \`${externalEditor}\` | Edit message in external editor |
+ | \`${copyMessage}\` | Copy selection or last assistant message |
 diff --git a/packages/coding-agent/src/modes/interactive/vim-dock.ts b/packages/coding-agent/src/modes/interactive/vim-dock.ts
 new file mode 100644
 index 0000000..8dc1828
@@ -1051,7 +1279,11 @@ index 6672529..bc1141d 100644
  		this.children.push(component);
 --- a/packages/coding-agent/src/modes/interactive/components/model-selector.ts
 +++ b/packages/coding-agent/src/modes/interactive/components/model-selector.ts
-@@ -9,6 +9,8 @@
+@@ -6,9 +6,12 @@
+ 	getKeybindings,
+ 	getSelectPageIndex,
+ 	Input,
++	matchesKey,
  	Spacer,
  	Text,
  	type TUI,
@@ -1060,7 +1292,15 @@ index 6672529..bc1141d 100644
  } from "@earendil-works/pi-tui";
  import type { ModelRuntime } from "../../../core/model-runtime.ts";
  import { refreshModelCatalogs } from "../model-catalog-refresh.ts";
-@@ -36,6 +38,8 @@
+@@ -21,6 +24,7 @@
+ 	provider: string;
+ 	id: string;
+ 	model: Model<any>;
++	tree?: { family: string; label: string; branch: string; header?: boolean };
+ }
+ 
+ interface ScopedModelItem {
+@@ -36,6 +40,8 @@
  type ModelScope = "all" | "scoped";
  
  const MAX_VISIBLE = 10;
@@ -1069,7 +1309,35 @@ index 6672529..bc1141d 100644
  
  /**
   * Component that renders a model selector with search
-@@ -173,11 +177,11 @@
+@@ -58,6 +64,7 @@
+ 	private scopedModelItems: ModelItem[] = [];
+ 	private activeModels: ModelItem[] = [];
+ 	private filteredModels: ModelItem[] = [];
++	private expanded = new Set<string>();
+ 	private selectedIndex: number = 0;
+ 	private currentModel?: Model<any>;
+ 	private modelRuntime: ModelRuntime;
+@@ -123,7 +130,7 @@
+ 		}
+ 		this.searchInput.onSubmit = () => {
+ 			// Enter on search input selects the first filtered item
+-			if (this.filteredModels[this.selectedIndex]) {
++			if (this.filteredModels[this.selectedIndex] && !this.filteredModels[this.selectedIndex].tree?.header) {
+ 				this.handleSelect(this.filteredModels[this.selectedIndex].model);
+ 			}
+ 		};
+@@ -156,8 +163,8 @@
+ 
+ 		// Render the current snapshot immediately, then refresh in the background.
+ 		this.loadModelsFromSnapshot();
+-		if (initialSearchInput) this.filterModels(initialSearchInput);
+-		else this.updateList();
++		if (currentModel) this.expanded.add(this.family(currentModel));
++		this.filterModels(initialSearchInput ?? "", currentModel);
+ 		this.tui.requestRender();
+ 		void this.refreshModels();
+ 	}
+@@ -173,11 +180,11 @@
  			const refreshed = this.modelRuntime.getModel(scoped.model.provider, scoped.model.id);
  			return refreshed ? { ...scoped, model: refreshed } : scoped;
  		});
@@ -1083,7 +1351,20 @@ index 6672529..bc1141d 100644
  		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
  		this.filteredModels = this.activeModels;
  		const currentIndex = this.filteredModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
-@@ -236,17 +240,12 @@
+@@ -209,10 +216,10 @@
+ 					this.refreshStatusSuccess = true;
+ 				}
+ 			}
+-			const selectedModel = this.filteredModels[this.selectedIndex]?.model;
++			const selected = this.filteredModels[this.selectedIndex];
+ 			this.loadModelsFromSnapshot();
+ 			// The user may have moved while the refresh was in flight, and the refresh can shift rows.
+-			this.filterModels(this.searchInput.getValue(), selectedModel);
++			this.filterModels(this.searchInput.getValue(), selected?.model, selected?.tree?.header);
+ 			this.tui.requestRender();
+ 		} catch (error) {
+ 			if (this.closed) return;
+@@ -236,17 +243,12 @@
  
  	private sortModels(models: ModelItem[]): ModelItem[] {
  		const sorted = [...models];
@@ -1106,7 +1387,73 @@ index 6672529..bc1141d 100644
  		});
  		return sorted;
  	}
-@@ -321,6 +320,18 @@
+@@ -276,13 +278,47 @@
+ 		this.activeModels = this.scope === "scoped" ? this.scopedModelItems : this.allModels;
+ 		const currentIndex = this.activeModels.findIndex((item) => modelsAreEqual(this.currentModel, item.model));
+ 		this.selectedIndex = currentIndex >= 0 ? currentIndex : 0;
+-		this.filterModels(this.searchInput.getValue());
++		this.filterModels(this.searchInput.getValue(), this.currentModel);
+ 		if (this.scopeText) {
+ 			this.scopeText.setText(this.getScopeText());
+ 		}
+ 	}
+ 
+-	private filterModels(query: string, preferredModel?: Model<any>): void {
++	private family(model: Model<any>): string {
++		return model.provider + "\0" + (/^(gpt-\d+(?:\.\d+)?)-/i.exec(model.id)?.[1] ?? "");
++	}
++
++	private treeRows(): ModelItem[] {
++		const providers = new Map<string, Map<string, ModelItem[]>>();
++		for (const item of this.activeModels) {
++			if (!providers.has(item.provider)) providers.set(item.provider, new Map());
++			const groups = providers.get(item.provider)!;
++			const family = this.family(item.model);
++			if (!groups.has(family)) groups.set(family, []);
++			groups.get(family)!.push(item);
++		}
++		const rows: ModelItem[] = [];
++		for (const groups of providers.values()) {
++			const families = [...groups.keys()].sort((a,b) => b.localeCompare(a, undefined, { numeric: true }));
++			for (const [i, family] of families.entries()) {
++				const items = groups.get(family)!;
++				const prefix = family.split("\0")[1];
++				const last = i === families.length - 1;
++				if (prefix) {
++					rows.push({ ...items[0], tree: { family, label: prefix.toUpperCase(), header: true, branch: last ? "└── " : "├── " } });
++					if (!this.expanded.has(family)) continue;
++				}
++				for (const [j,item] of items.entries()) {
++					const variant = prefix ? item.id.slice(prefix.length + 1) : item.id;
++					rows.push({ ...item, tree: { family, label: prefix ? variant[0].toUpperCase() + variant.slice(1) : variant,
++						branch: (prefix ? last ? "    " : "│   " : "") + (j === items.length - 1 && (last || prefix) ? "└── " : "├── ") } });
++				}
++			}
++		}
++		return rows;
++	}
++
++	private filterModels(query: string, preferredModel?: Model<any>, header = false): void {
+ 		if (query) {
+ 			const filtered = fuzzyFilter(this.activeModels, query, (item) => {
+ 				const defaultText = this.isDefaultModel(item.model) ? " default" : "";
+@@ -299,13 +335,13 @@
+ 				this.filteredModels = filtered;
+ 			}
+ 		} else {
+-			this.filteredModels = this.activeModels;
++			this.filteredModels = this.treeRows();
+ 		}
+ 		// Keep the preferred model selected if it is still listed. Otherwise, when filtering
+ 		// by a query, move the selector to the top row so the best match is highlighted.
+ 		// When the query is cleared, keep the current position clamped to the (restored) list length.
+ 		const preferredIndex = preferredModel
+-			? this.filteredModels.findIndex((item) => modelsAreEqual(preferredModel, item.model))
++			? this.filteredModels.findIndex((item) => header ? item.tree?.header && item.tree.family === this.family(preferredModel) : !item.tree?.header && modelsAreEqual(preferredModel, item.model))
+ 			: -1;
+ 		if (preferredIndex >= 0) this.selectedIndex = preferredIndex;
+ 		else this.selectedIndex = query ? 0 : Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
+@@ -321,6 +357,18 @@
  		);
  		const endIndex = Math.min(startIndex + MAX_VISIBLE, this.filteredModels.length);
  
@@ -1115,17 +1462,34 @@ index 6672529..bc1141d 100644
 +		const priceRow = (left: string, cells: string[]) => {
 +			const right = cells.map((v, i) => v.padStart(widths[i])).join("  ");
 +			this.listContainer.addChild({ invalidate() {}, render(width: number) {
-+				const room = width - right.length - 2;
++				const room = Math.min(36, width - right.length - 2);
 +				if (room < 18) return [truncateToWidth(left, width)];
 +				const label = truncateToWidth(left, room);
-+				return [label + " ".repeat(width - visibleWidth(label) - right.length) + theme.fg("muted", right)];
++				return [label + " ".repeat(room + 2 - visibleWidth(label)) + theme.fg("muted", right)];
 +			} });
 +		};
-+		if (endIndex > startIndex) priceRow("    USD / 1M tokens", headings);
++		if (endIndex > startIndex) priceRow("    Context · USD / 1M tokens", headings);
  		// Show visible slice of filtered models
  		for (let i = startIndex; i < endIndex; i++) {
  			const item = this.filteredModels[i];
-@@ -339,7 +350,7 @@
+@@ -331,6 +379,16 @@
+ 			const isDefault = this.isDefaultModel(item.model);
+ 			const defaultBadge = isDefault ? theme.fg("muted", " · default") : "";
+ 
++			if (item.tree) {
++				if (i === startIndex || this.filteredModels[i-1].provider !== item.provider)
++					this.listContainer.addChild(new Text(theme.fg("muted", item.provider), 0, 0));
++				const { branch, label, header } = item.tree;
++				const name = isSelected ? theme.fg("accent", label) : label;
++				const line = theme.fg("dim", branch) + (header ? theme.bold(name) : name);
++				if (header) this.listContainer.addChild(new Text(line, 0, 0));
++				else priceRow(line + theme.fg("muted", `  ${Math.round(item.model.contextWindow / 1000)}K`) + (isCurrent ? " ✓" : "") + defaultBadge, rates(item.model.cost));
++				continue;
++			}
+ 			const cursor = isSelected ? theme.fg("accent", "→ ") : "  ";
+ 			const currentMarker = isCurrent ? theme.fg("accent", "✓ ") : "  ";
+ 			const modelText = isSelected ? theme.fg("accent", item.id) : item.id;
+@@ -339,7 +397,7 @@
  			const providerBadge = theme.fg("muted", `[${item.provider}]`);
  			const line = `${cursor}${currentMarker}${modelText}${nameText} ${providerBadge}${defaultBadge}`;
  
@@ -1134,7 +1498,12 @@ index 6672529..bc1141d 100644
  		}
  
  		// Add scroll indicator if needed
-@@ -361,6 +372,11 @@
+@@ -357,10 +415,15 @@
+ 			}
+ 		} else if (this.filteredModels.length === 0) {
+ 			this.listContainer.addChild(new Text(theme.fg("muted", "  No matching models"), 0, 0));
+-		} else {
++		} else if (!this.filteredModels[this.selectedIndex]?.tree?.header) {
  			const selected = this.filteredModels[this.selectedIndex];
  			this.listContainer.addChild(new Spacer(1));
  			this.listContainer.addChild(new Text(theme.fg("muted", `  Model Name: ${selected.model.name}`), 0, 0));
@@ -1146,6 +1515,33 @@ index 6672529..bc1141d 100644
  		}
  		if (this.refreshStatusMessage) {
  			this.listContainer.addChild(new Spacer(1));
+@@ -372,6 +435,17 @@
+ 
+ 	handleInput(keyData: string): void {
+ 		const kb = getKeybindings();
++		const row = this.filteredModels[this.selectedIndex];
++		if (row?.tree && (matchesKey(keyData, "left") || matchesKey(keyData, "right") ||
++			(row.tree.header && kb.matches(keyData, "tui.select.confirm")))) {
++			const { family, header } = row.tree;
++			if (!family.endsWith("\0")) {
++				if (matchesKey(keyData, "left") || (header && !matchesKey(keyData, "right") && this.expanded.has(family))) this.expanded.delete(family);
++				else this.expanded.add(family);
++				this.filterModels("", row.model, header || matchesKey(keyData, "left"));
++			}
++			return;
++		}
+ 		const pageIndex = getSelectPageIndex(kb, keyData, this.selectedIndex, this.filteredModels.length, MAX_VISIBLE);
+ 		if (kb.matches(keyData, "tui.input.tab")) {
+ 			if (this.scopedModelItems.length > 0) {
+@@ -416,7 +490,7 @@
+ 		// Select and save as default
+ 		else if (kb.matches(keyData, "app.models.save") && this.onSelectAsDefaultCallback) {
+ 			const selectedModel = this.filteredModels[this.selectedIndex];
+-			if (selectedModel) {
++			if (selectedModel && !selectedModel.tree?.header) {
+ 				this.dispose();
+ 				this.onSelectAsDefaultCallback(selectedModel.model);
+ 			}
 diff --git a/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts b/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts
 index 3e2a786..ca49ba5 100644
 --- a/packages/coding-agent/src/modes/interactive/theme/theme-controller.ts

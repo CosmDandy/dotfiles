@@ -145,15 +145,17 @@ class UpdateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(calls, [['uname', '-s']])
 
-    def test_activation_is_install_only(self):
+    def test_home_manager_activation_is_install_only(self):
         hooks = (ROOT / 'platform/nix/home/hooks.nix').read_text()
         self.assertIn('+Lazy! install', hooks)
         self.assertNotIn('+Lazy! sync', hooks)
         self.assertNotIn('nvim-treesitter").update()', hooks)
         self.assertIn('install.sh" --install-only', hooks)
         self.assertNotIn('submodule update', hooks)
+
+    def test_homebrew_activation_uninstalls_without_zap(self):
         darwin = (ROOT / 'platform/nix/darwin-configuration.nix').read_text()
-        self.assertIn('cleanup = "none";', darwin)
+        self.assertIn('cleanup = "uninstall";', darwin)
 
     def test_mason_log_failure_is_not_reported_as_success(self):
         self.env['MOCK_MASON_FAIL'] = '1'

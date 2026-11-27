@@ -93,14 +93,14 @@ const assistant = (overrides = {}) => ({
 });
 const sessionFile = join(agentDir, "cache", "statusline", "sessions", `${process.pid}.json`);
 const ownSession = () => JSON.parse(readFileSync(sessionFile, "utf8"));
+const wave = /^\s*[⠂⠒⠲⠴⠤⠠]\s*$/;
 async function start() {
   now = 10_000;
   await emit("agent_start");
   assert.equal(ownSession().state, "running");
-  assert.match(top(), /Active/);
-  assert.doesNotMatch(top(), /Waiting/);
+  assert.match(top(), wave);
   await emit("before_provider_request");
-  assert.match(top(), /Waiting/);
+  assert.match(top(), wave);
   await emit("message_start", { message: assistant({ timestamp: wall - 200 }) });
 }
 async function delta(type, at, text = "chunk") {
@@ -113,6 +113,18 @@ async function metrics() {
 }
 try {
   await emit("session_start");
+  const packageDir = join(agentDir, "subagent-package", "pi-subagents");
+  mkdirSync(join(packageDir, "bundle"), { recursive: true });
+  mkdirSync(join(packageDir, "src", "api"), { recursive: true });
+  writeFileSync(join(packageDir, "bundle", "index.js"), `export default function(pi) {
+    pi.registerTool({ name: "subagent", description: "Delegate", parameters: {} });
+    pi.registerCommand("subagents-fleet", { handler: (_args, ctx) => ctx.ui.notify("Fleet opened") });
+    pi.registerCommand("run", { handler: (_args, ctx) => ctx.ui.notify("Agent launched") });
+  }`);
+  writeFileSync(join(packageDir, "src", "api", "capability-ceiling.js"), `export function registerSubagentCapabilityCeiling({ ceiling }) {
+    globalThis.testCeiling = ceiling;
+    return { update(value) { globalThis.testCeiling = value; }, dispose() { delete globalThis.testCeiling; } };
+  }`);
   const modes = await loadExtensions([fileURLToPath(new URL("../extensions/work-mode.ts", import.meta.url))], "/tmp");
   assert.deepEqual(modes.errors, []);
   const mode = modes.extensions[0];
@@ -124,7 +136,7 @@ try {
   let choice, menu;
   const notifications = [];
   modes.runtime.getActiveTools = () => activeTools;
-  modes.runtime.getAllTools = () => [...buildTools, "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"].map(name => ({ name }));
+  modes.runtime.getAllTools = () => [...buildTools, "subagent", "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"].map(name => ({ name }));
   modes.runtime.setActiveTools = names => { activeTools = names; };
   const modeContext = { ...ctx, isIdle: () => idle, ui: { ...ctx.ui,
     setStatus: (key, value) => statuses.set(key, value), notify: text => notifications.push(text),
@@ -135,7 +147,7 @@ try {
   activeTools = [...buildTools, "subagent"];
   await modeEvent("session_start");
   assert.deepEqual(activeTools, buildTools, "resumed tools cannot enable Agents by default");
-  assert.match(top(), /^ {3}EXECUTE · PAIR +· Ready {3}$/);
+  assert.match(top(), /^ {3}EXECUTE +· Ready {3}$/);
   const sections = {};
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /Pair.*wait for the user/);
@@ -143,8 +155,7 @@ try {
   assert.doesNotMatch(sections.work_mode, /subagent/);
   const coral = rgbColor(217, 126, 116);
   assert.ok(editor.render(151)[0].includes(themes.theme.style("EXECUTE", { fg: coral })));
-  const pairColor = mixColors(themes.theme.colors.muted, themes.theme.colors.dim, 0.65, "srgb");
-  assert.ok(editor.render(151)[0].includes(themes.theme.style("PAIR", { fg: pairColor })));
+  assert.doesNotMatch(top(), /PAIR/);
   const profileShortcut = mode.shortcuts.get("alt+r");
   const agentsShortcut = mode.shortcuts.get("alt+g");
   await mode.commands.get("execute").handler("", modeContext);
@@ -176,15 +187,19 @@ try {
     assert.equal((await modeEvent("tool_call", { toolName })).block, true);
   }
   assert.equal(await modeEvent("tool_call", { toolName: "read" }), undefined);
-  const task = { task: "Find the relevant source" };
-  const runSubagent = () => subagent.execute("test", task, undefined, undefined, { ...modeContext, cwd: testHome });
-  await assert.rejects(runSubagent, /Enable Agents in Execute/);
+  const runSubagent = () => mode.commands.get("run").handler("reviewer Check the diff", modeContext);
+  await mode.commands.get("agents").handler("", modeContext);
+  assert.equal(notifications.pop(), "Fleet opened");
+  await runSubagent();
+  assert.match(notifications.pop(), /Switch to Execute before launching a subagent/);
   choice = "Pair";
   await mode.commands.get("execute").handler("", modeContext);
   assert.deepEqual(menu, ["Autonomous (active)", "Pair"]);
-  await mode.commands.get("agents").handler("", modeContext);
+  await agentsShortcut.handler(modeContext);
   assert.match(notifications.pop(), /Agents enabled for Execute/);
-  await assert.rejects(runSubagent, /Enable Agents in Execute/);
+  assert.deepEqual(globalThis.testCeiling.allowedAgents, []);
+  await runSubagent();
+  assert.match(notifications.pop(), /Switch to Execute before launching a subagent/);
   assert.match(top(), /^ {3}EXPLORE/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /switch to Execute/);
@@ -195,27 +210,19 @@ try {
   assert.match(top(), /^ {3}EXPLORE/);
   idle = true;
   await shortcut.handler(modeContext);
-  assert.match(top(), /^ {3}EXECUTE · PAIR · AGENTS/);
+  assert.match(top(), /^ {3}EXECUTE · AGENTS/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
-  assert.match(sections.work_mode, /Pair.*may use the subagent tool/);
+  assert.match(sections.work_mode, /Pair.*use the subagent tool/);
   assert.match(sections.work_mode, /Every scope, once: a subagent reviews the diff/);
-  assert.doesNotMatch(sections.work_mode, /on a cheaper model/);
+  assert.match(sections.work_mode, /cheaper model/);
   assert.deepEqual(activeTools, [...buildTools, "subagent"]);
-  const originalPath = process.env.PATH;
-  try {
-    writeFileSync(join(testHome, "pi"), '#!/bin/sh\nprintf "%s\\n" "$PWD" "$@"\n', { mode: 0o755 });
-    process.env.PATH = `${testHome}:${originalPath}`;
-    const report = (await runSubagent()).content[0].text;
-    assert.ok(report.startsWith(realpathSync(testHome) + "\n"));
-    assert.match(report, /--no-session\n--no-extensions\n--no-mcp\n/);
-    assert.match(report, /--tools\nread,grep,find,ls\n--model\nopenai\/gpt-6\.1-sol\n--thinking\nlow\n/);
-    assert.ok(report.endsWith("--\nDelegated task:\nFind the relevant source"));
-  } finally {
-    process.env.PATH = originalPath;
-  }
+  assert.equal(globalThis.testCeiling.allowedAgents, undefined);
+  assert.deepEqual(globalThis.testCeiling.allowedTools, ["read", "grep", "find", "ls", "contact_supervisor"]);
+  await runSubagent();
+  assert.equal(notifications.pop(), "Agent launched");
   idle = false;
   await agentsShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · PAIR · AGENTS/);
+  assert.match(top(), /EXECUTE · AGENTS/);
   assert.equal(notifications.length, 2);
   idle = true;
   await profileShortcut.handler(modeContext);
@@ -227,16 +234,19 @@ try {
   activeTools = [...buildTools, "subagent"];
   await modeEvent("session_tree");
   assert.deepEqual(activeTools, buildTools, "switching branches cannot re-enable Agents");
-  await assert.rejects(runSubagent, /Enable Agents in Execute/);
+  await runSubagent();
+  assert.match(notifications.pop(), /Enable Agents with Option\+G in Execute/);
+  assert.equal((await modeEvent("tool_call", { toolName: "subagent" })).block, true);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.doesNotMatch(sections.work_mode, /subagent/);
   await profileShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · PAIR/);
+  assert.match(top(), /^ {3}EXECUTE +· Ready/);
   await agentsShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · PAIR · AGENTS/);
+  assert.match(top(), /EXECUTE · AGENTS/);
   await shortcut.handler(modeContext);
   await modeEvent("session_shutdown", { reason: "reload" });
   assert.deepEqual(activeTools, buildTools);
+  assert.equal(globalThis.testCeiling, undefined);
   statuses.clear();
   await delay(150);
   assert.equal(workingVisible, false);
@@ -283,14 +293,33 @@ try {
   queued = false;
 
   await start();
-  assert.match(top().trim(), /Waiting$/);
+  assert.match(top(), wave);
   const waiting = editor.render(151)[0];
-  await delta("thinking_delta", 10_100);
+  const summary = (type, delta) => emit("provider_stream_event", { data: { type: `response.${type}`, delta } });
+  await summary("reasoning_text.delta", "**Private reasoning**");
+  await delta("thinking_delta", 10_100, "**Private reasoning**");
+  assert.match(top().trim(), /^[·✢*✶✻✽]$/);
+  await summary("reasoning_summary_part.added");
+  await summary("reasoning_summary_text.delta", "**Checking ");
+  assert.doesNotMatch(top(), /Checking/);
+  await summary("reasoning_summary_text.delta", "the \x1b[31meditor**\n\nbody");
+  assert.match(top(), /[·✢*✶✻✽] Checking the editor {3}$/);
+  assert.doesNotMatch(top(), /body|\*\*/);
+  assert.equal(visibleWidth(top(24)), 24);
+  assert.match(top(24), /[·✢*✶✻✽] Checking.*… {3}$/);
+  assert.match(top(12).trim(), /^[·✢*✶✻✽]$/);
+  await summary("reasoning_summary_part.added");
+  assert.doesNotMatch(top(), /Checking the editor/);
+  await summary("reasoning_summary_text.delta", "**Comparing results**");
+  assert.match(top(), /Comparing results/);
   const thinking = editor.render(151)[0];
-  assert.match(plain(thinking), /Thinking {3}$/);
+  assert.match(plain(thinking), /[·✢*✶✻✽] Comparing results {3}$/);
+  await emit("message_update", { assistantMessageEvent: { type: "thinking_end" } });
+  assert.match(top(), wave);
   await delta("text_delta", 10_200);
   const generating = editor.render(151)[0];
-  assert.match(plain(generating), /Generating/);
+  assert.match(plain(generating), wave);
+  assert.doesNotMatch(plain(generating), /Comparing results/);
   assert.notEqual(waiting, thinking);
   assert.notEqual(thinking, generating);
   for (const phaseRow of [waiting, thinking, generating]) {
@@ -316,17 +345,18 @@ try {
 
   await emit("tool_execution_start", { toolCallId: "a", toolName: "bash" });
   now = 11_400;
-  await emit("tool_execution_start", { toolCallId: "b", toolName: "read" });
-  assert.match(top(), /bash, read.*Running {3}$/);
+  await emit("tool_execution_start", { toolCallId: "b", toolName: "read", args: { path: "/private/AGENTS.md" } });
+  assert.match(top(), /^ {3}bash, read {2,}[⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
+  assert.doesNotMatch(top(), /private|Comparing results/);
   now = 11_600;
   await emit("tool_execution_end", { toolCallId: "a", isError: true });
-  assert.match(top(), /read.*Running {3}$/);
+  assert.match(top(), /^ {3}read {2,}[⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
   assert.doesNotMatch(top(), /error/);
   assert.doesNotMatch(top(), /bash/);
   now = 11_800;
   await emit("tool_execution_end", { toolCallId: "b", isError: false });
-  assert.match(top(), /Active/);
-  assert.doesNotMatch(top(), /Running|Waiting|bash|read/);
+  assert.match(top(), wave);
+  assert.doesNotMatch(top(), /Running|Waiting|bash|AGENTS\.md|Comparing results/);
   now = 11_900;
   await emit("agent_settled", { aborted: false });
   assert.match(top().trim(), /Ready$/);
@@ -362,7 +392,7 @@ try {
   }
   await start();
   await delta("toolcall_delta", 10_100);
-  assert.match(top(), /Preparing/);
+  assert.match(top(), wave);
   await emit("message_end", { message: assistant() });
   assert.match((await metrics()).speedUnavailableReason, /tool-call/);
   await emit("agent_settled", { aborted: true });
@@ -432,21 +462,32 @@ try {
       assert.doesNotMatch(footer.render(151)[0], /\x1b\[2;/);
     }
     await start();
-    const phaseColors = [
-      { type: undefined, label: "Waiting", frames: ["⠂", "⠒", "⠲", "⠴", "⠤", "⠠"], token: "thinkingLow" },
-      { type: "thinking_delta", label: "Thinking", frames: ["·", "✢", "*", "✶", "✻", "✽", "✽", "✻", "✶", "*", "✢", "·"], token: "thinkingText" },
-      { type: "text_delta", label: "Generating", frames: ["⠖", "⠲", "⢲", "⢰", "⣰", "⣠", "⣄", "⣆", "⡆", "⡖"], token: "thinkingMedium" },
-      { type: "toolcall_delta", label: "Preparing", frames: ["·", "•", "●", "•"], token: "warning" },
-    ];
-    for (const phase of phaseColors) {
-      if (phase.type) await delta(phase.type, now + 200);
-      const frame = phase.frames[Math.floor(now / 150) % phase.frames.length];
-      const color = themes.theme.colors[phase.token];
-      const fg = light && phase.label !== "Thinking" ? mixColors(color, rgbColor(253, 246, 227), 0.23, "srgb") : color;
-      const expected = themes.theme.style(`${frame} ${phase.label}`, { fg, dim: !light });
-      assert.ok(editor.render(151)[0].includes(expected), `${appearance}: ${phase.label} should use its dimmed theme color`);
+    const waves = [..."⠂⠒⠲⠴⠤⠠"];
+    for (const [type, frames] of [[undefined, waves], ["thinking_delta", [..."·✢*✶✻✽✽✻✶*✢·"]], ["text_delta", waves], ["toolcall_delta", waves]]) {
+      if (type) await delta(type, now + 200);
+      for (let i = 0; i < frames.length; i++, now += 150) {
+        assert.equal(top().trim(), frames[Math.floor(now / 150) % frames.length], `${appearance}: ${type ?? "waiting"}`);
+      }
     }
+    statuses.set("work-mode", "EXECUTE · PAIR");
+    await emit("tool_execution_start", { toolCallId: "one", toolName: "bash" });
+    await emit("tool_execution_start", { toolCallId: "two", toolName: "read", args: { path: "/private/input" } });
+    await emit("tool_execution_start", { toolCallId: "three", toolName: "read", args: { path: "/private/other" } });
+    const rotations = "⠁⠂⠄⡀⢀⠠⠐⠈";
+    for (let i = 0; i < rotations.length; i++, now += 150) {
+      assert.equal(top().trim().replace(/ +/g, " "), `EXECUTE bash, read ${rotations[Math.floor(now / 150) % rotations.length]}`);
+    }
+    assert.ok(editor.render(151)[0].includes(themes.theme.fg(light ? "thinkingText" : "dim", "bash, read")));
+    assert.equal(visibleWidth(top(32)), 32);
+    assert.match(top(32), / [⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
+    await emit("tool_execution_end", { toolCallId: "three" });
+    assert.match(top(), /EXECUTE bash, read /);
+    await emit("tool_execution_end", { toolCallId: "one" });
+    assert.match(top(), /EXECUTE read /);
+    await emit("tool_execution_end", { toolCallId: "two" });
     await emit("agent_settled", { aborted: false });
+    assert.match(top(), /^ {3}EXECUTE +· Ready {3}$/);
+    statuses.clear();
   }
 
   const testProvider = `pi-test-${process.pid}`;

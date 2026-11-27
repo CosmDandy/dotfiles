@@ -38,7 +38,11 @@ in
     ".pi/agent/extensions/solarized-status.ts".source = link "tools/pi/extensions/solarized-status.ts";
     ".pi/agent/extensions/compaction.ts".source = link "tools/pi/extensions/compaction.ts";
     ".pi/agent/extensions/compact-tools.ts".source = link "tools/pi/extensions/compact-tools.ts";
+    ".pi/agent/extensions/sol-medium.ts".source = link "tools/pi/extensions/sol-medium.ts";
     ".pi/agent/extensions/work-mode.ts".source = link "tools/pi/extensions/work-mode.ts";
+    ".pi/agent/subagent-package".source = "${piTools.subagents}/lib/node_modules";
+    ".pi/agent/agents".source = link "tools/pi/agents";
+    ".pi/agent/extensions/subagent/config.json".source = link "tools/pi/subagents/config.json";
     ".pi/agent/extensions/codex-web-search.ts".source = link "tools/pi/extensions/codex-web-search.ts";
     ".pi/agent/extensions/session-auto-title.ts".source =
       link "tools/pi/extensions/session-auto-title.ts";
@@ -72,6 +76,10 @@ in
     done
     if [ ! -e "$HOME/.pi/agent/settings.json" ]; then
       run ${pkgs.coreutils}/bin/install -m 0600 \
+        "${dotfiles}/tools/pi/settings.json" "$HOME/.pi/agent/settings.json"
+    else
+      run ${pkgs.coreutils}/bin/env PATH=${mcpPath} \
+        ${pkgs.bash}/bin/bash "${dotfiles}/tools/pi/install-subagents-settings.sh" \
         "${dotfiles}/tools/pi/settings.json" "$HOME/.pi/agent/settings.json"
     fi
   '';

@@ -101,7 +101,8 @@ COPY --chown=cosmdandy:cosmdandy tools/claude/cli /opt/dotfiles/tools/claude/cli
 # Pi's renderer is built by the flake; its public resources seed the live config.
 COPY --chown=cosmdandy:cosmdandy tools/pi/statusline /opt/dotfiles/tools/pi/statusline
 COPY --chown=cosmdandy:cosmdandy tools/pi/patches/vim-transcript.patch /opt/dotfiles/tools/pi/patches/vim-transcript.patch
-COPY --chown=cosmdandy:cosmdandy tools/pi/install-mcp.sh tools/pi/settings.json tools/pi/mcp.json /opt/dotfiles/tools/pi/
+COPY --chown=cosmdandy:cosmdandy tools/pi/subagents/package.json tools/pi/subagents/package-lock.json /opt/dotfiles/tools/pi/subagents/
+COPY --chown=cosmdandy:cosmdandy tools/pi/install-mcp.sh tools/pi/install-subagents-settings.sh tools/pi/settings.json tools/pi/mcp.json /opt/dotfiles/tools/pi/
 
 # NOTE: the nvim config has to exist for the activation hooks — home-manager
 # links ~/.config/nvim into ~/dotfiles, and with a dangling symlink the `-e
