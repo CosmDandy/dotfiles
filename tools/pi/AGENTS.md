@@ -25,7 +25,8 @@ exception — the connective that carries the logic is not a spare word.
   what we were working on, where it stands, how you checked it, and what is still
   open, if anything. Summarize the outcome, not the sequence of actions. For an
   interactive report, 20 lines is a ceiling, not a target.
-- One topic per block, never returned to. Use only the report blocks that apply:
+- Use each report marker at most once per response, without exceptions. Group all items
+  for that marker under one heading. Use only the report blocks that apply:
   `✔ Done` what changed or was verified, `✘ Failed` what I tried that did not
   work, `! Found` what turned out wrong, `? Decide` a decision that needs your
   word, `» Act` an action only you can take.

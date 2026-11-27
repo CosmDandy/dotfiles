@@ -46,8 +46,9 @@ in
     ".pi/agent/extensions/codex-web-search.ts".source = link "tools/pi/extensions/codex-web-search.ts";
     ".pi/agent/extensions/session-auto-title.ts".source =
       link "tools/pi/extensions/session-auto-title.ts";
-    ".pi/agent/prompts/commit.md".source = link "tools/pi/prompts/commit.md";
-    ".pi/agent/prompts/commit-and-push.md".source = link "tools/pi/prompts/commit-and-push.md";
+    ".pi/agent/prompts/c.md".source = link "tools/pi/prompts/c.md";
+    ".pi/agent/prompts/c-ph.md".source = link "tools/pi/prompts/c-ph.md";
+    ".pi/agent/prompts/c-ph-pr.md".source = link "tools/pi/prompts/c-ph-pr.md";
     ".pi/agent/prompts/recap.md".source = link "tools/pi/prompts/recap.md";
     ".pi/agent/themes/solarized-dark.json".source = link "tools/pi/themes/solarized-dark.json";
     ".pi/agent/themes/solarized-light.json".source = link "tools/pi/themes/solarized-light.json";
