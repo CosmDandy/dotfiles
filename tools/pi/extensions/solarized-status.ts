@@ -414,16 +414,14 @@ export default function (pi: ExtensionAPI) {
             const lines = super.render(innerWidth);
             const bottom = lines.indexOf(this.bottomBorder, 1);
             const theme = ctx.ui.theme;
-            const [mode, profile, agents] = (data.getExtensionStatuses().get("work-mode") ?? "").split(" · ");
+            const labels = (data.getExtensionStatuses().get("work-mode") ?? "").split(" · ").filter(Boolean);
+            const mode = labels[0];
             const light = theme.appearance === "light";
-            const coral = light ? rgbColor(170, 72, 66) : rgbColor(217, 126, 116);
             const blue = light ? rgbColor(43, 108, 150) : rgbColor(111, 172, 207);
-            const modeColor = mode === "EXPLORE" ? blue : mode === "EXECUTE" ? coral : undefined;
-            const modeLabel = modeColor ? [
-              theme.style(mode, { fg: modeColor }),
-              profile === "AUTONOMOUS" ? theme.style(profile, { fg: coral }) : "",
-              agents ? theme.fg("accent", agents) : "",
-            ].filter(Boolean).join(theme.fg("dim", " · ")) : "";
+            const modeColor = mode === "EXPLORE" ? blue : mode === "FOREMAN" ? theme.colors.accent : undefined;
+            const modeLabel = labels.map(label => label === mode && modeColor
+              ? theme.style(label, { fg: modeColor })
+              : theme.fg(label === "AGENTS" ? "accent" : "thinkingText", label)).join(theme.fg("dim", " · "));
             const borderColor = modeColor ? mixColors(theme.colors.borderMuted, modeColor, 0.5, "srgb") : undefined;
             const border = (text: string) => borderColor ? theme.style(text, { fg: borderColor }) : theme.fg("borderMuted", text);
             const frame = lines.map((line, i) => {

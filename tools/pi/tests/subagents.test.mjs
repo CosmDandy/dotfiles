@@ -31,6 +31,12 @@ async function waitFor(predicate, label) {
 }
 
 try {
+  const git = (...args) => execFileSync("git", ["-C", directory, "-c", "user.name=Probe", "-c", "user.email=probe@example.invalid", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" });
+  git("init", "-q");
+  const workFile = join(directory, "work.txt");
+  writeFileSync(workFile, "initial\n");
+  git("add", "--", "work.txt");
+  git("commit", "-qm", "Fixture", "--no-gpg-sign");
   mkdirSync(join(agent, "extensions", "subagent"), { recursive: true });
   symlinkSync(packageDir, join(agent, "subagent-package"));
   symlinkSync(join(source, "agents"), join(agent, "agents"));
@@ -52,7 +58,7 @@ try {
   };
   writeFileSync(join(agent, "settings.json"), JSON.stringify(fixture));
   writeFileSync(provider, `import { appendFileSync } from "node:fs";
-import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, getCurrentTools } from "@earendil-works/pi-ai";
 export default pi => {
   pi.registerProvider("probe", {
     baseUrl: "http://127.0.0.1:1", apiKey: "fake", api: "probe",
@@ -67,20 +73,32 @@ export default pi => {
       const last = messages.at(-1);
       const key = last?.match(/child_[a-z_]+_sentinel/g)?.at(-1) ?? last;
       const text = "DONE " + key;
-      const call = key === "parallel_probe" && !context.messages.some(m => m.role === "toolResult" && m.toolCallId === "parallel-probe") ? {
-        type: "toolCall", id: "parallel-probe", name: "subagent",
-        arguments: { tasks: [
+      const [id, name, args] = {
+        parallel_probe: ["parallel-probe", "subagent", { tasks: [
           { agent: "scout", task: "child_batch_one_sentinel" },
           { agent: "reviewer", task: "child_batch_two_sentinel" },
-        ], async: false },
-      } : undefined;
+        ], async: false }],
+        foreman_first: ["foreman-first", "foreman_worker", { action: "start", message: "child_foreman_first_sentinel" }],
+        foreman_duplicate: ["foreman-duplicate", "foreman_worker", { action: "start", message: "child_foreman_duplicate_sentinel" }],
+        foreman_resume: ["foreman-resume", "foreman_worker", { action: "resume", message: "child_foreman_resume_sentinel" }],
+        foreman_direct_write: ["foreman-direct", "write", { path: "not-allowed", content: "blocked" }],
+        execute_after_foreman: ["execute-after-foreman", "write", { path: "execute-restored", content: "restored" }],
+        foreman_check_diff: ["foreman-check", "foreman_diff", {}],
+        child_foreman_first_sentinel: ["child-write", "edit", { path: "work.txt", edits: [{ oldText: "initial", newText: "first" }] }],
+        child_foreman_resume_sentinel: ["child-follow-up", "edit", { path: "work.txt", edits: [{ oldText: "first", newText: "resumed" }] }],
+      }[key] ?? [];
+      const call = id && !context.messages.some(m => m.role === "toolResult" && m.toolCallId === id)
+        ? { type: "toolCall", id, name, arguments: args } : undefined;
       const response = {
         role: "assistant", content: [call ?? { type: "text", text }], api: model.api, provider: model.provider, model: model.id,
         usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
         timestamp: Date.now(), stopReason: call ? "toolUse" : "stop",
       };
       const trace = data => appendFileSync(process.env.PROBE_LOG, JSON.stringify({ key, model: model.id, time: Date.now(), ...data }) + "\\n");
-      trace({ phase: "start", reasoning: options?.reasoning, inherited: messages.includes("parent_history_sentinel") });
+      trace({ phase: "start", reasoning: options?.reasoning, inherited: messages.includes("parent_history_sentinel"),
+        workerContext: messages.some(text => text?.includes("child_foreman_first_sentinel")),
+        tools: getCurrentTools(context.messages).map(t => t.name),
+        result: id && context.messages.find(m => m.role === "toolResult" && m.toolCallId === id)?.content });
       setTimeout(() => {
         stream.push({ type: "start", partial: response });
         if (call) {
@@ -94,7 +112,7 @@ export default pi => {
         stream.push({ type: "done", reason: response.stopReason, message: response });
         stream.end();
         trace({ phase: "end" });
-      }, key?.startsWith("child_batch_") ? 1800 : 0);
+      }, key?.startsWith("child_batch_") ? 1800 : key === "child_foreman_first_sentinel" && call ? 6500 : 0);
       return stream;
     },
   });
@@ -134,13 +152,13 @@ export default pi => {
   send("Escape");
   await waitFor(() => !frame().includes("Select model for reviewer"), "close model picker");
   send("M-g");
-  await waitFor(() => /EXECUTE.*AGENTS/.test(frame()), "Agents status");
+  await waitFor(() => /\bAGENTS\b/.test(frame()), "Agents status");
   send("BTab");
   await waitFor(() => frame().includes("EXPLORE"), "Explore mode");
   prompt("/run scout child_explore_sentinel");
   await waitFor(() => frame().includes("Switch to Execute before launching a subagent"), "Explore launch guard");
   send("BTab");
-  await waitFor(() => /EXECUTE.*AGENTS/.test(frame()), "return to Execute");
+  await waitFor(() => /\bAGENTS\b/.test(frame()) && !frame().includes("EXPLORE"), "return to Execute");
   prompt("/run scout child_fresh_sentinel");
   await waitFor(() => frame().includes("DONE child_fresh_sentinel"), "fresh run with default virtual model");
   prompt("/run reviewer[model=probe/main:xhigh] child_fork_sentinel --fork");
@@ -159,7 +177,40 @@ export default pi => {
   assert.ok(results.some(r => r.key === "child_fresh_sentinel" && r.model === "other" && r.reasoning === "medium" && !r.inherited));
   assert.ok(results.some(r => r.key === "child_fork_sentinel" && r.model === "main" && r.reasoning === "xhigh" && r.inherited));
   assert.ok(!results.some(r => r.model === "outside" || r.key === "child_denied_sentinel" || r.key === "child_explore_sentinel"));
-  console.log("PASS: linked roles, /agents, Option+G, Explore, strict model scope, fresh, fork, parallel and background");
+  prompt("/foreman");
+  await waitFor(() => /\bFOREMAN\b/.test(frame()), "Foreman mode");
+  prompt("foreman_direct_write");
+  await waitFor(() => frame().includes("DONE foreman_direct_write"), "parent write rejection");
+  assert.ok(!existsSync(join(directory, "not-allowed")), "the parent cannot write in Foreman");
+  const parent = requests().find(r => r.key === "foreman_direct_write" && r.phase === "start");
+  assert.ok(parent.tools.includes("foreman_worker"));
+  for (const tool of ["bash", "edit", "write", "codemode", "subagent"]) assert.ok(!parent.tools.includes(tool), tool);
+
+  prompt("foreman_first");
+  await waitFor(() => requests().some(r => r.key === "child_foreman_first_sentinel" && r.phase === "start"), "Foreman worker start");
+  await waitFor(() => frame().includes("DONE foreman_first"), "parent returns control while worker runs");
+  prompt("/foreman");
+  await waitFor(() => frame().includes("Wait for the Foreman worker to stop"), "cannot exit while worker writes");
+  prompt("foreman_duplicate");
+  await waitFor(() => requests().some(r => r.key === "foreman_duplicate" && JSON.stringify(r.result)?.includes("already exists")), "duplicate worker rejection");
+  prompt("/reload");
+  await waitFor(() => /\bFOREMAN\b/.test(frame()) && /reloaded/i.test(frame()), "Foreman restored on reload");
+  assert.equal(readFileSync(workFile, "utf8"), "initial\n", "the worker was still running during reload");
+  await waitFor(() => readFileSync(workFile, "utf8") === "first\n", "worker edits the current working copy");
+  await waitFor(() => frame().includes("DONE child_foreman_first_sentinel"), "worker completion surfaces after reload");
+  prompt("foreman_resume");
+  await waitFor(() => readFileSync(workFile, "utf8") === "resumed\n", "continued worker edits the same file");
+  assert.ok(requests().some(r => r.key === "child_foreman_resume_sentinel" && r.model === "other" && r.workerContext), "resume preserves worker context");
+  assert.ok(!requests().some(r => r.key === "child_foreman_duplicate_sentinel"), "a fresh second worker did not run");
+  await waitFor(() => frame().includes("DONE child_foreman_resume_sentinel"), "resumed completion surfaces in parent");
+  prompt("foreman_check_diff");
+  await waitFor(() => requests().some(r => r.key === "foreman_check_diff" && JSON.stringify(r.result)?.includes("+resumed")), "Foreman sees the real diff");
+  await waitFor(() => frame().includes("DONE foreman_check_diff"), "Foreman diff turn completes");
+  prompt("/foreman");
+  await waitFor(() => !/\bFOREMAN\b/.test(frame().split("\n").slice(-5).join("\n")), "exit Foreman after worker completion");
+  prompt("execute_after_foreman");
+  await waitFor(() => existsSync(join(directory, "execute-restored")), "Execute write tools are restored");
+  console.log("PASS: linked roles, /agents, Option+G, Explore, model scope, parallel/background, and a single resumed Foreman writer");
 } finally {
   try { tmux("kill-server"); } catch {}
   rmSync(directory, { recursive: true, force: true });

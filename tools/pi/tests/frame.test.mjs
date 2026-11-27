@@ -138,7 +138,7 @@ try {
   modes.runtime.getActiveTools = () => activeTools;
   modes.runtime.getAllTools = () => [...buildTools, "subagent", "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"].map(name => ({ name }));
   modes.runtime.setActiveTools = names => { activeTools = names; };
-  const modeContext = { ...ctx, isIdle: () => idle, ui: { ...ctx.ui,
+  const modeContext = { ...ctx, isIdle: () => idle, sessionManager: { ...ctx.sessionManager, getEntries: () => [] }, ui: { ...ctx.ui,
     setStatus: (key, value) => statuses.set(key, value), notify: text => notifications.push(text),
     select: async (_title, options) => { menu = options; return choice; },
   } };
@@ -147,15 +147,15 @@ try {
   activeTools = [...buildTools, "subagent"];
   await modeEvent("session_start");
   assert.deepEqual(activeTools, buildTools, "resumed tools cannot enable Agents by default");
-  assert.match(top(), /^ {3}EXECUTE +· Ready {3}$/);
+  assert.match(top(), /^ +· Ready {3}$/);
+  const neutralFrame = editor.render(151)[1];
+  assert.ok(neutralFrame.includes(`${themes.theme.getFgAnsi("borderMuted")}╭`));
   const sections = {};
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /Pair.*wait for the user/);
   assert.doesNotMatch(sections.work_mode, /Ask only when stuck/);
   assert.doesNotMatch(sections.work_mode, /subagent/);
-  const coral = rgbColor(217, 126, 116);
-  assert.ok(editor.render(151)[0].includes(themes.theme.style("EXECUTE", { fg: coral })));
-  assert.doesNotMatch(top(), /PAIR/);
+  assert.doesNotMatch(top(), /EXECUTE|PAIR/);
   const profileShortcut = mode.shortcuts.get("alt+r");
   const agentsShortcut = mode.shortcuts.get("alt+g");
   await mode.commands.get("execute").handler("", modeContext);
@@ -163,16 +163,16 @@ try {
   menu = undefined;
   await profileShortcut.handler(modeContext);
   assert.equal(menu, undefined, "cycling does not open the selector");
-  assert.match(top(), /EXECUTE · AUTONOMOUS/);
+  assert.match(top(), /^ {3}AUTONOMOUS +· Ready {3}$/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /Autonomous.*verification/);
   assert.match(sections.work_mode, /Ask only when stuck: the same failure twice with no new hypothesis/);
-  assert.ok(editor.render(151)[0].includes(themes.theme.style("AUTONOMOUS", { fg: coral })));
-  const executeFrame = editor.render(151)[1];
+  assert.ok(editor.render(151)[0].includes(themes.theme.fg("thinkingText", "AUTONOMOUS")));
+  assert.equal(editor.render(151)[1], neutralFrame);
   assert.doesNotMatch(plain(editor.render(151)[2]), /EXECUTE/);
   assert.doesNotMatch(editor.render(151)[2], /\x1b\[48;/);
   await shortcut.handler(modeContext);
-  assert.notEqual(editor.render(151)[1], executeFrame);
+  assert.notEqual(editor.render(151)[1], neutralFrame);
   assert.match(top(), /^ {3}EXPLORE +· Ready {3}$/);
   const exploreColor = rgbColor(111, 172, 207);
   assert.ok(editor.render(151)[0].includes(themes.theme.style("EXPLORE", { fg: exploreColor })));
@@ -210,7 +210,7 @@ try {
   assert.match(top(), /^ {3}EXPLORE/);
   idle = true;
   await shortcut.handler(modeContext);
-  assert.match(top(), /^ {3}EXECUTE · AGENTS/);
+  assert.match(top(), /^ {3}AGENTS +· Ready/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /Pair.*use the subagent tool/);
   assert.match(sections.work_mode, /Every scope, once: a subagent reviews the diff/);
@@ -222,11 +222,11 @@ try {
   assert.equal(notifications.pop(), "Agent launched");
   idle = false;
   await agentsShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · AGENTS/);
+  assert.match(top(), /^ {3}AGENTS +· Ready/);
   assert.equal(notifications.length, 2);
   idle = true;
   await profileShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · AUTONOMOUS · AGENTS/);
+  assert.match(top(), /^ {3}AUTONOMOUS · AGENTS/);
   assert.deepEqual(activeTools, [...buildTools, "subagent"]);
   await agentsShortcut.handler(modeContext);
   assert.doesNotMatch(top(), /AGENTS/);
@@ -240,13 +240,16 @@ try {
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.doesNotMatch(sections.work_mode, /subagent/);
   await profileShortcut.handler(modeContext);
-  assert.match(top(), /^ {3}EXECUTE +· Ready/);
+  assert.match(top(), /^ +· Ready {3}$/);
   await agentsShortcut.handler(modeContext);
-  assert.match(top(), /EXECUTE · AGENTS/);
+  assert.match(top(), /^ {3}AGENTS +· Ready/);
   await shortcut.handler(modeContext);
   await modeEvent("session_shutdown", { reason: "reload" });
   assert.deepEqual(activeTools, buildTools);
   assert.equal(globalThis.testCeiling, undefined);
+  statuses.set("work-mode", "FOREMAN · AUTONOMOUS");
+  assert.match(top(), /^ {3}FOREMAN · AUTONOMOUS +· Ready {3}$/);
+  assert.notEqual(editor.render(151)[1], neutralFrame);
   statuses.clear();
   await delay(150);
   assert.equal(workingVisible, false);
@@ -483,24 +486,24 @@ try {
         assert.equal(top().trim(), frames[Math.floor(now / 150) % frames.length], `${appearance}: ${type ?? "waiting"}`);
       }
     }
-    statuses.set("work-mode", "EXECUTE · PAIR");
+    statuses.delete("work-mode");
     await emit("tool_execution_start", { toolCallId: "one", toolName: "bash" });
     await emit("tool_execution_start", { toolCallId: "two", toolName: "read", args: { path: "/private/input" } });
     await emit("tool_execution_start", { toolCallId: "three", toolName: "read", args: { path: "/private/other" } });
     const rotations = "⠁⠂⠄⡀⢀⠠⠐⠈";
     for (let i = 0; i < rotations.length; i++, now += 150) {
-      assert.equal(top().trim().replace(/ +/g, " "), `EXECUTE bash, read ${rotations[Math.floor(now / 150) % rotations.length]}`);
+      assert.equal(top().trim().replace(/ +/g, " "), `bash, read ${rotations[Math.floor(now / 150) % rotations.length]}`);
     }
     assert.ok(editor.render(151)[0].includes(themes.theme.fg(light ? "thinkingText" : "dim", "bash, read")));
     assert.equal(visibleWidth(top(32)), 32);
     assert.match(top(32), / [⠁⠂⠄⡀⢀⠠⠐⠈] {3}$/);
     await emit("tool_execution_end", { toolCallId: "three" });
-    assert.match(top(), /EXECUTE bash, read /);
+    assert.match(top(), /^ {3}bash, read /);
     await emit("tool_execution_end", { toolCallId: "one" });
-    assert.match(top(), /EXECUTE read /);
+    assert.match(top(), /^ {3}read /);
     await emit("tool_execution_end", { toolCallId: "two" });
     await emit("agent_settled", { aborted: false });
-    assert.match(top(), /^ {3}EXECUTE +· Ready {3}$/);
+    assert.match(top(), /^ +· Ready {3}$/);
     statuses.clear();
   }
 
