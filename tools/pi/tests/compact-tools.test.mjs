@@ -122,7 +122,7 @@ try {
   assert.match(body(bash), /^ *\$ npm test/);
   assert.match(body(bash), /still running/);
   bash.setExpanded(false);
-  assert.match(body(bash), /still running/);
+  assert.doesNotMatch(body(bash), /still running/, "manual expansion bypasses the live preview delay");
   finish(bash, "log line 1\nFAIL: expected 200, received 500", true);
   assert.equal(timers.size, 0);
   assert.match(body(bash), /^ *\$ npm test.*\+1 lines/);
@@ -130,7 +130,8 @@ try {
   assert.ok(bash.render(100).join("").includes(prompt));
   assert.ok(bash.render(100).join("").includes(themes.theme.fg("toolOutput", "npm test")));
   assert.ok(!bash.render(100).join("").includes(themes.theme.fg("error", "npm test")));
-  assert.doesNotMatch(body(bash), /FAIL|log line|bash/);
+  assert.doesNotMatch(body(bash), /FAIL:|log line|bash/);
+  assert.match(body(bash), /Failed/);
   const bashClick = bash.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 100, height: 3 });
   assert.equal(bashClick?.handled, true);
   assert.match(body(bash), /^ *\$ npm test/);
@@ -538,6 +539,18 @@ try {
     finish(call, "output");
     assert.doesNotMatch(body(call), /DEVOPS/, "compound shell should keep its normal preview");
   }
+  const docker = tool("bash", { command: "docker compose up -d" }, "docker-live");
+  docker.markExecutionStarted();
+  docker.updateResult({ content: [{ type: "text", text: "Creating container" }] }, true);
+  assert.doesNotMatch(body(docker), /Creating container/);
+  now += 600;
+  for (const tick of timers.values()) tick();
+  assert.match(body(docker), /DEVOPS[\s\S]*Creating container/);
+  docker.updateResult({ content: [{ type: "text", text: "Creating container\nStarting container" }] }, true);
+  assert.match(body(docker), /Starting container/);
+  finish(docker, "Container started", false, undefined, 850);
+  assert.doesNotMatch(body(docker), /Creating container|Starting container|Container started/);
+
   const ssh = tool("bash", {
     command: "ssh -o BatchMode=yes -o ConnectTimeout=5 -T lab.example uptime",
   }, "ssh-tail");
@@ -547,15 +560,27 @@ try {
   const sshOutput = Array.from({ length: 12 }, (_, i) => `\x1b[32mremote line ${i + 1}\x1b[0m`).join("\n");
   const sshTail = ["… 3 earlier lines", ...Array.from({ length: 9 }, (_, i) => `remote line ${i + 4}`)];
   ssh.updateResult({ content: [{ type: "text", text: sshOutput }] }, true);
-  assert.deepEqual(rows(ssh).slice(1).map(row => row.trim()), sshTail);
-  finish(ssh, sshOutput, false, undefined, 520);
+  assert.equal(rows(ssh).length, 1);
+  now += 600;
+  for (const tick of timers.values()) tick();
   assert.deepEqual(rows(ssh).slice(1).map(row => row.trim()), sshTail);
   assert.doesNotMatch(ssh.render(100).join(""), /\x1b\[32m/);
+  finish(ssh, sshOutput, false, undefined, 850);
+  assert.equal(rows(ssh).length, 1);
   ssh.setExpanded(true);
   assert.match(ssh.render(100).join(""), /\x1b\[32mremote line 1\x1b\[0m/);
   assert.doesNotMatch(body(ssh), /earlier lines/);
   ssh.setExpanded(false);
-  assert.deepEqual(rows(ssh).slice(1).map(row => row.trim()), sshTail);
+  assert.equal(rows(ssh).length, 1);
+
+  const quick = tool("bash", { command: "ls" }, "quick-ls");
+  quick.markExecutionStarted();
+  now += 250;
+  quick.updateResult({ content: [{ type: "text", text: "file.txt" }] }, true);
+  assert.equal(rows(quick).length, 1);
+  finish(quick, "file.txt", false, undefined, 250);
+  assert.match(body(quick), /ls +250 ms/);
+  assert.doesNotMatch(body(quick), /file\.txt/);
   const shellGrep = tool("bash", { command: "rg -n 'needle' src", timeout: 20 }, "shell-rg");
   finish(shellGrep, "a.ts:1: needle\nb.ts:3: needle", false, undefined, 1250);
   const shellFind = tool("bash", { command: "find src -name '*.ts'" }, "shell-find");
@@ -694,8 +719,12 @@ try {
   assert.equal(live.render(100).length, idleHeight, "no space reserved before results");
   live.updateResult({ content: [] }, true);
   assert.equal(live.render(100).length, idleHeight, "an empty update adds no rows");
+  now += 599;
   live.updateResult({ content: [{ type: "text", text: "first line" }] }, true);
-  assert.equal(live.render(100).length, idleHeight + 1, "the tail grows with the output");
+  assert.equal(live.render(100).length, idleHeight, "short runs never flash a live tail");
+  now++;
+  for (const tick of timers.values()) tick();
+  assert.equal(live.render(100).length, idleHeight + 1, "the tail appears even without another output update");
   assert.ok(live.render(100)[idleHeight].includes(themes.theme.style("first line", darkMetadata)));
   const mixedLog = "ascii\n".repeat(2000) + "長い行".repeat(80) + "\n\tindented\n\n1\n2\n3\n4\n5\n";
   live.updateResult({ content: [{ type: "text", text: mixedLog }] }, true);

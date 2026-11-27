@@ -103,7 +103,7 @@ index 6f01f1d..81f119d 100644
 +			},
 +		);
 +		this.addChild(new MouseRegion(markdown, (event) => {
-+			if (event.type !== "click" || event.button !== "left" || event.y !== this.foldRow) return undefined;
++			if (event.type !== "click" || event.button !== "left" || this.foldRow === undefined) return undefined;
 +			this.toggleFold();
 +			this.onFoldClick?.();
 +			return { handled: true };
@@ -116,7 +116,7 @@ index 6f01f1d..81f119d 100644
 +		const left = Math.floor(space / 2);
 +		return theme.bg(
 +			"userMessageBg",
-+			theme.fg("muted", "─".repeat(left)) + theme.fg("accent", label) + theme.fg("muted", "─".repeat(space - left)),
++			theme.fg("dim", "─".repeat(left) + label + "─".repeat(space - left)),
  		);
  	}
  
@@ -805,10 +805,10 @@ index 0000000..16c1e89
 +}
 diff --git a/packages/coding-agent/src/modes/interactive/vim-transcript.ts b/packages/coding-agent/src/modes/interactive/vim-transcript.ts
 new file mode 100644
-index 0000000..c2193d1
+index 0000000..84528dd
 --- /dev/null
 +++ b/packages/coding-agent/src/modes/interactive/vim-transcript.ts
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,425 @@
 +import { stripVTControlCharacters } from "node:util";
 +import {
 +	compositeTuiLine,
@@ -821,6 +821,7 @@ index 0000000..c2193d1
 +	rgbColor,
 +	type ScrollView,
 +	sliceByColumn,
++	type TuiMouseEvent,
 +	visibleWidth,
 +} from "@earendil-works/pi-tui";
 +import { copyToClipboard } from "../../utils/clipboard.ts";
@@ -907,6 +908,7 @@ index 0000000..c2193d1
 +	private detail?: Detail;
 +	private count = "";
 +	private revealPending = false;
++	private opening?: ToolBlock;
 +	private followOnLeave = false;
 +	private notice = "";
 +	private copied?: symbol;
@@ -1030,6 +1032,23 @@ index 0000000..c2193d1
 +		}
 +	}
 +
++	private anchorOpening(tool: ToolBlock): void {
++		const viewport = this.viewport();
++		if (!viewport) return;
++		viewport.scrollTo(viewport.scrollTop, { disableFollow: true });
++		this.opening = tool;
++	}
++
++	override handleMouse(event: TuiMouseEvent): ReturnType<Container["handleMouse"]> {
++		if (event.type !== "click" || event.button !== "left" || this.mode) return super.handleMouse(event);
++		const row = (this.chatRow() ?? 0) + event.y;
++		const tool = this.positions().find((item) => row >= item.row && row < item.row + item.lines.length)?.block;
++		const wasCollapsed = isTool(tool) && !tool.isExpanded;
++		const result = super.handleMouse(event);
++		if (result && wasCollapsed && tool.isExpanded) this.anchorOpening(tool);
++		return result;
++	}
++
 +	private copy(lines: readonly string[]): void {
 +		this.copyText(lines.filter((line) => !isImageLine(line)).map((line) => stripVTControlCharacters(line).trimEnd()).join("\n"));
 +	}
@@ -1141,6 +1160,7 @@ index 0000000..c2193d1
 +			if (isTool(item.block)) {
 +				this.detail.wasExpanded = item.block.isExpanded;
 +				item.block.setExpanded(true);
++				this.anchorOpening(item.block);
 +			}
 +			this.revealPending = true;
 +		} else if (key("y")) {
@@ -1156,9 +1176,16 @@ index 0000000..c2193d1
 +		const selected = this.focused ? this.selected : undefined;
 +		for (const tool of this.children.filter(isTool)) tool.setResultHidden(selected !== undefined && tool !== this.detail?.block);
 +		const source = super.render(width);
-+		if (selected && this.revealPending) {
++		const opening = this.opening;
++		if (opening || (selected && this.revealPending)) {
 +			this.revealPending = false;
-+			queueMicrotask(() => { if (this.focused) this.reveal(); });
++			this.opening = undefined;
++			// The expanded layout must set the new scroll limit before anchoring to the header.
++			queueMicrotask(() => {
++				const item = opening?.isExpanded ? this.positionOf(opening) : undefined;
++				if (item) this.viewport()?.scrollTo(item.row + item.first, { disableFollow: true });
++				else if (this.focused) this.reveal();
++			});
 +		}
 +		return source;
 +	}
