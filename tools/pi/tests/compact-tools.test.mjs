@@ -447,58 +447,92 @@ try {
   code.updateResult({ content: [{ type: "text", text: "Script completed\nWall time 1.25 seconds\nOutput:\n" },
     { type: "text", text: "script result" }], details: { calls: [] }, durationMs: 1250 }, false);
   assert.equal(rows(code).length, 1);
-  assert.match(body(code), /^ codemode text.*\+1 lines +1\.3 s {3}$/);
-  for (const component of [bash, code]) {
-    assert.ok(component.render(100).join("").includes(themes.theme.style("+1 lines", darkMetadata)));
-  }
+  assert.match(body(code), /^ codemode · No tool calls +1\.3 s {3}$/);
+  assert.ok(bash.render(100).join("").includes(themes.theme.style("+1 lines", darkMetadata)));
   assert.doesNotMatch(body(code), /TAIL|second line|script result/);
   assert.ok(rows(code, 24).every(row => visibleWidth(row) <= 24));
   code.setExpanded(true);
-  assert.match(body(code), /TAIL[\s\S]*second line[^\n]*\n *\n {2}script result/);
+  assert.match(body(code), /TAIL[\s\S]*second line[\s\S]*script result/);
   assert.doesNotMatch(body(code), /Wall time|Output:/);
-  const searchScript = tool("codemode", { code: 'await tools[name]({ query });' }, "codex-search-script");
-  const searchCall = (args, status, details) => ({ id: "codex-search-script/?", name: "codex_web_search", args, status, ...details });
-  const firstSearch = searchCall(JSON.stringify({ query: 'Find "release"\n\x1b[2Jnotes' }), "running");
-  searchScript.markExecutionStarted();
-  assert.doesNotMatch(body(searchScript), /search · codex/);
-  searchScript.updateResult({ content: [], details: { calls: [firstSearch, { ...firstSearch, name: "read" }] } }, true);
-  const searchFrame = () => searchScript.render(100).find(line => plain(line).includes("search · codex"));
-  const searchStart = searchFrame();
-  assert.ok(searchStart, "a nested Codex search is visible while running");
-  assert.match(plain(searchStart), /^ {2}search · codex Find "release" notes …$/);
-  assert.doesNotMatch(searchStart, /\x1b\[2J/);
+
+  const trace = tool("codemode", { code: 'const calls = await Promise.allSettled([]);' }, "codemode-trace");
+  const child = (name, args, status, details) => ({ id: "codemode-trace/?", name, args, status, ...details });
+  const nestedRead = child("read", JSON.stringify({ path: "src/app.ts", offset: 2, limit: 30 }), "ok", { durationMs: 18 });
+  const nestedBash = child("bash", JSON.stringify({ command: 'printf "hello"\n\x1b[2Jsleep 2' }), "running");
+  const nestedSearch = child("mcp__knowledge__search", JSON.stringify({ text: "Find deployment docs" }), "running");
+  const nestedEdit = child("edit", '{"path":"src/settings.ts","edits":[{"oldText":"SECRET_OLD_TEXT...', "ok", { durationMs: 10 });
+  const nestedFailure = child("codex_web_search", '{"query":"Long query with \\"quotes\\" and a cut escape \\u0...', "error", { durationMs: 620, error: "Search failed" });
+  const cancelled = child("bash", '{"command":"sleep 99"}', "cancelled");
+  const missing = child("read", JSON.stringify({ path: "deep/nested/".repeat(6) + "missing.json" }), "error");
+  assert.match(body(trace), /^ codemode · Preparing script +0 ms {3}$/);
+  trace.markExecutionStarted();
+  assert.match(body(trace), /^ codemode · Running script +0 ms {3}$/);
+  trace.updateResult({ content: [], details: { calls: [nestedRead, nestedBash, nestedSearch, nestedEdit] } }, true);
+  assert.equal(rows(trace).length, 1);
+  assert.match(body(trace), /1 read, 1 bash, 1 search · knowledge, 1 edit/);
+  assert.doesNotMatch(body(trace), /const calls|src\/app/);
+  trace.setExpanded(true);
+  assert.match(body(trace), /✓ read src\/app\.ts:2-31 18 ms[\s\S]*… bash printf "hello" sleep 2[\s\S]*… search · knowledge Find deployment docs[\s\S]*✓ edit src\/settings\.ts[\s\S]*const calls/);
+  assert.doesNotMatch(body(trace), /SECRET_OLD_TEXT|\x1b\[2J/);
+  trace.setExpanded(false);
+  now += 599;
+  for (const tick of timers.values()) tick();
+  assert.equal(rows(trace).length, 1, "fast calls must not flash child rows");
+  now += 121;
+  for (const tick of timers.values()) tick();
+  const childFrame = prefix => trace.render(100).find(line => plain(line).includes(prefix));
+  const runningChild = childFrame('… bash printf');
+  const finishedChild = childFrame('✓ read src/app.ts');
+  assert.ok(runningChild && finishedChild, "child rows appear even without a new result update");
+  assert.ok(childFrame('… search · knowledge'));
   now += 480;
   for (const tick of timers.values()) tick();
-  assert.notEqual(searchFrame(), searchStart, "the child row animates without script output or further updates");
-  assert.equal(plain(searchFrame()), plain(searchStart));
-  assert.equal(rows(searchScript).length, 2, "unrelated nested tools keep the existing compact layout");
-  const firstDone = { ...firstSearch, id: "codex-search-script/1", status: "ok", durationMs: 480 };
-  searchScript.updateResult({ content: [], details: { calls: [firstDone] } }, true);
-  const finishedChild = searchFrame();
-  assert.match(plain(finishedChild), /✓ 480 ms$/);
-  now += 480;
-  for (const tick of timers.values()) tick();
-  assert.equal(searchFrame(), finishedChild, "the finished child stops animating even while the parent runs");
-  searchScript.updateResult({
-    content: [{ type: "text", text: "Script completed\nWall time 1.5 seconds\nOutput:\n" }, { type: "text", text: "search answer" }],
-    details: { calls: [
-      firstDone,
-      searchCall('{"query":"Long query with \\"quotes\\" and a cut escape \\u0...', "error", { durationMs: 620, error: "Search failed" }),
-      searchCall('{"query":"Another query"}', "cancelled", { durationMs: 200 }),
-    ] }, durationMs: 1500,
+  assert.notEqual(childFrame('… bash printf'), runningChild);
+  assert.equal(plain(childFrame('… bash printf')), plain(runningChild));
+  assert.equal(childFrame('✓ read src/app.ts'), finishedChild);
+  trace.updateResult({
+    content: [{ type: "text", text: "Script completed\nWall time 1.5 seconds\nOutput:\n" }, { type: "text", text: "script answer" }],
+    details: { calls: [nestedRead, { ...nestedBash, status: "ok", durationMs: 1200 }, nestedEdit, nestedFailure, cancelled] }, durationMs: 1500,
   });
-  assert.deepEqual(rows(searchScript).slice(1).map(line => line.trim()), [
-    'search · codex Find "release" notes ✓ 480 ms',
-    'search · codex Long query with "quotes" and a cut escape ... ✗ 620 ms',
-    'search · codex Another query ⊘ 200 ms',
+  assert.match(rows(trace)[0], /1 failed · 1 cancelled/);
+  assert.deepEqual(rows(trace).slice(1).map(line => line.trim()), [
+    '✗ search · codex Long query with "quotes" and a cut escape ... 620 ms',
+    '⊘ bash sleep 99',
   ]);
-  assert.doesNotMatch(body(searchScript), /search answer|Search failed/);
-  searchScript.setExpanded(true);
-  assert.match(body(searchScript), /Search failed[\s\S]*search answer/);
-  assert.doesNotMatch(body(searchScript), /Wall time|Output:/);
+  assert.doesNotMatch(body(trace), /script answer|Search failed|const calls/);
+  trace.setExpanded(true);
+  assert.match(body(trace), /✓ read[\s\S]*✓ bash[\s\S]*✓ edit[\s\S]*Search failed[\s\S]*const calls[\s\S]*script answer/);
+  assert.doesNotMatch(body(trace), /Wall time|Output:/);
+
+  const crowded = tool("codemode", { code: "text('crowded');" }, "crowded-trace");
+  crowded.markExecutionStarted();
+  const crowdedCalls = [nestedFailure, ...Array.from({ length: 10 }, (_, i) => ({ ...nestedRead, args: JSON.stringify({ path: "file-" + i }) })), nestedBash];
+  crowded.updateResult({ content: [], details: { calls: crowdedCalls } }, true);
+  assert.match(body(crowded), /✗ search · codex/, "errors show immediately, even before the live preview");
+  assert.doesNotMatch(body(crowded), /✓ read/);
+  now += 720;
+  for (const tick of timers.values()) tick();
+  assert.equal(rows(crowded).length, 10, "header, eight children and an overflow hint");
+  assert.match(body(crowded), /✗ search · codex[\s\S]*… bash[\s\S]*4 more calls/);
+  crowded.setExpanded(true);
+  assert.equal(body(crowded).match(/✓ read file-/g)?.length, 10);
+  assert.doesNotMatch(body(crowded), /more calls/);
+  crowded.setExpanded(false);
+  finish(crowded, "done", false, { calls: [missing] });
+  assert.match(rows(crowded, 55)[1], /✗ read ….*missing\.json/);
+
+  const fast = tool("codemode", { code: "const value = 1;" }, "codemode-fast");
+  fast.markExecutionStarted();
+  finish(fast, "hidden output", false, { calls: [nestedRead, { ...nestedBash, status: "ok" }, { ...nestedRead, args: '{"path":"package.json"}' }] }, 210);
+  assert.match(body(fast), /^ codemode · 2 read, 1 bash +210 ms {3}$/);
+  assert.equal(fast.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 100, height: 2 })?.handled, true);
+  assert.match(body(fast), /✓ read src\/app\.ts[\s\S]*✓ bash[\s\S]*✓ read package\.json[\s\S]*const value[\s\S]*hidden output/);
+  fast.setExpanded(false);
+  assert.equal(rows(fast).length, 1);
   const codeError = tool("codemode", { code: 'text("test");' }, "code-error");
   finish(codeError, "\x1b[38:2::255:0:0mscript failed\x1b[0m", true);
-  assert.ok(codeError.render(100).join("").includes(themes.theme.fg("toolOutput", "script failed")));
+  assert.match(body(codeError), /codemode · Failed[\s\S]*script failed/);
+  assert.ok(codeError.render(100).join("").includes(themes.theme.fg("error", "script failed")));
   assert.doesNotMatch(codeError.render(100).join(""), /\x1b\[38:2/);
   codeError.setExpanded(true);
   assert.match(codeError.render(100).join(""), /\x1b\[38:2::255:0:0mscript failed/);
@@ -599,9 +633,9 @@ try {
   assert.ok(pending.render(100).join("").includes(themes.theme.style(" (timeout 5 s)", darkMetadata)));
   finish(pending, "");
   assert.doesNotMatch(body(piped), /match lines|paths|timeout/);
-  for (const [name, key] of [["bash", "command"], ["codemode", "code"]]) {
-    const call = tool(name, {}, `${name}-stream`);
-    call.updateArgs({ [key]: "x".repeat(120) + "TAIL" });
+  {
+    const call = tool("bash", {}, "bash-stream");
+    call.updateArgs({ command: "x".repeat(120) + "TAIL" });
     assert.match(body(call), /\.\.\..*0 ms {3}$/);
     assert.ok(body(call).indexOf("...") + 3 <= 70);
     assert.doesNotMatch(body(call), /TAIL/);
@@ -675,7 +709,7 @@ try {
     const searchRows = knowledge.render(100).join("\n");
     assert.ok(searchRows.includes(themes.theme.style("2 results · 340 ms", openStyle)));
     assert.ok(searchRows.includes(themes.theme.style("Section: Setup → Local", openStyle)));
-    for (const component of [read, bash, edit, write, mcp, unsafe, searchScript]) {
+    for (const component of [read, bash, edit, write, mcp, unsafe, trace, code]) {
       component.invalidate();
       for (const expanded of [false, true]) {
         component.setExpanded(expanded);
