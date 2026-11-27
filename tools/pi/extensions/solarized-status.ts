@@ -5,10 +5,12 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { fleetFooterEvent, type FleetFooterUpdate } from "../subagents/fleet-footer.ts";
 
 const lightReady = rgbColor(152, 161, 106);
 const lightBackground = rgbColor(253, 246, 227);
 const ribbonGray = "\x1b[2;38;5;11m";
+const ribbonSeparator = ` ${ribbonGray}·\x1b[0m `;
 type TurnPhase = "wait" | "generation" | "bash" | "tools";
 type TurnSpan = { phase: TurnPhase; from: number; to: number };
 type TurnTiming = { started: number; spans: TurnSpan[]; tokens: number; textSeconds: number };
@@ -40,15 +42,14 @@ const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
 const captionText = (text: string) => stripVTControlCharacters(text).replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
 
 function ribbonRows([left, activity, limits]: [string, string, string], name: string, columns: number): string[] {
-  const separator = ` ${ribbonGray}·\x1b[0m `;
-  const metrics = [activity, limits].filter(Boolean).join(separator);
+  const metrics = [activity, limits].filter(Boolean).join(ribbonSeparator);
   const leftWidth = visibleWidth(left);
   const metricsWidth = visibleWidth(metrics);
   const gap = columns - leftWidth - metricsWidth;
   const sameRow = gap >= 2;
   const room = (sameRow ? gap - 2 : metrics ? columns - metricsWidth : 0) - (metrics ? 3 : 0);
   const title = room >= 4 ? truncateToWidth(name, room, "…") : "";
-  const right = [activity, title && `${ribbonGray}${title}\x1b[0m`, limits].filter(Boolean).join(separator);
+  const right = [activity, title && `${ribbonGray}${title}\x1b[0m`, limits].filter(Boolean).join(ribbonSeparator);
   if (!right) return [left];
   return sameRow ? [left + " ".repeat(columns - leftWidth - visibleWidth(right)) + right] : [left, right];
 }
@@ -458,6 +459,15 @@ export default function (pi: ExtensionAPI) {
       });
       update();
       let layout: { line: string; name: string; columns: number; lightColor?: string; rows: string[] } | undefined;
+      let fleetLabel: string | undefined;
+      const unsubscribeFleet = pi.events.on(fleetFooterEvent, data => {
+        const update = data as FleetFooterUpdate;
+        update.shown = true;
+        if (fleetLabel === update.label) return;
+        fleetLabel = update.label;
+        layout = undefined;
+        tui.requestRender();
+      });
       return {
         invalidate() { layout = undefined; },
         render(columns: number) {
@@ -471,16 +481,30 @@ export default function (pi: ExtensionAPI) {
           const hasSegments = line.startsWith("[");
           const name = hasSegments ? captionText((ctx.sessionManager.getSessionName() ?? "").replace(/\s+/gu, " ")) : "";
           if (layout && layout.line === line && layout.name === name && layout.columns === columns && layout.lightColor === lightColor) return layout.rows;
-          const rows = hasSegments ? ribbonRows(JSON.parse(line), name, innerWidth) : line.split("\n");
-          if (!hasSegments && rows.length === 1) {
-            // A renderer installed before --segments can count Nerd Font glyphs differently.
+          const withFleet = (left: string) => {
+            if (!fleetLabel) return left;
+            const label = `${ribbonGray}${fleetLabel}\x1b[0m`;
+            const room = innerWidth - visibleWidth(label) - visibleWidth(ribbonSeparator);
+            return left && room > 0 ? truncateToWidth(left, room) + ribbonSeparator + label : label;
+          };
+          let rows: string[];
+          if (hasSegments) {
+            const [left, activity, limits] = JSON.parse(line);
+            rows = ribbonRows([withFleet(left), activity, limits], name, innerWidth);
+          } else {
+            rows = line.split("\n");
             const row = rows[0];
-            const gap = [...row.matchAll(/ {2,}/g)].reduce<RegExpMatchArray | undefined>((longest, match) =>
-              !longest || match[0].length > longest[0].length ? match : longest, undefined);
-            if (gap && gap.index !== undefined) {
-              const size = gap[0].length + innerWidth - visibleWidth(row);
-              if (size > 0) rows[0] = row.slice(0, gap.index) + " ".repeat(size) + row.slice(gap.index + gap[0].length);
-            }
+            // Before --segments, the widest gap separates the Go renderer's two groups.
+            const gap = rows.length === 1
+              ? [...row.matchAll(/ {2,}/g)].reduce<RegExpMatchArray | undefined>((longest, match) =>
+                !longest || match[0].length > longest[0].length ? match : longest, undefined) : undefined;
+            if (gap?.index !== undefined) {
+              const left = withFleet(row.slice(0, gap.index));
+              const right = row.slice(gap.index + gap[0].length);
+              const size = innerWidth - visibleWidth(left) - visibleWidth(right);
+              if (size > 0) rows[0] = left + " ".repeat(size) + right;
+              else if (fleetLabel) rows = right ? [left, right] : [left];
+            } else rows[0] = withFleet(row);
           }
           const rendered = rows.flatMap(row => wrapTextWithAnsi(lightColor !== undefined
             ? row.replaceAll(ribbonGray, lightColor).replaceAll("\x1b[2;", "\x1b[") : row, innerWidth))
@@ -490,6 +514,7 @@ export default function (pi: ExtensionAPI) {
         },
         dispose() {
           disposed = true;
+          unsubscribeFleet();
           if (hidden) pi.events.emit("dotfiles:pane-hidden", false);
           clearInterval(clock);
           child?.kill();

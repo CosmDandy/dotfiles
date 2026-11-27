@@ -20,9 +20,9 @@
       "allow": ["openai-codex/gpt-6.2-sol", "openai-codex/sol-medium", "openai-codex/gpt-6.2-astra"]
     },
     "agentOverrides": {
-      "scout": { "tools": ["read", "grep", "find", "ls"], "thinking": "medium", "inheritProjectContext": false },
-      "reviewer": { "tools": ["read", "grep", "find", "ls"], "thinking": "medium", "inheritProjectContext": false },
-      "oracle": { "tools": ["read", "grep", "find", "ls"], "thinking": "medium", "inheritProjectContext": false },
+      "scout": { "tools": ["read", "grep", "find", "ls", "bash"], "thinking": "medium", "inheritProjectContext": false },
+      "reviewer": { "tools": ["read", "grep", "find", "ls", "bash"], "thinking": "medium", "inheritProjectContext": false },
+      "oracle": { "tools": ["read", "grep", "find", "ls", "bash"], "thinking": "medium", "inheritProjectContext": false },
       "worker": { "disabled": true },
       "delegate": { "disabled": true },
       "researcher": { "disabled": true },

@@ -5,8 +5,9 @@ import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { fleetFooterContext } from "../subagents/fleet-footer.ts";
 
-const childTools = ["read", "grep", "find", "ls", "contact_supervisor"];
+const childTools = ["read", "grep", "find", "ls", "bash", "contact_supervisor"];
 const workerName = "foreman-worker";
 const workerTools = ["read", "grep", "find", "ls", "bash", "edit", "write"];
 const foremanTools = new Set(["foreman_worker", "foreman_diff"]);
@@ -38,7 +39,7 @@ rather than the dumps that produced them.
   wrong question.
 - Don't delegate one named file, one grep, one known path — a round trip costs more
   than doing it.
-- Implementation stays here: delegates are read-only.
+- Delegates may run diagnostics and tests with bash. Do not delegate source edits, commits, deploys, or system changes in Execute.
 - A report is not evidence — spot-check any claim that drives a decision. A reviewer
   will always find something; weigh by effect on correctness.
 - Background sessions forbid subagents unless you asked for them — say so rather than
@@ -159,8 +160,12 @@ export default async function (pi: ExtensionAPI) {
 
   if (registerCeiling) {
     const { default: registerSubagents } = await load(entry);
+    const withFleetFooter = fleetFooterContext(pi);
     registerSubagents(new Proxy(pi, {
       get(target, key, receiver) {
+        if (key === "on") return (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) =>
+          Reflect.apply(target.on, target, [name, name === "session_start" || name === "tool_result"
+            ? (event: unknown, ctx: ExtensionContext) => handler(event, withFleetFooter(ctx)) : handler]);
         if (key === "registerTool") return ((definition) => {
           agentTools.add(definition.name);
           pi.registerTool({ ...definition, defaultActive: false });

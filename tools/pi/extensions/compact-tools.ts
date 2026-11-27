@@ -7,6 +7,7 @@ import { stripVTControlCharacters } from "node:util";
 import { formatReadLineRange, getLanguageFromPath, getMarkdownTheme, highlightCode, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { CodemodeToolDetails, ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { registerSubagentChat } from "../subagents/chat-card.ts";
 
 const pulseInterval = 120;
 const timingInset = 3;
@@ -695,6 +696,19 @@ function quietMetadata(theme: Theme, text: string, expanded = false): string {
   });
 }
 
+function withRightMetadata(left: string, meta: string, width: number): string {
+  if (!meta) return left;
+  const gap = width - timingInset - visibleWidth(left) - visibleWidth(meta);
+  return left + " ".repeat(Math.max(1, gap)) + meta + " ".repeat(timingInset);
+}
+
+function subagentTimedLine(left: string, time: string, width: number, theme: Theme): string {
+  const available = width - timingInset;
+  if (!time || available < 16) return truncateToWidth(left, width);
+  const label = truncateToWidth(time, Math.floor(available * 0.5));
+  return withRightMetadata(truncateToWidth(left, available - visibleWidth(label) - 1), quietMetadata(theme, label), width);
+}
+
 function diffNumber(number: string, digits: number, kind: string, theme: Theme, expanded: boolean): string {
   const label = number.padEnd(digits) + " ";
   if (kind === " ") return quietMetadata(theme, label, expanded);
@@ -764,7 +778,7 @@ function codemodeLabel(name: string): string {
 
 const codemodeTargetKeys = ["path", "file_path", "command", "query", "text", "title", "url", "pattern", "uri", "server"];
 
-function codemodeTarget(call: CodemodeCall, expanded: boolean): string {
+function codemodeTarget(call: Pick<CodemodeCall, "name" | "args">, expanded: boolean): string {
   if (!call.args.startsWith("{")) return clean(call.args).replace(/[\x80-\x9f]/g, ""); // Model calls carry a provider/model ID instead of JSON.
   let args: Record<string, unknown>;
   try { args = JSON.parse(call.args); } catch {
@@ -779,6 +793,22 @@ function codemodeTarget(call: CodemodeCall, expanded: boolean): string {
   const range = call.name === "read" ? formatReadLineRange(args.offset, args.limit) : "";
   if (call.name === "bash") return clean(expanded ? target : target.split("\n", 1)[0]).replace(/[\x80-\x9f]/g, "");
   return preview({ query: target }).replace(/[\x80-\x9f]/g, "") + range;
+}
+
+function subagentToolPreview(name: string, args: string | undefined, target: string | undefined, theme: Theme, width: number): string {
+  const label = clean(codemodeLabel(name));
+  const separator = name === "bash" ? shellSeparator : " ";
+  const room = width - visibleWidth(label) - visibleWidth(separator);
+  let preview = target ?? "";
+  if (args) {
+    if (name === "bash") {
+      let command = args;
+      if (args.startsWith("{")) command = codemodeTarget({ name, args }, false);
+      const summary = bashPreview(command);
+      preview = summary ? bashPreviewLine(summary, Math.max(0, room)) : command.split("\n", 1)[0];
+    } else preview = codemodeTarget({ name, args }, false) || preview;
+  }
+  return truncateToWidth(theme.fg("toolTitle", label) + (preview && room > 0 ? theme.fg("toolOutput", separator + clean(preview).replace(/[\p{Cc}\p{Cf}]/gu, " ")) : ""), width);
 }
 
 function codemodeProblem(call: CodemodeCall): boolean {
@@ -999,8 +1029,10 @@ export default function compactTools(pi: ExtensionAPI) {
     if (pending.size === 0) stop();
   });
 
+  const subagentChat = registerSubagentChat(pi, subagentToolPreview, subagentTimedLine, quietMetadata);
   // Only rendering changes; tool definitions, execution and model-facing results stay intact.
-  pi.registerToolRenderer(toolName => {
+  pi.registerToolRenderer((toolName, next) => {
+    if (toolName === "subagent") return subagentChat(next());
     const mcp = toolName.startsWith("mcp__");
     const [server, action] = mcp ? toolName.slice(5).split(/__(.*)/, 2) : [];
     const list = listTools.has(toolName);
@@ -1100,8 +1132,7 @@ export default function compactTools(pi: ExtensionAPI) {
           const titleWidth = meta ? Math.min(compactWidth, available - visibleWidth(meta) - 1) : expanded ? width : compactWidth;
           const animate = (text: string, boldLength = 0) => running
             ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light", boldLength) : text;
-          const withMeta = (left: string) => meta ? left + " ".repeat(Math.max(1, available - visibleWidth(left) - visibleWidth(meta)))
-            + meta + " ".repeat(timingInset) : left;
+          const withMeta = (left: string) => withRightMetadata(left, meta, width);
           const withLastMeta = (rows: string[]) => {
             if (meta) {
               const last = rows.length - 1;

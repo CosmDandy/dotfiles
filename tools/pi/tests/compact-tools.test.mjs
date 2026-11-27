@@ -24,8 +24,15 @@ assert.deepEqual(loaded.errors, []);
 const extension = loaded.extensions[0];
 assert.equal(extension.tools.size, 0, "rendering must not replace tool execution");
 const resolve = extension.toolRenderers[0];
+const adminHeader = { render: () => ["native admin"], invalidate() {} };
+const subagentRenderers = resolve("subagent", () => ({ renderCall: () => adminHeader }));
+assert.equal(subagentRenderers.renderCall({ action: "status" }, themes.theme, {}), adminHeader,
+  "management calls still use the native renderer");
 let sessionEntries = [];
-const ctx = { mode: "tui", cwd: "/tmp", sessionManager: { getEntries: () => sessionEntries } };
+const ctx = { mode: "tui", cwd: "/tmp", ui: { requestRender() {} }, sessionManager: {
+  getEntries: () => sessionEntries, getBranch: () => sessionEntries,
+  getSessionId: () => "test-session", getSessionFile: () => undefined,
+} };
 const timers = new Map();
 let now = 0, redraws = 0;
 let onRedraw;
@@ -56,6 +63,75 @@ function finish(component, text, isError = false, details, durationMs) {
 try {
   await emit("session_start");
   await emit("agent_start");
+  const agents = tool("subagent", { tasks: [{ agent: "scout" }, { agent: "reviewer" }] });
+  const settled = { agent: "scout", index: 0, exitCode: 0, progress: { status: "completed", tokens: 6200, durationMs: 2300 } };
+  agents.updateResult({ content: [{ type: "text", text: "RAW STDOUT" }], details: { results: [settled, {
+    agent: "reviewer", index: 1, context: "fork", model: "openai-codex/gpt-6.2-astra", thinking: "xhigh",
+    progress: { status: "running", tokens: 8420, durationMs: 1300, currentTool: "bash", currentToolArgs: '{"command":"rg -n needle tools/pi"}' },
+  }] } }, true);
+  const liveAgentRows = rows(agents);
+  assert.equal(liveAgentRows[0], " subagents · scout, reviewer");
+  assert.match(liveAgentRows[2], /reviewer  Astra xhigh  fork  8\.4k tok +1 s {3}$/);
+  assert.equal(visibleWidth(liveAgentRows[2]), 100);
+  assert.match(liveAgentRows[3], /^ {5}└ shell · rg -n needle tools\/pi/);
+  assert.doesNotMatch(body(agents), /RAW STDOUT|✓|✗|to expand/);
+  const livePainted = agents.render(100).filter(line => plain(line));
+  const success = themes.theme.style("scout", { fg: mixColors(themes.theme.colors.toolOutput, themes.theme.colors.success, 0.58) });
+  assert.ok(livePainted[0].includes(success), "the header shows the finished child while its sibling runs");
+  assert.ok(livePainted[1].includes(success), "the finished child's row uses the same color");
+  const compactAgentRows = body(agents);
+  agents.setExpanded(true);
+  assert.equal(body(agents), compactAgentRows);
+  assert.ok(livePainted[2].includes(themes.theme.style("8.4k tok", darkMetadata)));
+  assert.equal(globalThis.setInterval.mock.calls[0].arguments[1], 100, "redraw at the same cadence as the spinner");
+  const frames = new Set();
+  for (now = 0; now < 400; now += 100) {
+    for (const tick of timers.values()) tick();
+    const frame = rows(agents)[2].match(/^ {3}(.) reviewer/u)?.[1];
+    assert.ok(frame, "the running child has a spinner");
+    const dots = frame.codePointAt(0) - 0x2800;
+    assert.ok(dots > 0 && (dots & ~0x36) === 0, "only the middle two Braille rows are painted");
+    frames.add(frame);
+  }
+  assert.equal(frames.size, 4, "the spinner advances without new output");
+  now = 0;
+  assert.ok(rows(agents, 20).every(row => visibleWidth(row) <= 20));
+  finish(agents, "RAW STDOUT", true, { results: [settled, {
+    agent: "reviewer", index: 1, exitCode: 1, usage: { input: 8100, output: 580 }, error: "verification failed\nstack trace",
+  }] }, 15_000);
+  agents.setOutputPad(2);
+  assert.match(rows(agents)[0], /^ {2}subagents · /);
+  agents.setOutputPad(1);
+  const timingReference = tool("bash", { command: ":" }, "agent-timing-reference");
+  finish(timingReference, "", false, undefined, 15_000);
+  for (const appearance of ["dark", "light"]) {
+    const themePath = fileURLToPath(new URL(`../themes/solarized-${appearance}.json`, import.meta.url));
+    themes.setThemeInstance(themes.loadThemeFromPath(themePath, "truecolor"));
+    agents.invalidate();
+    timingReference.invalidate();
+    const [summary] = rows(agents);
+    assert.equal(rows(agents).length, 1);
+    assert.match(summary, /^ subagents · scout 6\.2k tok, reviewer 8\.7k tok — verification failed +15 s {3}$/);
+    assert.equal(visibleWidth(summary), visibleWidth(rows(timingReference)[0]));
+    assert.equal(visibleWidth(summary), 100);
+    for (const width of [1, 8, 16, 20, 40, 100]) {
+      assert.ok(rows(agents, width).every(line => visibleWidth(line) <= width));
+    }
+    const painted = agents.render(100).join("\n");
+    assert.ok(painted.includes(themes.theme.fg("toolOutput", themes.theme.bold("subagents"))));
+    const timingStyle = appearance === "light"
+      ? { fg: mixColors(themes.theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb"), dim: true }
+      : darkMetadata;
+    for (const label of ["15 s", "6.2k tok", "8.7k tok"]) {
+      assert.ok(painted.includes(themes.theme.style(label, timingStyle)), `${appearance}: mute ${label}`);
+    }
+    assert.ok(timingReference.render(100).join("\n").includes(themes.theme.style("15.0 s", timingStyle)));
+    for (const [name, color] of [["scout", "success"], ["reviewer", "error"]]) {
+      assert.ok(painted.includes(themes.theme.style(name, { fg: mixColors(themes.theme.colors.toolOutput, themes.theme.colors[color], 0.58) })));
+    }
+  }
+  themes.initTheme("dark", false);
+  assert.equal(timers.size, 0, "finished cards release their animation timer");
   const read = tool("read", { path: "src/app.ts", offset: 2, limit: 30 });
   assert.equal(rows(read).length, 1);
   assert.match(body(read), /^ *read src\/app.ts:2-31$/);
