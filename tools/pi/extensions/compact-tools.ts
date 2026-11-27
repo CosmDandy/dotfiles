@@ -179,6 +179,198 @@ function simpleShellWords(command: string): string[] | undefined {
   return words;
 }
 
+type ShellLink = ";" | "&&" | "||" | "|" | "|&";
+type ShellStep = { link: ShellLink; words: string[]; redirected: boolean };
+type BashPreview = { steps: { link: ShellLink; text: string; head: string }[]; badges: string[] };
+
+const compoundShellWords = /^(?:\{|\}|!|\[\[|\]\]|if|then|elif|else|fi|for|while|until|select|case|esac|do|done|function|coproc|time)$/;
+
+function scanShellSteps(source: string): { steps: ShellStep[]; heredoc: boolean } | undefined {
+  // This is a display-only lexer, not a shell parser. Unsupported syntax keeps the original preview.
+  const space = /(?:[ \t\r]|\\\r?\n)+/y;
+  const word = /(?:[^\s'"\\|;&<>()\x60$]+|\$\{[A-Za-z_]\w*\}|\$(?![({\[])|'[^']*'|"(?:[^"\\\x60$]|\$\{[A-Za-z_]\w*\}|\$(?![({\[])|\\[\s\S])*"|\\(?:\r?\n|[^\r\n]))+/y;
+  const operator = /&&|\|\||\|&|[;|]/y;
+  const redirect = /(?:&>>?|[0-9]*(?:<<<|<<-|<<|<&|<>|>>|>&|>\||[<>]))/y;
+  const eat = (pattern: RegExp, at: number) => {
+    pattern.lastIndex = at;
+    return pattern.exec(source)?.[0];
+  };
+  const steps: ShellStep[] = [];
+  let current: ShellStep = { link: ";", words: [], redirected: false };
+  const docs: { delimiter: string; stripTabs: boolean; quoted: boolean }[] = [];
+  let heredoc = false;
+  const end = (link: ShellLink) => {
+    steps.push(current);
+    current = { link, words: [], redirected: false };
+  };
+  let i = 0;
+  while (i < source.length) {
+    const whitespace = eat(space, i);
+    if (whitespace) { i += whitespace.length; continue; }
+    if (source[i] === "#") {
+      const newline = source.indexOf("\n", i);
+      i = newline < 0 ? source.length : newline;
+      continue;
+    }
+    if (source[i] === "\n") {
+      if (current.redirected && !current.words.length) return;
+      if (current.words.length) end(";");
+      i++;
+      for (const { delimiter, stripTabs, quoted } of docs) {
+        let closed = false;
+        while (i < source.length) {
+          const newline = source.indexOf("\n", i);
+          const next = newline < 0 ? source.length : newline;
+          const line = source.slice(i, next);
+          i = next + 1;
+          // In an unquoted heredoc, a line continuation can join a would-be closing delimiter.
+          if (!quoted && /(?:^|[^\\])(?:\\\\)*\\$/.test(line)) return;
+          if ((stripTabs ? line.replace(/^\t+/, "") : line) === delimiter) { closed = true; break; }
+        }
+        if (!closed) return;
+      }
+      docs.length = 0;
+      continue;
+    }
+    const sep = eat(operator, i) as ShellLink | undefined;
+    if (sep) {
+      if (!current.words.length) return;
+      end(sep);
+      i += sep.length;
+      continue;
+    }
+    const op = eat(redirect, i);
+    if (op) {
+      i += op.length;
+      i += eat(space, i)?.length ?? 0;
+      const target = source[i] !== "#" && eat(word, i);
+      if (!target) return;
+      i += target.length;
+      current.redirected = true;
+      if (/(?:^|\d)<<-?$/.test(op)) {
+        const marker = /^(['"]?)([\w-]+)\1$/.exec(target);
+        if (!marker) return;
+        docs.push({ delimiter: marker[2], stripTabs: op.endsWith("-"), quoted: Boolean(marker[1]) });
+        heredoc = true;
+      } else {
+        if (/[&]$/.test(op)) current.words.push(op + target);
+        else current.words.push(op, target);
+      }
+      continue;
+    }
+    const token = eat(word, i);
+    if (!token) return;
+    // A continued word can include the file descriptor for the following redirect.
+    if (/\\\r?\n/.test(token) && /[<>]/.test(source[i + token.length] ?? "")) return;
+    current.words.push(token);
+    i += token.length;
+  }
+  if (current.words.length) end(";");
+  if (docs.length || current.link !== ";" || !steps.length) return;
+  for (const { words } of steps) {
+    const program = words.find(token => !shellAssignment.test(token));
+    if (!words.length || program && compoundShellWords.test(program)) return;
+  }
+  return { steps, heredoc };
+}
+
+const shellAssignment = /^([A-Za-z_]\w*)=(.*)$/s;
+const shellLiteral = (word: string): string | undefined => /^'[^']*'$/.test(word) || /^"[^"$\\\x60]*"$/.test(word)
+  ? word.slice(1, -1) : /^[\w./:@%,+= -]+$/.test(word) && !word.includes(" ") ? word : undefined;
+
+function shellDisplayWord(word: string, vars?: Map<string, string>): string {
+  const reference = /^"\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})(\/[\w./-]*)?"$/.exec(word);
+  const value = reference && vars?.get(reference[1] ?? reference[2]);
+  const literal = value !== undefined && value !== null ? value + (reference?.[3] ?? "") : shellLiteral(word);
+  if (literal && /^(?:\/|\.\.?\/)/.test(literal) && visibleWidth(literal) > 36) {
+    const path = shortenPath(literal, "", 0, 32).replace(/^…[^/]*\//, "…/");
+    return word.startsWith('"') || word.startsWith("'") ? word[0] + path + word[0] : path;
+  }
+  return word.replace(/\\\r?\n/g, "").replace(/\s*\r?\n\s*/g, " ");
+}
+
+function shellSetup(words: string[]): boolean {
+  if (words[0] !== "set" || words.length < 2) return false;
+  for (let i = 1; i < words.length; i++) {
+    if (/^[+-][eEufx]+$/.test(words[i])) continue;
+    if (!/^[+-][eEufx]*o$/.test(words[i]) || words[++i] !== "pipefail") return false;
+  }
+  return true;
+}
+
+function bashPreview(command: string): BashPreview | undefined {
+  const parsed = scanShellSteps(command);
+  if (!parsed) return;
+  const { steps, heredoc } = parsed;
+  const vars = new Map<string, string>();
+  let i = 0, cwd = "", setup = false, env = false, guarded = false;
+  for (; i + 1 < steps.length; i++) {
+    const { words, link, redirected } = steps[i];
+    const next = steps[i + 1].link;
+    if (redirected || ![";", "&&"].includes(link) || ![";", "&&"].includes(next)) break;
+    // A single badge cannot describe a fallback or a later unconditional command.
+    if (next === "&&" && steps.slice(i + 2).some(step => step.link === "||" || step.link === ";")) break;
+    const assignments = words.map(word => shellAssignment.exec(word));
+    if (assignments.every(Boolean)) {
+      for (const match of assignments) {
+        const value = shellLiteral(match![2]);
+        if (value === undefined) vars.delete(match![1]);
+        else vars.set(match![1], value);
+      }
+      env = true;
+    } else if (shellSetup(words)) {
+      setup = true;
+    } else if (words[0] === "cd" && words.length === 2 && !words[1].startsWith("-") && shellLiteral(words[1])) {
+      cwd = shellDisplayWord(words[1], vars);
+    } else if (next === "&&" && (words[0] === "test" || words[0] === "[" && words.at(-1) === "]")) {
+      guarded = true;
+    } else {
+      break;
+    }
+    guarded ||= next === "&&";
+  }
+  let shortened = false;
+  const summarized = steps.slice(i).map(({ words, link }, index) => {
+    let start = 0;
+    if (index === 0) {
+      start = words.findIndex(word => !shellAssignment.test(word));
+      if (start > 0) env = true;
+      else start = 0;
+    }
+    const display = words.slice(start).map(word => {
+      const text = shellDisplayWord(word, index === 0 ? vars : undefined);
+      shortened ||= text !== word;
+      return text;
+    });
+    const path = display.findIndex(word => /^['"]?…\//.test(word));
+    return { link, text: display.join(" "), head: display.slice(0, path < 0 ? 1 : path + 1).join(" ") };
+  });
+  const badges = [guarded && "guarded", cwd && "cwd " + cwd, heredoc && "heredoc", env && "env", setup && !cwd && "setup"].filter((item): item is string => Boolean(item));
+  if (summarized.length === 1 && !badges.length && !shortened && !command.includes("\n")) return;
+  return { steps: summarized, badges };
+}
+
+function bashPreviewLine(preview: BashPreview, width: number): string {
+  const [first, second] = preview.steps;
+  const link = second?.link === ";" ? " ; " : " " + second?.link + " ";
+  const guarded = preview.badges.includes("guarded") ? width >= 22 ? " · guarded" : " · ?" : "";
+  const essential = (n: number) => (preview.steps.length > n ? " · +" + (preview.steps.length - n) : "") + guarded;
+  const minimum = (step: typeof first) => Math.min(visibleWidth(step.text), Math.max(8, visibleWidth(step.head)));
+  const pair = second && minimum(first) + minimum(second) + link.length + essential(2).length <= width;
+  let badges = essential(pair ? 2 : 1);
+  for (const badge of preview.badges) {
+    if (badge === "guarded") continue;
+    const next = badges + " · " + badge;
+    if (visibleWidth(next) + minimum(first) + (pair ? minimum(second) + link.length : 0) <= width) badges = next;
+  }
+  const available = Math.max(0, width - visibleWidth(badges));
+  if (!pair) return truncateToWidth(truncateToWidth(first.text, available) + badges, width);
+  const room = available - link.length;
+  const right = Math.min(visibleWidth(second.text), Math.max(minimum(second), Math.floor(room / 2)), room - minimum(first));
+  const left = Math.min(visibleWidth(first.text), room - right);
+  return truncateToWidth(first.text, left) + link + truncateToWidth(second.text, room - left) + badges;
+}
+
 function devopsCommandLines(words: string[], width: number): string[] {
   const lines: string[] = [];
   let line = "$";
@@ -525,6 +717,36 @@ function indentedLines(text: string, padding: string, width: number): string[] {
 }
 
 type CodemodeCall = CodemodeToolDetails["calls"][number];
+type BashInput = { command: string; summary?: BashPreview | null; argsHead?: string };
+
+function bashInput(command: string, args?: Record<string, unknown>): BashInput {
+  return { command: clean(command).replace(/[\x80-\x9f]/g, ""), argsHead: args && JSON.stringify(args).slice(0, 200) };
+}
+
+function storedBashPreview(input: BashInput): BashPreview | null {
+  return input.summary === undefined ? input.summary = bashPreview(input.command) ?? null : input.summary;
+}
+
+function nestedBashInputs(calls: readonly CodemodeCall[], parentId: string, recorded?: Map<string, BashInput>): Map<CodemodeCall, BashInput> {
+  const inputs = new Map<CodemodeCall, BashInput>();
+  let slot = 0;
+  for (const call of calls) {
+    if (call.id.startsWith(parentId + "/models.")) continue;
+    slot++;
+    if (call.name !== "bash") continue;
+    const candidate = call.id === parentId + "/?" ? recorded?.get(parentId + "/" + slot) : undefined;
+    const preview = call.args.endsWith("...") ? call.args.slice(0, -3) : call.args;
+    // Pi assigns native child IDs in dispatch order, before event handlers can reorder delivery.
+    const pending = preview && candidate?.argsHead?.startsWith(preview) ? candidate : undefined;
+    const known = recorded?.get(call.id) ?? pending;
+    if (known) { inputs.set(call, known); continue; }
+    try {
+      const command = JSON.parse(call.args)?.command;
+      if (typeof command === "string") inputs.set(call, bashInput(command));
+    } catch { /* A truncated preview is not a complete shell command. */ }
+  }
+  return inputs;
+}
 
 function codemodeLabel(name: string): string {
   if (name === "codex_web_search") return "search · codex";
@@ -534,7 +756,7 @@ function codemodeLabel(name: string): string {
 
 const codemodeTargetKeys = ["path", "file_path", "command", "query", "text", "title", "url", "pattern", "uri", "server"];
 
-function codemodeTarget(call: CodemodeCall): string {
+function codemodeTarget(call: CodemodeCall, expanded: boolean): string {
   if (!call.args.startsWith("{")) return clean(call.args).replace(/[\x80-\x9f]/g, ""); // Model calls carry a provider/model ID instead of JSON.
   let args: Record<string, unknown>;
   try { args = JSON.parse(call.args); } catch {
@@ -547,6 +769,7 @@ function codemodeTarget(call: CodemodeCall): string {
     ?? (Array.isArray(args.urls) ? args.urls[0] : undefined);
   if (typeof target !== "string") return "";
   const range = call.name === "read" ? formatReadLineRange(args.offset, args.limit) : "";
+  if (call.name === "bash") return clean(expanded ? target : target.split("\n", 1)[0]).replace(/[\x80-\x9f]/g, "");
   return preview({ query: target }).replace(/[\x80-\x9f]/g, "") + range;
 }
 
@@ -568,9 +791,10 @@ function codemodeSummary(calls: readonly CodemodeCall[], partial: boolean, start
   return [failed ? "Failed" : "", errors ? `${errors} failed` : "", cancelled ? `${cancelled} cancelled` : "", activity].filter(Boolean).join(" · ");
 }
 
-function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, width: number, expanded: boolean, step: number | undefined): string[] {
+function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, width: number, expanded: boolean, step: number | undefined, bash?: BashInput): string[] {
   const title = clean(codemodeLabel(call.name));
-  const target = codemodeTarget(call);
+  const target = bash ? expanded ? bash.command : bash.command.split("\n", 1)[0] : codemodeTarget(call, expanded);
+  const summary = bash && !expanded && storedBashPreview(bash);
   const status = call.status === "ok" ? theme.fg("success", "✓") : call.status === "error" ? theme.fg("error", "✗")
     : theme.fg(call.status === "cancelled" ? "muted" : "warning", call.status === "cancelled" ? "⊘" : "…");
   const time = elapsedLabel(call.durationMs);
@@ -582,7 +806,8 @@ function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, wi
   const suffix = meta && room > visibleWidth(title) + meta.length ? quietMetadata(theme, " " + meta, expanded) : "";
   const limit = Math.max(1, room - visibleWidth(suffix));
   const targetRoom = limit - visibleWidth(title) - 1;
-  const display = !expanded && targetRoom > 0 && (call.name === "read" || call.name === "edit" || call.name === "write")
+  const display = summary ? bashPreviewLine(summary, Math.max(0, targetRoom))
+    : !expanded && targetRoom > 0 && (call.name === "read" || call.name === "edit" || call.name === "write")
     ? shortenPath(target, "", 0, targetRoom) : target;
   const heading = theme.fg("toolTitle", theme.bold(title)) + (display ? theme.fg("toolOutput", " " + display) : "");
   const short = expanded ? heading : truncateToWidth(heading, limit);
@@ -623,6 +848,7 @@ export default function compactTools(pi: ExtensionAPI) {
   let deltaQueue = Promise.resolve();
   const projectRoots = new Map<string, string>();
   const writeKinds = new Map<string, string>();
+  const codemodeBash = new Map<string, Map<string, BashInput>>();
   const finishedRows = new Map<object, { width: number; lines: string[]; bytes: number }>();
   let finishedBytes = 0;
   const finishedBudget = 24 * 1024 * 1024;
@@ -714,7 +940,19 @@ export default function compactTools(pi: ExtensionAPI) {
     projectRoots.clear();
     writeKinds.clear();
     clearFinishedRows();
+    codemodeBash.clear();
     interactive = ctx.mode === "tui";
+    if (interactive) {
+      for (const entry of ctx.sessionManager.getEntries()) {
+        if (entry.type !== "message" || entry.message.role !== "toolResult" || entry.message.toolName !== "codemode") continue;
+        const inputs = new Map<string, BashInput>();
+        for (const call of entry.message.nestedCalls?.calls ?? []) {
+          const command = call.arguments?.command;
+          if (call.name === "bash" && typeof command === "string") inputs.set(call.id, bashInput(command, call.arguments));
+        }
+        if (inputs.size) codemodeBash.set(entry.message.toolCallId, inputs);
+      }
+    }
     session++;
   });
   pi.on("tool_call", (event, ctx) => {
@@ -731,9 +969,21 @@ export default function compactTools(pi: ExtensionAPI) {
     for (const off of unsubscribe) off();
     unsubscribe = [];
     clearFinishedRows();
+    codemodeBash.clear();
     interactive = false;
     active = false;
     stop();
+  });
+  pi.on("tool_execution_start", event => {
+    if (!interactive) return;
+    if (event.toolName === "codemode" && !event.parentToolCallId) {
+      codemodeBash.set(event.toolCallId, new Map());
+    } else if (event.toolName === "bash" && event.parentToolCallId && typeof event.args?.command === "string") {
+      const inputs = codemodeBash.get(event.parentToolCallId);
+      if (!inputs) return;
+      inputs.set(event.toolCallId, bashInput(event.args.command, event.args));
+      pending.get(event.parentToolCallId)?.();
+    }
   });
   pi.on("tool_execution_end", event => {
     pending.delete(event.toolCallId);
@@ -810,10 +1060,17 @@ export default function compactTools(pi: ExtensionAPI) {
           ? toolName === "write" ? writeKinds.get(context.toolCallId) ?? "Written" : context.state.outcome as string | undefined
           : undefined;
         const padding = " ".repeat(context.outputPad);
-        const command = bash && typeof args?.command === "string" ? clean(args.command) : "";
+        const rawCommand = bash && typeof args?.command === "string" ? args.command : "";
+        let shell = context.state.bashInput as { raw: string; input: BashInput } | undefined;
+        if (bash && shell?.raw !== rawCommand) {
+          shell = { raw: rawCommand, input: bashInput(rawCommand) };
+          context.state.bashInput = shell;
+        }
+        const command = shell?.input.command ?? "";
+        const complete = context.argsComplete || context.executionStarted || !context.isPartial;
         const program = bash ? shellProgram(command) : undefined;
-        const devops = !expanded && program && devopsPrograms.has(program) &&
-          (context.argsComplete || context.executionStarted || !context.isPartial) ? simpleShellWords(command.trimEnd()) : undefined;
+        const devops = !expanded && complete && program && devopsPrograms.has(program) ? simpleShellWords(command.trimEnd()) : undefined;
+        const shellSummary = !expanded && complete && shell && !devops ? storedBashPreview(shell.input) : undefined;
         const timing = bash || codemode ? elapsedLabel(context.isPartial ? liveMs : context.durationMs)
           : list || friendlyMcp ? elapsedLabel(context.durationMs) : "";
         const status = toolName === "bash" && context.isError && !context.isPartial ? "Failed" : undefined;
@@ -843,7 +1100,7 @@ export default function compactTools(pi: ExtensionAPI) {
           if (devops) {
             const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
             const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title + timeout), Math.max(0, titleWidth - padding.length))), width);
-            const lines = devopsCommandLines(devops, Math.max(1, width - padding.length - 1));
+            const lines = devopsCommandLines(devops.map(word => shellDisplayWord(word)), Math.max(1, width - padding.length - 1));
             const script = highlighted(lines.join("\n"), "bash", text => theme.fg("toolOutput", text));
             return [header, ...indentedLines(script, padding, width)];
           }
@@ -881,7 +1138,7 @@ export default function compactTools(pi: ExtensionAPI) {
               return paint(rows.map(row => truncateToWidth(row, width)));
             }
             const limit = timeout && titleWidth - visibleWidth(timeout) >= 6 ? quietMetadata(theme, timeout) : "";
-            const extra = lines.length > 1 && titleWidth - visibleWidth(limit) >= 18
+            const extra = !shellSummary && lines.length > 1 && titleWidth - visibleWidth(limit) >= 18
               ? " " + quietMetadata(theme, `+${lines.length - 1} lines`) : "";
             const search = outcome ? theme.fg("muted", ` · ${outcome}`) : "";
             const availableTitle = titleWidth - visibleWidth(limit) - visibleWidth(extra);
@@ -889,7 +1146,8 @@ export default function compactTools(pi: ExtensionAPI) {
             const room = availableTitle - visibleWidth(badge);
             const prefix = padding + prompt(room);
             const commandRoom = Math.max(0, room - visibleWidth(prefix));
-            const header = prefix + animate(truncateToWidth(title, commandRoom)) + limit + extra + badge;
+            const text = shellSummary ? theme.fg("toolOutput", bashPreviewLine(shellSummary, commandRoom)) : truncateToWidth(title, commandRoom);
+            const header = prefix + animate(text) + limit + extra + badge;
             return paint([truncateToWidth(withMeta(header), width)]);
           }
           const prefix = quiet ? theme.fg("muted", label) : theme.fg(context.isError ? "error" : "toolTitle", theme.bold(label));
@@ -921,13 +1179,14 @@ export default function compactTools(pi: ExtensionAPI) {
         if (context.isPartial || codemode) return cacheLines(render);
         return finishedComponent(context.state, expanded ? "call:open" : "call:closed",
           [theme.colors, scope, argsPreview, readRange, outcome, padding, command, timing, timeout, argumentsText, context.isError,
-            stats?.added, stats?.removed, stats?.modified], render);
+            shellSummary, stats?.added, stats?.removed, stats?.modified], render);
       },
       renderResult(result, { expanded, isPartial }, theme, context) {
         const startedAt = context.state.pulseStartedAt;
         if (codemode) {
           const calls = (result.details as CodemodeToolDetails | undefined)?.calls ?? [];
           context.state.codemodeCalls = calls;
+          const inputs = nestedBashInputs(calls, context.toolCallId, codemodeBash.get(context.toolCallId));
           const source = expanded && typeof context.args?.code === "string" ? clean(context.args.code) : "";
           const padding = " ".repeat(context.outputPad);
           const first = result.content[0];
@@ -942,7 +1201,7 @@ export default function compactTools(pi: ExtensionAPI) {
             const eligible = expanded || live ? calls : calls.filter(codemodeProblem);
             const shown = expanded ? eligible : shownCodemodeCalls(eligible, live);
             const step = elapsed === undefined ? undefined : Math.floor(elapsed / pulseInterval);
-            const lines = shown.flatMap(call => codemodeCallLines(call, theme, padding, width, expanded, step));
+            const lines = shown.flatMap(call => codemodeCallLines(call, theme, padding, width, expanded, step, inputs.get(call)));
             if (shown.length < eligible.length) {
               lines.push(truncateToWidth(padding + " " + quietMetadata(theme, `… ${eligible.length - shown.length} more calls`), width));
             }
