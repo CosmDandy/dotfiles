@@ -10,6 +10,7 @@ import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByCol
 
 const pulseInterval = 120;
 const timingInset = 3;
+const minToolTimingMs = 10_000;
 const liveTailDelayMs = 600;
 const bashTailRows = 5;
 const sshTailRows = 10;
@@ -194,8 +195,8 @@ function devopsCommandLines(words: string[], width: number): string[] {
 }
 
 function elapsedLabel(durationMs: number | undefined): string {
-  return durationMs !== undefined && Number.isFinite(durationMs)
-    ? durationMs < 1000 ? `${Math.round(durationMs)} ms` : `${(durationMs / 1000).toFixed(1)} s` : "";
+  return durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= minToolTimingMs
+    ? `${(durationMs / 1000).toFixed(1)} s` : "";
 }
 
 function mcpSummary(output: string, structured: unknown): string {
@@ -759,8 +760,7 @@ export default function compactTools(pi: ExtensionAPI) {
         const program = toolName === "bash" ? shellProgram(command) : undefined;
         const devops = !expanded && program && devopsPrograms.has(program) &&
           (context.argsComplete || context.executionStarted || !context.isPartial) ? simpleShellWords(command.trimEnd()) : undefined;
-        const timing = shellCall ? elapsedLabel(context.isPartial ? liveMs : context.durationMs)
-          : list || friendlyMcp ? elapsedLabel(context.durationMs) : "";
+        const timing = elapsedLabel(context.isPartial ? liveMs : context.durationMs);
         const status = toolName === "bash" && context.isError && !context.isPartial ? "Failed" : undefined;
         const metadata = [status ?? (friendlyMcp ? outcome : undefined), timing].filter(Boolean).join(" · ");
         const timeout = toolName === "bash" && typeof args?.timeout === "number" && Number.isFinite(args.timeout) && args.timeout > 0
@@ -775,6 +775,14 @@ export default function compactTools(pi: ExtensionAPI) {
           const animate = (text: string) => running ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light") : text;
           const withMeta = (left: string) => meta ? left + " ".repeat(Math.max(1, available - visibleWidth(left) - visibleWidth(meta)))
             + meta + " ".repeat(timingInset) : left;
+          const withLastMeta = (rows: string[]) => {
+            if (meta) {
+              const last = rows.length - 1;
+              if (visibleWidth(rows[last]) + visibleWidth(meta) < available) rows[last] = withMeta(rows[last]);
+              else rows.push(withMeta(""));
+            }
+            return rows;
+          };
           const paint = (rows: string[]) => expandedRows(rows, expanded, width, theme);
           if (devops) {
             const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
@@ -809,12 +817,7 @@ export default function compactTools(pi: ExtensionAPI) {
                 if (visibleWidth(rows[last]) + visibleWidth(timeout) <= width) rows[last] += quietMetadata(theme, timeout, expanded);
                 else rows.push(indent + quietMetadata(theme, timeout.trimStart(), expanded));
               }
-              if (meta) {
-                const last = rows.length - 1;
-                if (visibleWidth(rows[last]) + visibleWidth(meta) < available) rows[last] = withMeta(rows[last]);
-                else rows.push(" ".repeat(available - visibleWidth(meta)) + meta + " ".repeat(timingInset));
-              }
-              return paint(rows.map(row => truncateToWidth(row, width)));
+              return paint(withLastMeta(rows).map(row => truncateToWidth(row, width)));
             }
             const limit = timeout && titleWidth - visibleWidth(timeout) >= 6 ? quietMetadata(theme, timeout) : "";
             const extra = lines.length > 1 && titleWidth - visibleWidth(limit) >= 18
@@ -850,7 +853,7 @@ export default function compactTools(pi: ExtensionAPI) {
           const summary = (argsPreview ? " " + theme.fg(pathColor, displayArgs) : "") + suffix;
           const line = title + summary;
           const header = expanded && fileCall
-            ? wrapTextWithAnsi(animate(line + badge) + rangeLabel, Math.max(1, width))
+            ? withLastMeta(wrapTextWithAnsi(animate(line + badge) + rangeLabel, Math.max(1, width)))
             : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge) + rangeLabel), width)];
           return paint(argumentsText ? [...header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)] : header);
         };

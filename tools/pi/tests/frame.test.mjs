@@ -357,21 +357,35 @@ try {
   await emit("tool_execution_end", { toolCallId: "b", isError: false });
   assert.match(top(), wave);
   assert.doesNotMatch(top(), /Running|Waiting|bash|AGENTS\.md|Comparing results/);
-  now = 11_900;
+  await emit("message_start", { message: assistant() });
+  now = 39_900;
+  await emit("message_end", { message: assistant() });
+  now = 40_000;
   await emit("agent_settled", { aborted: false });
   assert.match(top().trim(), /Ready$/);
   assert.equal(entries.length, 1);
   const timing = entries[0];
   assert.equal(timing.customType, "turn-timing");
-  assert.deepEqual(timing.data, { total: 1900, wait: 100, generation: 1100, bash: 200, tools: 200, parallel: 200, other: 100, aborted: false, speed: 120 });
+  assert.deepEqual(timing.data, { total: 30_000, wait: 28_200, generation: 1100, bash: 200, tools: 200, parallel: 200, other: 100, aborted: false, speed: 120 });
   const timingRows = expanded => extension.entryRenderers.get("turn-timing")(timing, { expanded }, themes.theme).render(151);
   const renderTiming = expanded => plain(timingRows(expanded).join("\n"));
-  assert.match(renderTiming(false), /1,9 s · wait 5% · gen 58% · tools 32% · other 5% · ≈120,0 tok\/s/);
+  assert.match(renderTiming(false), /30,0 s · wait 94% · gen 4% · tools 2% · ≈120,0 tok\/s/);
   assert.equal(timingRows(false).length, 1);
-  assert.match(renderTiming(true), /wait 0,1 s · gen 1,1 s · tools 0,6 s · other 0,1 s/);
+  assert.match(renderTiming(true), /wait 28,2 s · gen 1,1 s · tools 0,6 s · other 0,1 s/);
   assert.match(renderTiming(true), /bash 0,2 s · other tools 0,2 s · overlap 0,2 s/);
   assert.doesNotMatch(top(), /error/);
   assert.equal(ownSession().state, "idle");
+
+  await start();
+  now = 39_999;
+  await emit("message_end", { message: assistant() });
+  await emit("agent_settled", { aborted: false });
+  const short = entries.at(-1);
+  assert.equal(short.data.total, 29_999);
+  assert.equal(short.data.wait, 29_999);
+  for (const expanded of [false, true]) {
+    assert.equal(extension.entryRenderers.get("turn-timing")(short, { expanded }, themes.theme), undefined);
+  }
 
   for (const test of [
     { name: "single chunk", chunks: [10_200], message: assistant(), reason: /fewer than two/ },

@@ -34,6 +34,7 @@ function summarizeTurn(turn: TurnTiming, ended: number, aborted: boolean) {
     speed: turn.textSeconds > 0 ? turn.tokens / turn.textSeconds : undefined };
 }
 
+const minTurnTimingMs = 30_000;
 const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
 const captionText = (text: string) => stripVTControlCharacters(text).replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
 
@@ -212,7 +213,7 @@ export default function (pi: ExtensionAPI) {
   const startTiming = () => { turnTiming ??= { started: performance.now(), spans: [], tokens: 0, textSeconds: 0 }; };
   pi.registerEntryRenderer<ReturnType<typeof summarizeTurn>>("turn-timing", (entry, { expanded }, theme) => {
     const timing = entry.data;
-    if (!timing) return;
+    if (!timing || timing.total < minTurnTimingMs) return;
     const toolTime = timing.bash + timing.tools + timing.parallel;
     const phases = [[timing.wait, "wait"], [timing.generation, "gen"], [toolTime, "tools"], [timing.other, "other"]] as const;
     const parts = [`${seconds(timing.total)}${timing.aborted ? " (interrupted)" : ""}`];

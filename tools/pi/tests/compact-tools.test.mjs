@@ -309,7 +309,7 @@ try {
   ] };
   finish(knowledge, JSON.stringify({ result: JSON.stringify(hits) }), false, undefined, 340);
   await Promise.resolve();
-  assert.match(body(knowledge), /search · knowledge "Cloud lab" +2 results · 340 ms/);
+  assert.match(body(knowledge), /search · knowledge "Cloud lab" +2 results {3}$/);
   assert.doesNotMatch(body(knowledge), /Lab notes/);
   knowledge.setExpanded(true);
   const expandedSearch = knowledge.render(100).map(line => plain(line).trimEnd()).join("\n");
@@ -324,7 +324,7 @@ try {
   const note = tool("mcp__knowledge__read", { path: "folder/Cloud notes.md", heading: "Setup" }, "knowledge-read");
   finish(note, JSON.stringify({ text: "## Setup\n\nSome **bold** text." }), false, undefined, 120);
   await Promise.resolve();
-  assert.match(body(note), /read · knowledge Cloud notes › Setup +120 ms/);
+  assert.match(body(note), /read · knowledge Cloud notes › Setup$/);
   note.setExpanded(true);
   assert.match(body(note), /Some bold text\./);
   assert.doesNotMatch(body(note), /"text"|\*\*bold\*\*/);
@@ -336,7 +336,7 @@ try {
     if (created) component.updateResult({ content: [{ type: "text", text: JSON.stringify(pr) }], structuredContent: { result: JSON.stringify(pr) }, isError: false, durationMs: 250 }, false);
     else finish(component, JSON.stringify(pr), false, undefined, 250);
     await Promise.resolve();
-    assert.match(body(component), new RegExp(`${created ? "Opened" : "Updated"} PR #42 · 250 ms`));
+    assert.match(body(component), new RegExp(`${created ? "Opened" : "Updated"} PR #42 {3}$`));
     assert.doesNotMatch(body(component), /pinned|https:|new_pr/);
     component.setExpanded(true);
     assert.match(body(component), /Note: Ops\/DevPod policy\.md/);
@@ -447,7 +447,7 @@ try {
   code.updateResult({ content: [{ type: "text", text: "Script completed\nWall time 1.25 seconds\nOutput:\n" },
     { type: "text", text: "script result" }], details: { calls: [] }, durationMs: 1250 }, false);
   assert.equal(rows(code).length, 1);
-  assert.match(body(code), /^ codemode text.*\+1 lines +1\.3 s {3}$/);
+  assert.match(body(code), /^ codemode text.*\+1 lines$/);
   for (const component of [bash, code]) {
     assert.ok(component.render(100).join("").includes(themes.theme.style("+1 lines", darkMetadata)));
   }
@@ -475,22 +475,22 @@ try {
   const firstDone = { ...firstSearch, id: "codex-search-script/1", status: "ok", durationMs: 480 };
   searchScript.updateResult({ content: [], details: { calls: [firstDone] } }, true);
   const finishedChild = searchFrame();
-  assert.match(plain(finishedChild), /✓ 480 ms$/);
+  assert.match(plain(finishedChild), /✓$/);
   now += 480;
   for (const tick of timers.values()) tick();
   assert.equal(searchFrame(), finishedChild, "the finished child stops animating even while the parent runs");
   searchScript.updateResult({
-    content: [{ type: "text", text: "Script completed\nWall time 1.5 seconds\nOutput:\n" }, { type: "text", text: "search answer" }],
+    content: [{ type: "text", text: "Script completed\nWall time 10.5 seconds\nOutput:\n" }, { type: "text", text: "search answer" }],
     details: { calls: [
       firstDone,
-      searchCall('{"query":"Long query with \\"quotes\\" and a cut escape \\u0...', "error", { durationMs: 620, error: "Search failed" }),
+      searchCall('{"query":"Long query with \\"quotes\\" and a cut escape \\u0...', "error", { durationMs: 10_000, error: "Search failed" }),
       searchCall('{"query":"Another query"}', "cancelled", { durationMs: 200 }),
-    ] }, durationMs: 1500,
+    ] }, durationMs: 10_500,
   });
   assert.deepEqual(rows(searchScript).slice(1).map(line => line.trim()), [
-    'search · codex Find "release" notes ✓ 480 ms',
-    'search · codex Long query with "quotes" and a cut escape ... ✗ 620 ms',
-    'search · codex Another query ⊘ 200 ms',
+    'search · codex Find "release" notes ✓',
+    'search · codex Long query with "quotes" and a cut escape ... ✗ 10.0 s',
+    'search · codex Another query ⊘',
   ]);
   assert.doesNotMatch(body(searchScript), /search answer|Search failed/);
   searchScript.setExpanded(true);
@@ -508,11 +508,11 @@ try {
   assert.doesNotMatch(body(devops), /DEVOPS/, "wait for complete shell arguments");
   devops.setArgsComplete();
   devops.markExecutionStarted();
-  assert.match(body(devops), /^ *DEVOPS +0 ms/m);
+  assert.match(body(devops), /^ *DEVOPS$/m);
   devops.updateResult({ content: [{ type: "text", text: "partial pod list" }] }, true);
   assert.doesNotMatch(body(devops), /partial pod list/);
   finish(devops, "pod result", false, undefined, 520);
-  assert.match(body(devops), /^ *DEVOPS +520 ms/m);
+  assert.match(body(devops), /^ *DEVOPS$/m);
   assert.match(body(devops), /--context homelab --namespace monitoring/);
   assert.match(body(devops), /\x27app in \(grafana, prometheus\)\x27 -o wide/);
   assert.doesNotMatch(body(devops), /pod result/);
@@ -579,49 +579,60 @@ try {
   quick.updateResult({ content: [{ type: "text", text: "file.txt" }] }, true);
   assert.equal(rows(quick).length, 1);
   finish(quick, "file.txt", false, undefined, 250);
-  assert.match(body(quick), /ls +250 ms/);
+  assert.match(body(quick), /ls$/);
   assert.doesNotMatch(body(quick), /file\.txt/);
+  for (const duration of [9_999, 10_000]) {
+    const measured = tool("read", { path: "src/app.ts" }, `read-${duration}`);
+    finish(measured, "file contents", false, undefined, duration);
+    for (const expanded of [false, true]) {
+      measured.setExpanded(expanded);
+      assert.equal(body(measured).includes("10.0 s"), duration >= 10_000);
+    }
+  }
   const shellGrep = tool("bash", { command: "rg -n 'needle' src", timeout: 20 }, "shell-rg");
-  finish(shellGrep, "a.ts:1: needle\nb.ts:3: needle", false, undefined, 1250);
+  finish(shellGrep, "a.ts:1: needle\nb.ts:3: needle", false, undefined, 10_000);
   const shellFind = tool("bash", { command: "find src -name '*.ts'" }, "shell-find");
   finish(shellFind, "src/a.ts\nsrc/b.ts", false, undefined, 32);
   const piped = tool("bash", { command: "rg -n needle src | head" }, "shell-piped");
   finish(piped, "a.ts:1: needle", false, undefined, 25);
   await Promise.resolve();
-  assert.match(body(shellGrep), /rg -n 'needle' src \(timeout 20 s\) · src · 2 match lines +1\.3 s {3}$/);
-  assert.match(body(shellFind), /src · 2 paths +32 ms {3}$/);
-  for (const text of [" (timeout 20 s)", "1.3 s"]) {
+  assert.match(body(shellGrep), /rg -n 'needle' src \(timeout 20 s\) · src · 2 match lines +10\.0 s {3}$/);
+  assert.match(body(shellFind), /src · 2 paths$/);
+  for (const text of [" (timeout 20 s)", "10.0 s"]) {
     assert.ok(shellGrep.render(100).join("").includes(themes.theme.style(text, darkMetadata)));
   }
   const pending = tool("bash", { command: "sleep 2", timeout: 5 }, "pending-timeout");
   pending.markExecutionStarted();
-  assert.match(body(pending), /sleep 2 \(timeout 5 s\) +0 ms {3}$/);
+  assert.match(body(pending), /sleep 2 \(timeout 5 s\)$/);
   assert.ok(pending.render(100).join("").includes(themes.theme.style(" (timeout 5 s)", darkMetadata)));
   finish(pending, "");
   assert.doesNotMatch(body(piped), /match lines|paths|timeout/);
   for (const [name, key] of [["bash", "command"], ["codemode", "code"]]) {
     const call = tool(name, {}, `${name}-stream`);
     call.updateArgs({ [key]: "x".repeat(120) + "TAIL" });
-    assert.match(body(call), /\.\.\..*0 ms {3}$/);
+    assert.match(body(call), /\.\.\.$/);
     assert.ok(body(call).indexOf("...") + 3 <= 70);
     assert.doesNotMatch(body(call), /TAIL/);
     call.setArgsComplete();
     call.markExecutionStarted();
-    assert.match(body(call), /0 ms {3}$/);
-    now += 1200;
+    assert.match(body(call), /\.\.\.$/);
+    now += 9_999;
     for (const tick of timers.values()) tick();
-    assert.match(body(call), /\.\.\..*1\.2 s {3}$/);
-    finish(call, "done", false, undefined, 1250);
-    assert.match(body(call), /\.\.\..*1\.3 s {3}$/);
+    assert.match(body(call), /\.\.\.$/);
+    now++;
+    for (const tick of timers.values()) tick();
+    assert.match(body(call), /\.\.\. +10\.0 s {3}$/);
+    finish(call, "done", false, undefined, 10_250);
+    assert.match(body(call), /\.\.\. +10\.3 s {3}$/);
   }
   const long = tool("bash", { command: `printf '%s' '${"very long command ".repeat(8)}TAIL'`, timeout: 30 }, "shell-long");
   long.markExecutionStarted();
   const runningHeader = long.render(100).join("\n");
   assert.ok(new Set(runningHeader.match(/\x1b\[38;2;[\d;]+m/g)).size > 4, "long command has a fine-grained foreground gradient");
   assert.doesNotMatch(runningHeader, /\x1b\[48;/);
-  finish(long, "done", false, undefined, 340);
+  finish(long, "done", false, undefined, 10_340);
   const header = rows(long, 100)[0];
-  assert.match(header, /\.\.\. \(timeout 30 s\) +340 ms {3}$/);
+  assert.match(header, /\.\.\. \(timeout 30 s\) +10\.3 s {3}$/);
   assert.equal(visibleWidth(header), 100);
   assert.ok(visibleWidth(header.slice(0, header.indexOf("..."))) + 3 <= 70);
   long.setExpanded(true);
@@ -630,14 +641,14 @@ try {
     const text = expanded.join("\n");
     assert.equal(text.match(/printf/g)?.length, 1, "the wrapped command is not repeated");
     assert.equal(text.match(/very\s+long/g)?.length, 8, "the full command remains visible");
-    assert.match(text, /TAIL'[ \n]+\(timeout 30 s\)[ \n]+340 ms[ \n]+done$/);
+    assert.match(text, /TAIL'[ \n]+\(timeout 30 s\)[ \n]+10\.3 s[ \n]+done$/);
   }
   const timed = tool("bash", { command: "echo 12345678901234567890", timeout: 30 }, "timed-expanded");
-  finish(timed, "done", false, undefined, 340);
+  finish(timed, "done", false, undefined, 10_340);
   timed.setExpanded(true);
-  assert.match(rows(timed, 80)[0], /echo \d+ \(timeout 30 s\) +340 ms {3}$/);
+  assert.match(rows(timed, 80)[0], /echo \d+ \(timeout 30 s\) +10\.3 s {3}$/);
   const narrowTimed = rows(timed, 45).map(row => row.trim());
-  assert.deepEqual(narrowTimed.filter(Boolean), ["$ echo 12345678901234567890 (timeout 30 s)", "340 ms", "done"]);
+  assert.deepEqual(narrowTimed.filter(Boolean), ["$ echo 12345678901234567890 (timeout 30 s)", "10.3 s", "done"]);
   const unsafe = tool("bash", { command: "echo \x1b[31mred\x1b[0m\x07" });
   finish(unsafe, "output\x1b[2J\x07");
   unsafe.setExpanded(true);
@@ -670,10 +681,10 @@ try {
     read.setExpanded(true);
     assert.ok(read.render(100).join("\n").includes(themes.theme.style(":2-31", openStyle)));
     knowledge.setExpanded(false);
-    assert.ok(knowledge.render(100).join("\n").includes(themes.theme.style("2 results · 340 ms", closedStyle)));
+    assert.ok(knowledge.render(100).join("\n").includes(themes.theme.style("2 results", closedStyle)));
     knowledge.setExpanded(true);
     const searchRows = knowledge.render(100).join("\n");
-    assert.ok(searchRows.includes(themes.theme.style("2 results · 340 ms", openStyle)));
+    assert.ok(searchRows.includes(themes.theme.style("2 results", openStyle)));
     assert.ok(searchRows.includes(themes.theme.style("Section: Setup → Local", openStyle)));
     for (const component of [read, bash, edit, write, mcp, unsafe, searchScript]) {
       component.invalidate();
