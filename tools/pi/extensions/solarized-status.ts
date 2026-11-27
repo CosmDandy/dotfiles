@@ -8,6 +8,7 @@ import { stripVTControlCharacters } from "node:util";
 
 const lightReady = rgbColor(152, 161, 106);
 const lightBackground = rgbColor(253, 246, 227);
+const ribbonGray = "\x1b[2;38;5;11m";
 type TurnPhase = "wait" | "generation" | "bash" | "tools";
 type TurnSpan = { phase: TurnPhase; from: number; to: number };
 type TurnTiming = { started: number; spans: TurnSpan[]; tokens: number; textSeconds: number };
@@ -37,6 +38,20 @@ function summarizeTurn(turn: TurnTiming, ended: number, aborted: boolean) {
 const minTurnTimingMs = 30_000;
 const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
 const captionText = (text: string) => stripVTControlCharacters(text).replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
+
+function ribbonRows([left, activity, limits]: [string, string, string], name: string, columns: number): string[] {
+  const separator = ` ${ribbonGray}·\x1b[0m `;
+  const metrics = [activity, limits].filter(Boolean).join(separator);
+  const leftWidth = visibleWidth(left);
+  const metricsWidth = visibleWidth(metrics);
+  const gap = columns - leftWidth - metricsWidth;
+  const sameRow = gap >= 2;
+  const room = (sameRow ? gap - 2 : metrics ? columns - metricsWidth : 0) - (metrics ? 3 : 0);
+  const title = room >= 4 ? truncateToWidth(name, room, "…") : "";
+  const right = [activity, title && `${ribbonGray}${title}\x1b[0m`, limits].filter(Boolean).join(separator);
+  if (!right) return [left];
+  return sameRow ? [left + " ".repeat(columns - leftWidth - visibleWidth(right)) + right] : [left, right];
+}
 
 type Window = { used_percentage: number; resets_at: number };
 type WindowName = "five_hour" | "seven_day";
@@ -306,7 +321,7 @@ export default function (pi: ExtensionAPI) {
           rate_limits: limits,
           sessions: countSessions(sessionsDir),
         };
-        child = spawn(join(root, "bin", "solarized-statusline"), [], {
+        child = spawn(join(root, "bin", "solarized-statusline"), ["--segments"], {
           env: { ...process.env, TMPDIR: tmp, COLUMNS: String(Math.max(1, width)) },
           stdio: ["pipe", "pipe", "ignore"],
         });
@@ -442,7 +457,7 @@ export default function (pi: ExtensionAPI) {
         return new StatusEditor(editorTui, editorTheme, keybindings);
       });
       update();
-      let layout: { line: string; columns: number; lightColor?: string; rows: string[] } | undefined;
+      let layout: { line: string; name: string; columns: number; lightColor?: string; rows: string[] } | undefined;
       return {
         invalidate() { layout = undefined; },
         render(columns: number) {
@@ -453,13 +468,12 @@ export default function (pi: ExtensionAPI) {
           const theme = ctx.ui.theme;
           // On light backgrounds the ribbon's ANSI gray plus faint loses too much contrast.
           const lightColor = theme.appearance === "light" ? theme.getFgAnsi("thinkingText") : undefined;
-          if (layout && layout.line === line && layout.columns === columns && layout.lightColor === lightColor) return layout.rows;
-          const output = lightColor !== undefined
-            ? line.replaceAll("\x1b[2;38;5;11m", lightColor).replaceAll("\x1b[2;", "\x1b[")
-            : line;
-          const rows = output.split("\n");
-          if (rows.length === 1) {
-            // The Go renderer and TUI can count Nerd Font glyphs differently. Correct its inter-block gap in terminal columns.
+          const hasSegments = line.startsWith("[");
+          const name = hasSegments ? captionText((ctx.sessionManager.getSessionName() ?? "").replace(/\s+/gu, " ")) : "";
+          if (layout && layout.line === line && layout.name === name && layout.columns === columns && layout.lightColor === lightColor) return layout.rows;
+          const rows = hasSegments ? ribbonRows(JSON.parse(line), name, innerWidth) : line.split("\n");
+          if (!hasSegments && rows.length === 1) {
+            // A renderer installed before --segments can count Nerd Font glyphs differently.
             const row = rows[0];
             const gap = [...row.matchAll(/ {2,}/g)].reduce<RegExpMatchArray | undefined>((longest, match) =>
               !longest || match[0].length > longest[0].length ? match : longest, undefined);
@@ -468,9 +482,10 @@ export default function (pi: ExtensionAPI) {
               if (size > 0) rows[0] = row.slice(0, gap.index) + " ".repeat(size) + row.slice(gap.index + gap[0].length);
             }
           }
-          const rendered = rows.flatMap(row => wrapTextWithAnsi(row, innerWidth))
+          const rendered = rows.flatMap(row => wrapTextWithAnsi(lightColor !== undefined
+            ? row.replaceAll(ribbonGray, lightColor).replaceAll("\x1b[2;", "\x1b[") : row, innerWidth))
             .map(row => inset + truncateToWidth(row, innerWidth, "", true) + inset);
-          layout = { line, columns, lightColor, rows: rendered };
+          layout = { line, name, columns, lightColor, rows: rendered };
           return rendered;
         },
         dispose() {

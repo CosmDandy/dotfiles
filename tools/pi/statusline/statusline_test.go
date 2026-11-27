@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func renderStatus(t *testing.T, payload string, columns string) string {
+func renderStatus(t *testing.T, payload string, columns string, args ...string) string {
 	t.Helper()
 	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv("COLUMNS", columns)
@@ -32,7 +32,7 @@ func renderStatus(t *testing.T, payload string, columns string) string {
 	oldIn, oldOut := os.Stdin, os.Stdout
 	os.Stdin, os.Stdout = in, w
 	defer func() { os.Stdin, os.Stdout = oldIn, oldOut }()
-	runStatusline(nil)
+	runStatusline(args)
 	w.Close()
 	out, err := io.ReadAll(r)
 	r.Close()
@@ -84,6 +84,19 @@ func TestRibbonLayout(t *testing.T) {
 	}
 	if visWidth(out, pickGlyphs()) != 151 {
 		t.Fatalf("ribbon is not aligned: %q", plain)
+	}
+}
+
+func TestRibbonSegments(t *testing.T) {
+	out := renderStatus(t, `{"context_window":{"current_usage":{"input_tokens":80,"cache_read_input_tokens":20}},"sessions":{"running":2},"rate_limits":{"five_hour":{"used_percentage":42},"seven_day":{"used_percentage":20}}}`, "151", "--segments")
+	var segments [3]string
+	if err := json.Unmarshal([]byte(out), &segments); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"Pi · 0%", "◎ 20% · ◉ 2", "5h 42% · 7d 20%"} {
+		if got := ansiRe.ReplaceAllString(segments[i], ""); got != want {
+			t.Errorf("segment %d: got %q, want %q", i, got, want)
+		}
 	}
 }
 

@@ -50,14 +50,14 @@ assert.equal(transform(false), "## A **heading**\n\n```sh\n### a literal comment
 const markdownScreen = stripVTControlCharacters(new Markdown(transform(false), 0, 0, themes.getMarkdownTheme()).render(80).join("\n"));
 assert.match(markdownScreen, /^A heading *$/m);
 assert.match(markdownScreen, /### a literal comment/);
-let footer, editor, hiddenThinkingLabel, queued = false, workingVisible = true;
+let footer, editor, sessionName, hiddenThinkingLabel, queued = false, workingVisible = true;
 const tui = { requestRender() {}, terminal: { rows: 42, columns: 151 } };
 const statuses = new Map();
 const widgets = new Map();
 const keybindings = new KeybindingsManager();
 const ctx = {
   mode: "tui", model: { provider: "openai", id: "gpt-6.1-sol", name: "GPT-6.1 SOL", contextWindow: 272000 },
-  sessionManager: { getSessionId: () => "frame-test", getBranch: () => [] },
+  sessionManager: { getSessionId: () => "frame-test", getSessionName: () => sessionName, getBranch: () => [] },
   getContextUsage: () => ({ percent: 24, contextWindow: 272000 }),
   hasPendingMessages: () => queued,
   ui: {
@@ -274,6 +274,16 @@ try {
   assert.doesNotMatch(plain(footer.render(151)[0]), /[◉○] \d+/, "one live session must not show session counters");
   assert.match(footer.render(151)[0], /\x1b\[2;32m24%/);
   assert.equal(plain(editor.render(151)[1]), ` ╭${"─".repeat(147)}╮ `);
+  sessionName = "Shell timeout display";
+  assert.equal(plain(editor.render(151)[1]), ` ╭${"─".repeat(147)}╮ `);
+  assert.match(plain(footer.render(151)[0]), /Shell timeout display {3}$/);
+  assert.equal(visibleWidth(footer.render(151)[0]), 151);
+  sessionName = "\x1b[31m日本語のセッション\x1b[0m";
+  assert.match(plain(footer.render(40)[0]), /日本… {3}$/);
+  assert.equal(visibleWidth(footer.render(40)[0]), 40);
+  assert.doesNotMatch(footer.render(151)[0], /\x1b\[31m/);
+  sessionName = undefined;
+  assert.match(plain(footer.render(151)[0]), /^ {3}GPT-6\.1 SOL · medium · 24% +$/);
   assert.equal(plain(editor.render(151).at(-1)), ` ╰${"─".repeat(147)}╯ `);
   assert.ok(top().endsWith("· Ready   "));
   assert.doesNotMatch(top(), /[─╭╮]/);
@@ -474,10 +484,12 @@ try {
     }
     assert.ok(editor.render(151)[0].includes(themes.theme.style("· Ready", { fg: light ? rgbColor(152, 161, 106) : "success", dim: !light })));
     assert.doesNotMatch(top(), /tok\/s/);
-    if (light) {
-      assert.ok(footer.render(151)[0].includes(themes.theme.getFgAnsi("thinkingText") + "GPT-6.1 SOL"));
-      assert.doesNotMatch(footer.render(151)[0], /\x1b\[2;/);
-    }
+    const modelColor = light ? themes.theme.getFgAnsi("thinkingText") : "\x1b[2;38;5;11m";
+    assert.ok(footer.render(151)[0].includes(modelColor + "GPT-6.1 SOL"));
+    sessionName = "Shell timeout display";
+    assert.ok(footer.render(151)[0].includes(modelColor + sessionName), `${appearance}: session name matches the model color`);
+    sessionName = undefined;
+    if (light) assert.doesNotMatch(footer.render(151)[0], /\x1b\[2;/);
     await start();
     const waves = [..."⠂⠒⠲⠴⠤⠠"];
     for (const [type, frames] of [[undefined, waves], ["thinking_delta", [..."·✢*✶✻✽✽✻✶*✢·"]], ["text_delta", waves], ["toolcall_delta", waves]]) {
@@ -523,7 +535,15 @@ try {
   await start();
   const peer = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"]);
   const peerFile = join(agentDir, "cache", "statusline", "sessions", `${peer.pid}.json`);
+  const reset = Math.floor(new Date().getTime() / 1000) + 3600;
+  const getBranch = ctx.sessionManager.getBranch;
   try {
+    sessionName = "fix shell timeouts";
+    ctx.sessionManager.getBranch = () => [{ type: "message", message: assistant({ usage: { input: 80, cacheRead: 20, cacheWrite: 0 } }) }];
+    await emit("after_provider_response", { status: 200, headers: {
+      "x-codex-primary-used-percent": "22", "x-codex-primary-window-minutes": "300", "x-codex-primary-reset-at": String(reset),
+      "x-codex-secondary-used-percent": "9", "x-codex-secondary-window-minutes": "10080", "x-codex-secondary-reset-at": String(reset + 604800),
+    } });
     for (const [state, at, expected] of [
       ["running", wall, /◉ 2/], ["idle", wall, /GPT-6.1 SOL/], ["waiting", wall, /GPT-6.1 SOL/],
       ["running", wall - 90001, /GPT-6.1 SOL/],
@@ -533,7 +553,8 @@ try {
       await delay(150);
       const ribbon = plain(footer.render(151)[0]);
       assert.match(ribbon, expected);
-      if (state !== "running" || at < wall) assert.doesNotMatch(ribbon, /[◉○] \d+/);
+      if (state === "running" && at === wall) assert.match(ribbon, /◎ 20% · ◉ 2 · fix shell timeouts · .*22%.* · .*9%/);
+      else assert.doesNotMatch(ribbon, /[◉○] \d+/);
     }
     const exited = new Promise(resolve => peer.once("exit", resolve));
     peer.kill();
@@ -543,6 +564,8 @@ try {
     await delay(150);
     assert.doesNotMatch(plain(footer.render(151)[0]), /[◉○] \d+/);
   } finally {
+    sessionName = undefined;
+    ctx.sessionManager.getBranch = getBranch;
     peer.kill();
     rmSync(peerFile, { force: true });
   }
@@ -553,17 +576,14 @@ try {
   assert.match(plain(footer.render(151)[0]), /GPT-6.1 SOL · high · 24%/);
   assert.match(footer.render(151)[0], /\x1b\[2;33mhigh\x1b\[0m/);
   assert.doesNotMatch(footer.render(151).map(plain).join("\n"), /—/);
-  const reset = Math.floor(new Date().getTime() / 1000) + 3600;
-  await emit("after_provider_response", { status: 200, headers: {
-    "x-codex-primary-used-percent": "22", "x-codex-primary-window-minutes": "300", "x-codex-primary-reset-at": String(reset),
-    "x-codex-secondary-used-percent": "9", "x-codex-secondary-window-minutes": "10080", "x-codex-secondary-reset-at": String(reset + 604800),
-  } });
+  sessionName = "日本語のセッション".repeat(8);
   for (const width of [20, 40, 60, 80, 100, 151]) {
     await waitForRibbon(/22%[\s\S]*9%/, width);
     for (const row of footer.render(width)) assert.ok(visibleWidth(row) <= width, `limits overflow at ${width}`);
     if (width <= 40) assert.ok(footer.render(width).length > 1, "narrow footer must wrap instead of hiding limits");
   }
-  await waitForRibbon(/22%[^\n]*9%(?:[^\n]*\S)? {3}$/);
+  await waitForRibbon(/日本語[^\n]*… · .*22%[^\n]*9%(?:[^\n]*\S)? {3}$/);
+  sessionName = undefined;
   const providerDir = join(agentDir, "cache", "statusline", ctx.model.provider);
   const ownLimits = JSON.parse(readFileSync(join(providerDir, `limits-${process.pid}.json`), "utf8"));
   assert.equal(ownLimits.five_hour.used_percentage, 22);

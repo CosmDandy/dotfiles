@@ -1,3 +1,5 @@
 package main
 
-func main() { runStatusline(nil) }
+import "os"
+
+func main() { runStatusline(os.Args[1:]) }

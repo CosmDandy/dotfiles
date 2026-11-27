@@ -1,8 +1,7 @@
 package main
 
-// Port of tools/claude/statusline.sh: session JSON on stdin, one line on
-// stdout. Identity and context on the left, sessions and subscription limits
-// on the right.
+// Port of tools/claude/statusline.sh: session JSON on stdin, a styled ribbon
+// on stdout. With --segments the TUI receives independent blocks for layout.
 //
 // The original forked jq once (still ~130ms saved over per-field forks) plus
 // python for the session badge, awk for the rate-limit history and a
@@ -701,7 +700,7 @@ func add(acc, segAdd string) string {
 
 // --- entry point -----------------------------------------------------------
 
-func runStatusline(_ []string) {
+func runStatusline(args []string) {
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return
@@ -815,8 +814,11 @@ func runStatusline(_ []string) {
 		left = add(left, styleSeg)
 		right = add(cacheSeg, right)
 	}
-	right = add(right, limits)
-	fmt.Print(joinEdges(left, right, cols, margin, g))
+	if len(args) == 1 && args[0] == "--segments" {
+		_ = json.NewEncoder(os.Stdout).Encode([3]string{left, right, limits})
+		return
+	}
+	fmt.Print(joinEdges(left, add(right, limits), cols, margin, g))
 }
 
 var fableRe = regexp.MustCompile(`[Ff]able`)
