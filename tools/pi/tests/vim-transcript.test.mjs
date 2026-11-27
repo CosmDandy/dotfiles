@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -51,7 +51,7 @@ const longPrompt = tag => ['```text', ...Array.from({ length: 24 }, (_, i) => `$
 
 test('user message folds rendered rows without touching the Markdown or terminal zones', async () => {
   const { UserMessageComponent } = await load('pi-coding-agent/dist/modes/interactive/components/user-message.js');
-  const { initTheme } = await load('pi-coding-agent/dist/modes/interactive/theme/theme.js');
+  const { initTheme, theme } = await load('pi-coding-agent/dist/modes/interactive/theme/theme.js');
   const { visibleWidth } = await load('pi-tui/dist/index.js');
   initTheme('dark', false);
   const component = new UserMessageComponent(longPrompt('prompt'));
@@ -61,12 +61,15 @@ test('user message folds rendered rows without touching the Markdown or terminal
   assert.match(preview[0], /^\x1b\]133;A\x07/);
   assert.match(preview.at(-1), /^\x1b\]133;B\x07\x1b\]133;C\x07/);
   assert.match(stripVTControlCharacters(preview[7]), /^─+ 17 hidden lines ─+$/);
+  const dimDivider = line => theme.bg('userMessageBg', theme.fg('dim', stripVTControlCharacters(line)));
+  assert.equal(preview[7], dimDivider(preview[7]));
   assert.ok(preview.every(line => visibleWidth(line) <= width));
   assert.equal(component.render(width), preview, 'return the cached rows until the view changes');
 
   component.toggleFold();
   const expanded = component.render(width);
   assert.match(stripVTControlCharacters(expanded[7]), / Collapse /);
+  assert.equal(expanded[7], dimDivider(expanded[7]));
   assert.deepEqual(expanded.slice(0, 7), preview.slice(0, 7));
   assert.deepEqual(expanded.slice(-4), preview.slice(-4));
   assert.deepEqual(expanded.slice(8, -4).map(line => stripVTControlCharacters(line).trim()),
@@ -82,7 +85,7 @@ test('user message folds rendered rows without touching the Markdown or terminal
   assert.equal(new UserMessageComponent('Short prompt').render(width).length, 3);
 });
 
-test('prompt dividers toggle individual messages in fullscreen and Alt+O works in regular', async () => {
+test('clicking a long message toggles its fold in fullscreen and Alt+O works in regular', async () => {
   assert.ok(process.env.PI_TEST_BIN, 'PI_TEST_BIN must point to the patched Pi executable');
   const directory = mkdtempSync(join(tmpdir(), 'pi-fold-'));
   const socket = `pi-fold-${process.pid}`;
@@ -106,13 +109,16 @@ test('prompt dividers toggle individual messages in fullscreen and Alt+O works i
     } while (Date.now() < deadline);
     assert.fail(`Expected prompt frame was not rendered:\n${frame}`);
   }
-  const click = (frame, label) => {
+  const point = (frame, label) => {
     const lines = frame.split('\n');
     const row = lines.findIndex(line => line.includes(label));
     assert.notEqual(row, -1);
-    const col = lines[row].indexOf(label);
-    send('-l', `\x1b[<0;${col + 1};${row + 1}M\x1b[<0;${col + 1};${row + 1}m`);
-    return row;
+    return [lines[row].indexOf(label) + 1, row + 1];
+  };
+  const mouse = (point, button = 0, phase = 'M') => `\x1b[<${button};${point.join(';')}${phase}`;
+  const click = (frame, label) => {
+    const where = point(frame, label);
+    send('-l', mouse(where) + mouse(where, 0, 'm'));
   };
   const hidden = '17 hidden lines';
   const bothFolded = frame => frame.split(hidden).length === 3 && !/first-line-10|second-line-10/.test(frame);
@@ -122,11 +128,24 @@ test('prompt dividers toggle individual messages in fullscreen and Alt+O works i
     assert.match(preview, /first-line-1\b/);
     assert.match(preview, /first-line-24\b/);
     assert.match(preview, /short prompt stays visible/);
-    const clickedRow = click(preview, hidden);
+    const dragStart = point(preview, 'first-line-1');
+    const dragEnd = point(preview, 'first-line-3');
+    send('-l', mouse(dragStart) + mouse(dragEnd, 32) + mouse(dragEnd, 0, 'm'));
+    click(preview, 'short prompt stays visible');
+    await delay(100);
+    assert.ok(bothFolded(tmux('capture-pane', '-p', '-t', pane)), 'drag and short-message click must not toggle a fold');
+
+    click(preview, 'first-line-1');
     const expanded = await waitFor(frame => frame.includes('first-line-10') && frame.includes(' Collapse '));
-    assert.equal(expanded.split('\n').findIndex(line => line.includes(' Collapse ')), clickedRow);
+    assert.equal(point(expanded, ' Collapse ')[1], point(preview, hidden)[1]);
     assert.doesNotMatch(expanded, /second-line-10/);
-    click(expanded, ' Collapse ');
+    click(expanded, 'first-line-10');
+    const folded = await waitFor(bothFolded);
+
+    click(folded, 'second-line-24');
+    const second = await waitFor(frame => frame.includes('second-line-10') && frame.includes(' Collapse '));
+    assert.doesNotMatch(second, /first-line-10/);
+    click(second, ' Collapse ');
     await waitFor(bothFolded);
 
     send('-l', 'keep this draft');
@@ -311,6 +330,66 @@ test('a theme notification retries stale terminal colors once', async () => {
   }
 });
 
+test('opening a tool at the end of the fullscreen transcript reveals the start of its output', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'pi-tool-open-'));
+  const socket = `pi-tool-open-${process.pid}`;
+  const tmux = (...args) => execFileSync('tmux', ['-f', '/dev/null', '-L', socket, ...args], { encoding: 'utf8' });
+  const text = text => ({ type: 'text', text });
+  const header = 'printf tool-opening-fixture';
+  const session = writeSession(directory, [
+    { role: 'user', content: [text(Array.from({ length: 55 }, (_, i) => `Before ${i + 1}`).join('\n\n'))] },
+    { role: 'assistant', api: 'openai-responses', provider: 'openai', model: 'gpt-5', stopReason: 'toolUse',
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      content: [{ type: 'toolCall', id: 'tool-open', name: 'bash', arguments: { command: header } }] },
+    { role: 'toolResult', toolCallId: 'tool-open', toolName: 'bash', isError: false,
+      content: [text(Array.from({ length: 80 }, (_, i) => `output-row-${i + 1}`).join('\n'))] },
+  ]);
+  const agent = join(directory, 'agent');
+  mkdirSync(agent);
+  let pane;
+  async function waitFor(condition) {
+    const deadline = Date.now() + 8000;
+    let frame;
+    do {
+      frame = tmux('capture-pane', '-p', '-t', pane);
+      if (condition(frame)) return frame;
+      await delay(40);
+    } while (Date.now() < deadline);
+    assert.fail(`Expected tool frame was not rendered:\n${frame}`);
+  }
+  const clickHeader = frame => {
+    const lines = frame.split('\n');
+    const row = lines.findIndex(line => line.includes(header));
+    assert.notEqual(row, -1);
+    const coords = `${lines[row].indexOf(header) + 1};${row + 1}`;
+    tmux('send-keys', '-t', pane, '-l', `\x1b[<0;${coords}M\x1b[<0;${coords}m`);
+  };
+  const showsStart = frame => frame.includes(header) && /output-row-1\b/.test(frame);
+  try {
+    const extension = fileURLToPath(new URL('../extensions/compact-tools.ts', import.meta.url));
+    pane = tmux('new-session', '-d', '-P', '-F', '#{pane_id}', '-c', directory, '-x', '100', '-y', '36',
+      '-e', `PI_CODING_AGENT_DIR=${agent}`, process.env.PI_TEST_BIN,
+      '--offline', '--no-extensions', '-e', extension, '--no-skills', '--no-mcp', '--tui-mode', 'fullscreen', '--session', session).trim();
+    const collapsed = frame => frame.includes(header) && frame.includes('↑1 ↓1') && !frame.includes('output-row-');
+    await waitFor(collapsed);
+    await delay(200); // The startup warnings can change the scroll offset after the first frame.
+    clickHeader(await waitFor(collapsed));
+    const opened = await waitFor(showsStart);
+    assert.doesNotMatch(opened, /output-row-80/);
+    clickHeader(opened);
+    await waitFor(collapsed);
+    tmux('send-keys', '-t', pane, 'Escape');
+    await waitFor(frame => frame.includes('NORMAL'));
+    tmux('send-keys', '-t', pane, 'Enter');
+    const keyed = await waitFor(showsStart);
+    assert.doesNotMatch(keyed, /output-row-80/);
+  } finally {
+    try { tmux('kill-server'); } catch {}
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('fullscreen Vim navigation operates on the real transcript and preserves the prompt draft', async () => {
   assert.ok(process.env.PI_TEST_BIN, 'PI_TEST_BIN must point to the patched Pi executable');
   const directory = mkdtempSync(join(tmpdir(), 'pi-vim-'));
@@ -392,14 +471,14 @@ test('fullscreen Vim navigation operates on the real transcript and preserves th
     const opened = await waitFor(frame => marker('│', 9).test(frame) && frame.includes('selected-output-1'));
     assert.doesNotMatch(opened, /^ +output-(?:10|11) *$/m, 'only the entered call exposes its output');
     send('2', 'Down');
-    const details = await waitFor(frame => /^ *│ *selected-output-1 *$/m.test(frame));
-    assert.match(details, /^10elected-output-11 *$/m, 'two-digit badges stay pinned to the left');
+    const details = await waitFor(frame => /^ *│ *selected-output-1\b/m.test(frame));
+    assert.match(details, /^10elected-output-11\b/m, 'two-digit badges stay pinned to the left');
     send('V', 'Down');
-    await waitFor(frame => /^ *│ *selected-output-2 *$/m.test(frame) && frame.includes('VISUAL'));
+    await waitFor(frame => /^ *│ *selected-output-2\b/m.test(frame) && frame.includes('VISUAL'));
     assert.equal(draftStyle(screen(true)), draftStyle(normalDock), 'the draft stays muted in VISUAL');
     if (verifyClipboard) {
       send('y');
-      await waitFor(frame => /^ *✓ *selected-output-2 *$/m.test(frame));
+      await waitFor(frame => /^ *✓ *selected-output-2\b/m.test(frame));
       assert.equal(tmux('show-buffer').trim().replace(/^ +/gm, ''), 'selected-output-1\nselected-output-2');
     }
     send('Left');

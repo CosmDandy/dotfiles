@@ -10,6 +10,7 @@ import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByCol
 
 const pulseInterval = 120;
 const timingInset = 3;
+const liveTailDelayMs = 600;
 const bashTailRows = 5;
 const sshTailRows = 10;
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -758,10 +759,10 @@ export default function compactTools(pi: ExtensionAPI) {
         const program = toolName === "bash" ? shellProgram(command) : undefined;
         const devops = !expanded && program && devopsPrograms.has(program) &&
           (context.argsComplete || context.executionStarted || !context.isPartial) ? simpleShellWords(command.trimEnd()) : undefined;
-        context.state.devopsPreview = devops !== undefined;
         const timing = shellCall ? elapsedLabel(context.isPartial ? liveMs : context.durationMs)
           : list || friendlyMcp ? elapsedLabel(context.durationMs) : "";
-        const metadata = friendlyMcp ? [outcome, timing].filter(Boolean).join(" · ") : timing;
+        const status = toolName === "bash" && context.isError && !context.isPartial ? "Failed" : undefined;
+        const metadata = [status ?? (friendlyMcp ? outcome : undefined), timing].filter(Boolean).join(" · ");
         const timeout = toolName === "bash" && typeof args?.timeout === "number" && Number.isFinite(args.timeout) && args.timeout > 0
           ? ` (timeout ${args.timeout} s)` : "";
         const argumentsText = expanded && !list && !friendlyMcp && !["bash", "edit", "read"].includes(toolName)
@@ -862,8 +863,10 @@ export default function compactTools(pi: ExtensionAPI) {
         const search = toolName === "bash" && !isPartial && !context.isError && context.state.outcome === undefined
           ? shellSearch(context.args?.command) : undefined;
         const command = context.args?.command;
-        const tailRows = toolName === "bash" && !expanded && !context.state.devopsPreview
-          ? typeof command === "string" && shellProgram(command) === "ssh" ? sshTailRows : isPartial ? bashTailRows : 0
+        const startedAt = context.state.pulseStartedAt;
+        const tailRows = toolName === "bash" && isPartial && !expanded && interactive && active &&
+          typeof startedAt === "number" && Date.now() - startedAt >= liveTailDelayMs
+          ? typeof command === "string" && shellProgram(command) === "ssh" ? sshTailRows : bashTailRows
           : 0;
         if (toolName === "bash" && !expanded && !search && !tailRows) return new Text("", 0, 0);
         const details = result.details as { diff?: unknown; patch?: unknown } | undefined;
@@ -1042,7 +1045,6 @@ export default function compactTools(pi: ExtensionAPI) {
             return [truncateToWidth(indent + hint, width), ...tail];
           }
           if (toolName === "bash" || codemode) {
-            const startedAt = context.state.pulseStartedAt;
             const step = searches?.length && isPartial && interactive && active && typeof startedAt === "number"
               ? Math.floor(Math.max(0, Date.now() - startedAt) / pulseInterval) : undefined;
             const lines = searches?.flatMap(call => codexSearchLines(call, theme, padding, width, expanded, step)) ?? [];
