@@ -30,7 +30,7 @@ try {
   assert.equal(servers.get("context7").exposure, "deferred");
   assert.equal(servers.get("knowledge").exposure, "deferred");
   assert.equal(servers.get("knowledge").url, "http://100.64.0.1:7234/mcp");
-  assert.equal(servers.get("exa").exposure, "direct");
+  assert.equal(servers.get("exa").exposure, "deferred");
 
   const tokenFile = join(sandbox, "token with spaces");
   process.env.KNOWLEDGE_TOKEN_FILE = tokenFile;

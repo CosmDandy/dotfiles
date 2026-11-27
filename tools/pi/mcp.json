@@ -15,7 +15,7 @@
     },
     "exa": {
       "url": "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa",
-      "exposure": "direct",
+      "exposure": "deferred",
       "description": "Search the public web and fetch readable content from URLs."
     }
   }
