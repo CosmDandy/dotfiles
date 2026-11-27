@@ -4,6 +4,7 @@ import { join, resolve, sep } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { mixColors, truncateToWidth } from "@earendil-works/pi-tui";
+import { toolStatusStyle } from "../tool-status.ts";
 
 // Use only the middle two Braille rows so the spinner sits on the text line.
 const frames = Array.from("⠖⠲⠴⠦");
@@ -137,7 +138,8 @@ function cardLines(card: Card, theme: Theme, width: number, padding: string, pre
   const glyph = (state: State) => theme.fg(tones[state], state === "queued" ? "◌" : frames[Math.floor(Date.now() / tickMs) % frames.length]);
   const names = shown.map(row => clean(row.name));
   const nameTone = (name: string, state: State) => isActive(state) ? theme.fg("toolTitle", name)
-    : theme.style(name, { fg: mixColors(theme.colors.toolOutput, theme.colors[tones[state]], 0.58) });
+    : theme.style(name, state === "completed" || state === "failed" ? toolStatusStyle(theme, tones[state])
+      : { fg: mixColors(theme.colors.toolOutput, theme.colors[tones[state]], 0.58) });
   const count = (row: Row) => row.tokens === undefined ? "" : quietMetadata(theme, tokenText(row.tokens));
   const list = (labels: string[]) => labels.join(theme.fg("toolOutput", ", ")) + (rest ? theme.fg("toolOutput", rest) : "");
   const fit = (s: string) => truncateToWidth(s, width);
@@ -149,7 +151,8 @@ function cardLines(card: Card, theme: Theme, width: number, padding: string, pre
       [nameTone(names[i], isActive(row.state) ? state : row.state), count(row)].filter(Boolean).join(" ")));
     const outcome = state !== "completed" && state !== "failed" ? nameTone(state, state) : "";
     const status = [summary, outcome].filter(Boolean).join("  ");
-    const detail = reason ? theme.fg("toolOutput", ` — ${clean(reason)}`) : "";
+    const detail = !reason ? "" : state === "failed" ? theme.style(` — ${clean(reason)}`, toolStatusStyle(theme, "error"))
+      : theme.fg("toolOutput", ` — ${clean(reason)}`);
     return [timedLine(title + (status ? separator + status : "") + detail, end, width, theme)];
   }
   const lines = [fit(title + (names.length ? separator + list(shown.map((row, i) => nameTone(names[i], row.state))) : ""))];
@@ -163,7 +166,7 @@ function cardLines(card: Card, theme: Theme, width: number, padding: string, pre
     const left = `${padding}  ${isActive(row.state) ? glyph(row.state) : " "} ${nameTone(names[i], row.state)}${meta ? `  ${meta}` : ""}`;
     lines.push(timedLine(left, total === undefined ? "" : elapsed(total), width, theme));
     const branch = padding + theme.fg("dim", "    └ ");
-    if (row.error && !isActive(row.state)) lines.push(fit(branch + theme.fg("error", row.error)));
+    if (row.error && !isActive(row.state)) lines.push(fit(branch + theme.style(row.error, toolStatusStyle(theme, "error"))));
     else if (row.tool && row.state === "running" && width > padding.length + 8)
       lines.push(fit(branch + preview(row.tool, row.args, row.target, theme, width - padding.length - 6)));
   }

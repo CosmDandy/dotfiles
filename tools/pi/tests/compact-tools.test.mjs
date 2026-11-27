@@ -47,6 +47,8 @@ async function emit(type, event = {}) {
   for (const handler of extension.handlers.get(type) ?? []) await handler({ type, ...event }, ctx);
 }
 const darkMetadata = { fg: rgbColor(89, 102, 106), dim: false };
+const failureStyle = theme => ({ fg: mixColors(theme.colors.toolOutput, theme.colors.error, 0.58, "srgb") });
+const successStyle = theme => ({ fg: mixColors(theme.colors.success, rgbColor(0, 0, 0), theme.appearance === "dark" ? 0.12 : 0.25, "srgb") });
 const plain = text => text.replace(/\x1b\[[0-9;]*m/g, "");
 const boldText = line => [...line.matchAll(/\x1b\[1m(.*?)(?:\x1b\[(?:0|22)?m|$)/g)]
   .map(([, span]) => plain(span)).join("");
@@ -76,7 +78,7 @@ try {
   assert.match(liveAgentRows[3], /^ {5}└ shell · rg -n needle tools\/pi/);
   assert.doesNotMatch(body(agents), /RAW STDOUT|✓|✗|to expand/);
   const livePainted = agents.render(100).filter(line => plain(line));
-  const success = themes.theme.style("scout", { fg: mixColors(themes.theme.colors.toolOutput, themes.theme.colors.success, 0.58) });
+  const success = themes.theme.style("scout", successStyle(themes.theme));
   assert.ok(livePainted[0].includes(success), "the header shows the finished child while its sibling runs");
   assert.ok(livePainted[1].includes(success), "the finished child's row uses the same color");
   const compactAgentRows = body(agents);
@@ -126,9 +128,11 @@ try {
       assert.ok(painted.includes(themes.theme.style(label, timingStyle)), `${appearance}: mute ${label}`);
     }
     assert.ok(timingReference.render(100).join("\n").includes(themes.theme.style("15.0 s", timingStyle)));
-    for (const [name, color] of [["scout", "success"], ["reviewer", "error"]]) {
-      assert.ok(painted.includes(themes.theme.style(name, { fg: mixColors(themes.theme.colors.toolOutput, themes.theme.colors[color], 0.58) })));
-    }
+    const red = { fg: appearance === "light" ? rgbColor(170, 81, 82) : rgbColor(183, 91, 90) };
+    const green = { fg: appearance === "light" ? rgbColor(100, 115, 0) : rgbColor(117, 135, 0) };
+    assert.ok(painted.includes(themes.theme.style("scout", green)));
+    assert.ok(painted.includes(themes.theme.style("reviewer", red)));
+    assert.ok(painted.includes(themes.theme.style(" — verification failed", red)));
   }
   themes.initTheme("dark", false);
   assert.equal(timers.size, 0, "finished cards release their animation timer");
@@ -208,10 +212,13 @@ try {
   finish(bash, "log line 1\nFAIL: expected 200, received 500", true);
   assert.equal(timers.size, 0);
   assert.match(body(bash), /^ *shell · npm test ; echo done/);
-  assert.doesNotMatch(bash.render(100).join(""), /\x1b\[48;/);
-  assert.ok(bash.render(100).join("").includes(prompt));
-  assert.ok(bash.render(100).join("").includes(themes.theme.fg("toolOutput", "npm test ; echo done")));
-  assert.ok(!bash.render(100).join("").includes(themes.theme.fg("error", "npm test ; echo done")));
+  const failedPreview = bash.render(100).join("");
+  const failedStyle = failureStyle(themes.theme);
+  assert.doesNotMatch(failedPreview, /\x1b\[48;/);
+  assert.ok(failedPreview.includes(themes.theme.style("Failed", failedStyle)));
+  assert.ok(failedPreview.includes(themes.theme.style("shell", { ...failedStyle, bold: true })));
+  assert.ok(failedPreview.includes(themes.theme.style("npm test ; echo done", failedStyle)));
+  assert.ok(!failedPreview.includes(themes.theme.fg("error", "npm test ; echo done")));
   assert.doesNotMatch(body(bash), /FAIL:|log line|bash/);
   assert.match(body(bash), /Failed/);
   const bashClick = bash.handleMouse({ type: "click", button: "left", x: 5, y: 1, width: 100, height: 3 });
@@ -219,7 +226,7 @@ try {
   assert.match(body(bash), /^ *shell · npm test/);
   assert.match(body(bash), /^ {2}echo done/m);
   for (const commandLine of ["npm test", "echo done"]) {
-    assert.ok(bash.render(100).join("").includes(themes.theme.fg("error", commandLine)));
+    assert.ok(bash.render(100).join("").includes(themes.theme.style(commandLine, failedStyle)));
   }
   assert.match(body(bash), /log line 1/);
   assert.match(body(bash), /FAIL: expected 200/);
@@ -229,6 +236,7 @@ try {
   assert.doesNotMatch(body(bash), /[▸▾]/);
   bash.setExpanded(false);
   assert.equal(rows(bash).length, 1);
+  assert.equal(bash.render(100).join(""), failedPreview);
   assert.doesNotMatch(body(bash), /FAIL/);
 
   // Exercise Pi's own MouseRegion wrapper, not a simulated expansion callback.
@@ -355,7 +363,9 @@ try {
     tempEdit.setExpanded(false);
     finish(tempEdit, "permission denied", true);
     assert.match(body(tempEdit), /permission denied/);
-    assert.ok(tempEdit.render(100).join("").includes(themes.theme.style("edit", { fg: "error", bold: true })));
+    const failed = tempEdit.render(100).join("");
+    assert.ok(failed.includes(themes.theme.style("edit", { ...failureStyle(themes.theme), bold: true })));
+    assert.ok(failed.includes(themes.theme.style("permission denied", failureStyle(themes.theme))));
     const externalWrite = tool("write", { path: "~/.example.conf" }, "external-write", subdir);
     finish(externalWrite, "Written");
     assert.ok(externalWrite.render(100).join("").includes(themes.theme.fg("warning", "[external] ~/.example.conf")));
@@ -570,6 +580,7 @@ try {
   const runningChild = childFrame('… shell · printf');
   const finishedChild = childFrame('✓ read src/app.ts');
   assert.ok(runningChild && finishedChild, "child rows appear even without a new result update");
+  assert.ok(finishedChild.includes(themes.theme.style("✓", successStyle(themes.theme))));
   assert.equal(boldText(runningChild), "shell");
   assert.equal(boldText(childFrame('… search · knowledge')), "search · knowledge");
   now += 240;
@@ -582,6 +593,10 @@ try {
     details: { calls: [nestedRead, { ...nestedBash, status: "ok", durationMs: 1200 }, nestedEdit, nestedFailure, cancelled] }, durationMs: 10_500,
   });
   assert.match(rows(trace)[0], /1 failed · 1 cancelled.*10\.5 s/);
+  assert.ok(trace.render(100)[1].includes(themes.theme.style("1 failed", failedStyle)));
+  assert.ok(childFrame('✗ search · codex').includes(themes.theme.style("✗", failedStyle)));
+  assert.ok(childFrame('✗ search · codex').includes(themes.theme.style("search · codex", { ...failedStyle, bold: true })));
+  assert.ok(childFrame('⊘ shell').includes(themes.theme.fg("muted", "⊘")));
   assert.deepEqual(rows(trace).slice(1).map(line => line.trim()), [
     '✗ search · codex Long query with "quotes" and a cut escape ... 10.0 s',
     '⊘ shell · sleep 99',
@@ -619,7 +634,10 @@ try {
   const codeError = tool("codemode", { code: 'text("test");' }, "code-error");
   finish(codeError, "\x1b[38:2::255:0:0mscript failed\x1b[0m", true);
   assert.match(body(codeError), /codemode · Failed[\s\S]*script failed/);
-  assert.ok(codeError.render(100).join("").includes(themes.theme.fg("error", "script failed")));
+  const scriptFailure = codeError.render(100).join("");
+  assert.ok(scriptFailure.includes(themes.theme.style("codemode", { ...failedStyle, bold: true })));
+  assert.ok(scriptFailure.includes(themes.theme.style("Failed", failedStyle)));
+  assert.ok(scriptFailure.includes(themes.theme.style("script failed", failedStyle)));
   assert.doesNotMatch(codeError.render(100).join(""), /\x1b\[38:2/);
   codeError.setExpanded(true);
   assert.match(codeError.render(100).join(""), /\x1b\[38:2::255:0:0mscript failed/);
@@ -862,6 +880,7 @@ try {
     finish(failure, "partial output\n\nCommand timed out after 5 seconds" + suffix, true, undefined, 5_010);
     assert.match(body(failure), /job +Timed out · limit 5 s {3}$/);
     assert.match(rows(failure, 38)[0], /Timed out · limit 5 s {3}$/);
+    assert.ok(failure.render(38)[1].includes(themes.theme.style("Timed out", failedStyle)));
   }
   finish(failure, "Command timed out after 5 seconds\n\nCommand exited with code 1", true, undefined, 100);
   assert.match(body(failure), /job +Failed {3}$/);
@@ -938,6 +957,19 @@ try {
     const marker = themes.theme.fg("toolOutput", themes.theme.bold("codemode")) + " ";
     codemodePulseRanges[appearance] = pulseRange(pulseFrame(pulse), marker);
     finish(pulse, "");
+    const failedStyle = failureStyle(themes.theme);
+    for (const [command, preview] of [
+      ["for item in one; do\n  false\ndone", "for item in one; do"],
+      ["kubectl get pods", "shell · kubectl get pods"],
+    ]) {
+      const call = tool("bash", { command });
+      finish(call, "command failed", true);
+      const collapsed = call.render(100).join("\n");
+      assert.ok(collapsed.includes(themes.theme.style(preview, failedStyle)), `${appearance}: muted command preview`);
+      assert.doesNotMatch(collapsed, /\x1b\[48;/);
+      call.setExpanded(true);
+      assert.ok(call.render(100).join("\n").includes(themes.theme.style(command.split("\n")[0], failedStyle)));
+    }
     bash.setExpanded(true);
     const background = appearance === "dark" ? "\x1b[48;2;10;51;62m" : "\x1b[48;2;241;234;215m";
     assert.ok(bash.render(100)[1].startsWith(background));
