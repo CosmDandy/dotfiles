@@ -33,7 +33,7 @@ function expandedRows(rows: string[], expanded: boolean, width: number, theme: T
   });
 }
 
-function runningPulse(title: string, theme: Theme, step: number, strongLightPulse: boolean): string {
+function runningPulse(title: string, theme: Theme, step: number, strongLightPulse: boolean, boldLength = 0): string {
   const text = stripVTControlCharacters(title);
   const start = text.match(/^ */)![0];
   const segments = [...graphemes.segment(text.slice(start.length))];
@@ -46,18 +46,20 @@ function runningPulse(title: string, theme: Theme, step: number, strongLightPuls
   const peak = (1 - Math.abs(2 * phase - 1)) * (segments.length - 1);
   const spread = Math.min(16, Math.max(1.5, length * 0.26));
   const contrast = Math.max(18, 34 - Math.round(length / 3));
-  let output = start, run = "", previous = 0;
+  let output = start, run = "", previous = 0, bold = false;
   const paint = (value: string, shade: number) => {
     const shift = (channel: number) => Math.max(0, Math.min(255, channel + shade));
-    return theme.style(value, { fg: rgbColor(shift(r), shift(g), shift(b)) });
+    return theme.style(value, { fg: rgbColor(shift(r), shift(g), shift(b)), bold });
   };
   for (let i = 0; i < segments.length; i++) {
     const distance = Math.min(1, Math.abs(i - peak) / spread);
     const wave = Math.cos(distance * Math.PI);
     const shade = Math.round(contrast * (strongLightPulse ? -1.5 * (wave + 1) : wave));
-    if (shade !== previous && run) { output += paint(run, previous); run = ""; }
+    const nextBold = segments[i].index < boldLength;
+    if ((shade !== previous || nextBold !== bold) && run) { output += paint(run, previous); run = ""; }
     run += segments[i].segment;
     previous = shade;
+    bold = nextBold;
   }
   return output + paint(run, previous);
 }
@@ -596,7 +598,7 @@ function prepareDiff(diff: string) {
     if (hidden.has(i)) continue;
     const match = parsed[i];
     if (!match && !keep.has(i)) { gap = rows.length > 0; continue; }
-    if (gap) { rows.push({ text: " …" }); gap = false; }
+    if (gap) { rows.push({ text: "…" }); gap = false; }
     if (!match) {
       const [, number, text] = /^ [ \t]*(\d+)[ \t](.*)$/.exec(lines[i])!;
       rows.push({ number, text });
@@ -694,7 +696,7 @@ function quietMetadata(theme: Theme, text: string, expanded = false): string {
 }
 
 function diffNumber(number: string, digits: number, kind: string, theme: Theme, expanded: boolean): string {
-  const label = number.padStart(digits) + " ";
+  const label = number.padEnd(digits) + " ";
   if (kind === " ") return quietMetadata(theme, label, expanded);
   const palette = diffPalette[theme.appearance][kind === "-" ? "remove" : "add"];
   return theme.style(label, { fg: parseColor(palette.number), bg: parseColor(palette.bg) });
@@ -818,7 +820,7 @@ function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, wi
     ? shortenPath(target, "", 0, targetRoom) : target;
   const heading = theme.fg("toolTitle", theme.bold(title)) + (display ? theme.fg("toolOutput", separator + display) : "");
   const short = expanded ? heading : truncateToWidth(heading, limit);
-  const text = call.status === "running" && step !== undefined ? runningPulse(short, theme, step, theme.appearance === "light") : short;
+  const text = call.status === "running" && step !== undefined ? runningPulse(short, theme, step, theme.appearance === "light", title.length) : short;
   const rows = expanded ? wrapTextWithAnsi(text, limit) : [text];
   rows[rows.length - 1] += suffix;
   const lines = rows.map((row, i) => truncateToWidth((i === 0 ? prefix : " ".repeat(prefixWidth)) + row, width));
@@ -1096,7 +1098,8 @@ export default function compactTools(pi: ExtensionAPI) {
           const meta = metadata && available >= 16 ? quietMetadata(theme, truncateToWidth(metadata, metaWidth), expanded) : "";
           const compactWidth = Math.max(1, Math.floor(width * 0.7));
           const titleWidth = meta ? Math.min(compactWidth, available - visibleWidth(meta) - 1) : expanded ? width : compactWidth;
-          const animate = (text: string) => running ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light") : text;
+          const animate = (text: string, boldLength = 0) => running
+            ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light", boldLength) : text;
           const withMeta = (left: string) => meta ? left + " ".repeat(Math.max(1, available - visibleWidth(left) - visibleWidth(meta)))
             + meta + " ".repeat(timingInset) : left;
           const withLastMeta = (rows: string[]) => {
@@ -1118,8 +1121,9 @@ export default function compactTools(pi: ExtensionAPI) {
             return paint([truncateToWidth(withMeta(title + text), width)]);
           }
           if (devops) {
-            const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
-            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title), Math.max(0, titleWidth - padding.length))), width);
+            const devopsLabel = "DEVOPS";
+            const title = theme.fg(context.isError ? "error" : "accent", theme.bold(devopsLabel));
+            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title, devopsLabel.length), Math.max(0, titleWidth - padding.length))), width);
             const lines = devopsCommandLines(devops.map(word => shellDisplayWord(word)), Math.max(1, width - padding.length - 1));
             const script = highlighted(lines.join("\n"), "bash", text => theme.fg("toolOutput", text));
             return [header, ...indentedLines(script, padding, width)];
@@ -1163,7 +1167,7 @@ export default function compactTools(pi: ExtensionAPI) {
             const header = prefix + animate(text) + extra + badge;
             return paint([truncateToWidth(withMeta(header), width)]);
           }
-          const prefix = quiet ? theme.fg("muted", label) : theme.fg(context.isError ? "error" : "toolTitle", theme.bold(label));
+          const prefix = theme.style(label, { fg: quiet ? "muted" : context.isError ? "error" : "toolTitle", bold: true });
           const counts = stats ? [
             stats.added ? theme.fg(quiet ? "muted" : "success", `+${stats.added}`) : "",
             stats.removed ? theme.fg(quiet ? "muted" : "error", `−${stats.removed}`) : "",
@@ -1185,8 +1189,8 @@ export default function compactTools(pi: ExtensionAPI) {
           const summary = (argsPreview ? " " + theme.fg(pathColor, displayArgs) : "") + suffix;
           const line = title + summary;
           const header = expanded && fileCall
-            ? withLastMeta(wrapTextWithAnsi(animate(line + badge) + rangeLabel, Math.max(1, width)))
-            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge) + rangeLabel), width)];
+            ? withLastMeta(wrapTextWithAnsi(animate(line + badge, label.length) + rangeLabel, Math.max(1, width)))
+            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge, label.length) + rangeLabel), width)];
           return paint(argumentsText ? [...header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)] : header);
         };
         if (context.isPartial || codemode || failed) return cacheLines(render);

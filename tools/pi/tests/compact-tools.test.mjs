@@ -41,6 +41,8 @@ async function emit(type, event = {}) {
 }
 const darkMetadata = { fg: rgbColor(89, 102, 106), dim: false };
 const plain = text => text.replace(/\x1b\[[0-9;]*m/g, "");
+const boldText = line => [...line.matchAll(/\x1b\[1m(.*?)(?:\x1b\[(?:0|22)?m|$)/g)]
+  .map(([, span]) => plain(span)).join("");
 const rows = (component, width = 100) => component.render(width).map(plain).filter(Boolean);
 const body = component => rows(component).join("\n");
 function tool(name, args, id = name, cwd = "/tmp") {
@@ -71,6 +73,9 @@ try {
   const animated = read.render(100).join("\n");
   assert.notEqual(animated, old, "pulse must animate without new tool output");
   assert.equal(plain(animated), plain(old), "animation does not add characters or cells");
+  for (const frame of [old, animated]) {
+    assert.equal(boldText(frame.split("\n").find(line => plain(line))), "read", "only the tool name stays bold during the pulse");
+  }
   assert.ok(animated.includes(themes.theme.style(":2-31", darkMetadata)), "read range stays quiet during animation");
   assert.ok(redraws > 0);
   events.emit("dotfiles:pane-hidden", true);
@@ -164,8 +169,9 @@ try {
   finish(edit, "Applied", false, { diff: editDiff });
   await Promise.resolve();
   assert.match(body(edit), /\+13 −1/);
-  assert.match(body(edit), /^ {3}1 - const count = 1/m);
-  assert.match(body(edit), /^ {3}1 \+ const count = 2/m);
+  assert.match(body(edit), /^ {2}1 {2}- const count = 1/m);
+  assert.match(body(edit), /^ {2}1 {2}\+ const count = 2/m);
+  assert.match(body(edit), /^ {2}10 \+ \/\/ line 10/m);
   assert.match(body(edit), /… 3 more lines/);
   assert.doesNotMatch(body(edit), /line 14/);
   const diffAnsi = edit.render(100).join("\n");
@@ -193,7 +199,7 @@ try {
   inline.setExpanded(true);
   assert.doesNotMatch(body(inline), /far before|far after|gap middle/);
   assert.match(body(inline), /11 - version = 1[\s\S]*11 \+ version = 2/);
-  assert.match(body(inline), /near after 2[^\n]*\n[^\n]*…[^\n]*\n[^\n]*near second 2/);
+  assert.match(body(inline), /near after 2[^\n]*\n {2}… *\n[^\n]*near second 2/);
   if (spawnSync("delta", ["--version"]).status === 0) for (const appearance of ["dark", "light"]) {
     themes.initTheme(appearance, false);
     const [removed, added] = appearance === "light"
@@ -224,18 +230,18 @@ try {
     }
     const [red, green] = appearance === "light" ? ["150;46;36", "66;91;22"] : ["239;155;139", "172;202;121"];
     for (const [line, bg, fg] of [[deltaRows[0], removed[0], red], [deltaRows[1], added[0], green]]) {
-      assert.ok(line.includes(`\x1b[38;2;${fg}m`) && line.includes(`\x1b[${bg}m 5 `), "changed number uses the row background and a distinct foreground");
+      assert.ok(line.includes(`\x1b[38;2;${fg}m`) && line.includes(`\x1b[${bg}m5  `), "changed number uses the row background and a distinct foreground");
     }
     const quiet = appearance === "light"
       ? { fg: mixColors(themes.theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb"), dim: true }
       : darkMetadata;
-    assert.ok(deltaAnsi.includes(themes.theme.style(" 3 ", quiet) + themes.theme.fg("toolDiffContext", "  near before 2")));
+    assert.ok(deltaAnsi.includes(themes.theme.style("3  ", quiet) + themes.theme.fg("toolDiffContext", "  near before 2")));
     assert.doesNotMatch(deltaAnsi, /\x1b\[[0-9]*K/, "delta must not erase terminal cells");
-    assert.match(body(deltaEdit), /^ {3}5 - version = "5\.6\.1"/m);
-    assert.match(body(deltaEdit), /^ {3}5 \+ version = "6\.2"/m);
-    assert.match(body(deltaEdit), /^ {3}3 {3}near before 2/m);
-    assert.match(body(deltaEdit), /^ {3}7 \+ extra \| line/m);
-    assert.match(body(deltaEdit), /^ {3}8 {3}near after 2/m);
+    assert.match(body(deltaEdit), /^ {2}5 {2}- version = "5\.6\.1"/m);
+    assert.match(body(deltaEdit), /^ {2}5 {2}\+ version = "6\.2"/m);
+    assert.match(body(deltaEdit), /^ {2}3 {4}near before 2/m);
+    assert.match(body(deltaEdit), /^ {2}7 {2}\+ extra \| line/m);
+    assert.match(body(deltaEdit), /^ {2}8 {4}near after 2/m);
     assert.match(body(deltaEdit), /near before 2[\s\S]*near after 2/);
     assert.doesNotMatch(body(deltaEdit), /\bdelta\b|@@|---|far before|more before|far after/);
     assert.doesNotMatch(rows(deltaEdit)[0], /[▸▾]/);
@@ -263,14 +269,17 @@ try {
     const tempEdit = tool("edit", { path: "scratch/new.ts" }, "temp-edit", subdir);
     finish(tempEdit, "Applied", false, { diff: "+1 const temporary = true;" });
     await Promise.resolve();
+    const quietTitle = themes.theme.style("edit", { fg: "muted", bold: true });
+    assert.ok(tempEdit.render(100).join("").includes(quietTitle));
     assert.ok(tempEdit.render(100).join("").includes(themes.theme.fg("muted", "[tmp] scratch/new.ts")));
     assert.doesNotMatch(body(tempEdit), /const temporary/);
     tempEdit.setExpanded(true);
+    assert.ok(tempEdit.render(100).join("").includes(quietTitle));
     assert.match(body(tempEdit), /const temporary/);
     tempEdit.setExpanded(false);
     finish(tempEdit, "permission denied", true);
     assert.match(body(tempEdit), /permission denied/);
-    assert.ok(tempEdit.render(100).join("").includes(themes.theme.fg("error", themes.theme.bold("edit"))));
+    assert.ok(tempEdit.render(100).join("").includes(themes.theme.style("edit", { fg: "error", bold: true })));
     const externalWrite = tool("write", { path: "~/.example.conf" }, "external-write", subdir);
     finish(externalWrite, "Written");
     assert.ok(externalWrite.render(100).join("").includes(themes.theme.fg("warning", "[external] ~/.example.conf")));
@@ -280,6 +289,7 @@ try {
   const write = tool("write", { path: "new.ts", content: "line one\nline two" });
   finish(write, "Written");
   assert.equal(rows(write).length, 1);
+  assert.equal(boldText(write.render(100).find(line => plain(line))), "write");
   write.setExpanded(true);
   assert.match(body(write), /line one/);
   assert.doesNotMatch(body(write), /^ +\d+ (?:\+ )?line one/m);
@@ -484,7 +494,8 @@ try {
   const runningChild = childFrame('… shell · printf');
   const finishedChild = childFrame('✓ read src/app.ts');
   assert.ok(runningChild && finishedChild, "child rows appear even without a new result update");
-  assert.ok(childFrame('… search · knowledge'));
+  assert.equal(boldText(runningChild), "shell");
+  assert.equal(boldText(childFrame('… search · knowledge')), "search · knowledge");
   now += 240;
   for (const tick of timers.values()) tick();
   assert.notEqual(childFrame('… shell · printf'), runningChild);
