@@ -1,0 +1,13 @@
+{
+  "toolActivation": "eager",
+  "pinToolDeclarations": false,
+  "toolDescriptionMode": "compact",
+  "defaultSubagentContext": "fresh",
+  "autoResume": false,
+  "asyncWidget": false,
+  "missions": { "enabled": false },
+  "scheduledRuns": { "enabled": false },
+  "maxActiveAsyncRunsPerSession": 4,
+  "maxSubagentSpawnsPerRun": 8,
+  "disabledFeatures": ["workflow-scripts", "session-sharing", "external-machines", "gates"]
+}

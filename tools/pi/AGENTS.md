@@ -8,6 +8,8 @@ me; a tool meant for other people speaks English from its first commit.
 - English — everything read by machines, models or strangers: code, comments, commits,
   skills, prompts, agent briefs, and every word a product shows its users.
 
+Obsidian notes, including agent memory, are for me.
+
 ## Communication
 
 - My questions have structure — mirror it: numbered, my order. Yours — plain text.

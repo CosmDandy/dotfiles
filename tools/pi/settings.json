@@ -5,7 +5,36 @@
   "hideThinkingBlock": true,
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6.2-sol",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "xhigh",
+  "enabledModels": [
+    "openai-codex/gpt-6.2-sol:xhigh",
+    "openai-codex/sol-medium:medium",
+    "openai-codex/gpt-6.2-astra:xhigh"
+  ],
+  "subagents": {
+    "defaultModel": "openai-codex/sol-medium:medium",
+    "defaultExtensions": ["~/.pi/agent/extensions/sol-medium.ts"],
+    "modelScope": {
+      "enforce": true,
+      "strict": true,
+      "allow": ["openai-codex/gpt-6.2-sol", "openai-codex/sol-medium", "openai-codex/gpt-6.2-astra"]
+    },
+    "agentOverrides": {
+      "scout": { "tools": ["read", "grep", "find", "ls"], "thinking": "medium", "inheritProjectContext": false },
+      "reviewer": { "tools": ["read", "grep", "find", "ls"], "thinking": "medium", "inheritProjectContext": false },
+      "oracle": { "tools": ["read", "grep", "find", "ls"], "thinking": "medium", "inheritProjectContext": false },
+      "worker": { "disabled": true },
+      "delegate": { "disabled": true },
+      "researcher": { "disabled": true },
+      "evidence-auditor": { "disabled": true },
+      "claude-code": { "disabled": true },
+      "claude-code-writer": { "disabled": true },
+      "codex-exec": { "disabled": true },
+      "codex-exec-writer": { "disabled": true },
+      "cursor-agent": { "disabled": true },
+      "cursor-agent-writer": { "disabled": true }
+    }
+  },
   "defaultTools": ["+codemode"],
   "doubleEscapeAction": "none",
   "showCacheMissNotices": true,

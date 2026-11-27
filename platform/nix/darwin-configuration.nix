@@ -119,7 +119,6 @@ in
       "leader-key"
       # Browsers
       "ardia-browser/tap/ardia"
-      "helium-browser"
       # "netnewswire"
       # Development
       "ghostty"

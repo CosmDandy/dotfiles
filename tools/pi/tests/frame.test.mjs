@@ -113,6 +113,18 @@ async function metrics() {
 }
 try {
   await emit("session_start");
+  const packageDir = join(agentDir, "subagent-package", "pi-subagents");
+  mkdirSync(join(packageDir, "bundle"), { recursive: true });
+  mkdirSync(join(packageDir, "src", "api"), { recursive: true });
+  writeFileSync(join(packageDir, "bundle", "index.js"), `export default function(pi) {
+    pi.registerTool({ name: "subagent", description: "Delegate", parameters: {} });
+    pi.registerCommand("subagents-fleet", { handler: (_args, ctx) => ctx.ui.notify("Fleet opened") });
+    pi.registerCommand("run", { handler: (_args, ctx) => ctx.ui.notify("Agent launched") });
+  }`);
+  writeFileSync(join(packageDir, "src", "api", "capability-ceiling.js"), `export function registerSubagentCapabilityCeiling({ ceiling }) {
+    globalThis.testCeiling = ceiling;
+    return { update(value) { globalThis.testCeiling = value; }, dispose() { delete globalThis.testCeiling; } };
+  }`);
   const modes = await loadExtensions([fileURLToPath(new URL("../extensions/work-mode.ts", import.meta.url))], "/tmp");
   assert.deepEqual(modes.errors, []);
   const mode = modes.extensions[0];
@@ -124,7 +136,7 @@ try {
   let choice, menu;
   const notifications = [];
   modes.runtime.getActiveTools = () => activeTools;
-  modes.runtime.getAllTools = () => [...buildTools, "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"].map(name => ({ name }));
+  modes.runtime.getAllTools = () => [...buildTools, "subagent", "grep", "mcp__knowledge__read", "mcp__context7__resolve_library_id", "mcp__context7__query_docs"].map(name => ({ name }));
   modes.runtime.setActiveTools = names => { activeTools = names; };
   const modeContext = { ...ctx, isIdle: () => idle, ui: { ...ctx.ui,
     setStatus: (key, value) => statuses.set(key, value), notify: text => notifications.push(text),
@@ -175,15 +187,19 @@ try {
     assert.equal((await modeEvent("tool_call", { toolName })).block, true);
   }
   assert.equal(await modeEvent("tool_call", { toolName: "read" }), undefined);
-  const task = { task: "Find the relevant source" };
-  const runSubagent = () => subagent.execute("test", task, undefined, undefined, { ...modeContext, cwd: testHome });
-  await assert.rejects(runSubagent, /Enable Agents in Execute/);
+  const runSubagent = () => mode.commands.get("run").handler("reviewer Check the diff", modeContext);
+  await mode.commands.get("agents").handler("", modeContext);
+  assert.equal(notifications.pop(), "Fleet opened");
+  await runSubagent();
+  assert.match(notifications.pop(), /Switch to Execute before launching a subagent/);
   choice = "Pair";
   await mode.commands.get("execute").handler("", modeContext);
   assert.deepEqual(menu, ["Autonomous (active)", "Pair"]);
-  await mode.commands.get("agents").handler("", modeContext);
+  await agentsShortcut.handler(modeContext);
   assert.match(notifications.pop(), /Agents enabled for Execute/);
-  await assert.rejects(runSubagent, /Enable Agents in Execute/);
+  assert.deepEqual(globalThis.testCeiling.allowedAgents, []);
+  await runSubagent();
+  assert.match(notifications.pop(), /Switch to Execute before launching a subagent/);
   assert.match(top(), /^ {3}EXPLORE/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.match(sections.work_mode, /switch to Execute/);
@@ -196,22 +212,14 @@ try {
   await shortcut.handler(modeContext);
   assert.match(top(), /^ {3}EXECUTE · AGENTS/);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
-  assert.match(sections.work_mode, /Pair.*may use the subagent tool/);
+  assert.match(sections.work_mode, /Pair.*use the subagent tool/);
   assert.match(sections.work_mode, /Every scope, once: a subagent reviews the diff/);
-  assert.doesNotMatch(sections.work_mode, /on a cheaper model/);
+  assert.match(sections.work_mode, /cheaper model/);
   assert.deepEqual(activeTools, [...buildTools, "subagent"]);
-  const originalPath = process.env.PATH;
-  try {
-    writeFileSync(join(testHome, "pi"), '#!/bin/sh\nprintf "%s\\n" "$PWD" "$@"\n', { mode: 0o755 });
-    process.env.PATH = `${testHome}:${originalPath}`;
-    const report = (await runSubagent()).content[0].text;
-    assert.ok(report.startsWith(realpathSync(testHome) + "\n"));
-    assert.match(report, /--no-session\n--no-extensions\n--no-mcp\n/);
-    assert.match(report, /--tools\nread,grep,find,ls\n--model\nopenai\/gpt-6\.1-sol\n--thinking\nlow\n/);
-    assert.ok(report.endsWith("--\nDelegated task:\nFind the relevant source"));
-  } finally {
-    process.env.PATH = originalPath;
-  }
+  assert.equal(globalThis.testCeiling.allowedAgents, undefined);
+  assert.deepEqual(globalThis.testCeiling.allowedTools, ["read", "grep", "find", "ls", "contact_supervisor"]);
+  await runSubagent();
+  assert.equal(notifications.pop(), "Agent launched");
   idle = false;
   await agentsShortcut.handler(modeContext);
   assert.match(top(), /EXECUTE · AGENTS/);
@@ -226,7 +234,9 @@ try {
   activeTools = [...buildTools, "subagent"];
   await modeEvent("session_tree");
   assert.deepEqual(activeTools, buildTools, "switching branches cannot re-enable Agents");
-  await assert.rejects(runSubagent, /Enable Agents in Execute/);
+  await runSubagent();
+  assert.match(notifications.pop(), /Enable Agents with Option\+G in Execute/);
+  assert.equal((await modeEvent("tool_call", { toolName: "subagent" })).block, true);
   await modeEvent("before_agent_start", { systemPromptOptions: { sections } });
   assert.doesNotMatch(sections.work_mode, /subagent/);
   await profileShortcut.handler(modeContext);
@@ -236,6 +246,7 @@ try {
   await shortcut.handler(modeContext);
   await modeEvent("session_shutdown", { reason: "reload" });
   assert.deepEqual(activeTools, buildTools);
+  assert.equal(globalThis.testCeiling, undefined);
   statuses.clear();
   await delay(150);
   assert.equal(workingVisible, false);

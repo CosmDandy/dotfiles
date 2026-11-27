@@ -28,6 +28,10 @@ const createSession = directory => {
   }
   messages.push({ role: 'assistant', api: 'openai-responses', provider: 'openai', model: 'gpt-5', stopReason: 'stop', usage,
     content: [text('Answer: alpha_beta cat-dog wide café 👩‍💻.\n\nSecond paragraph.')] });
+  return writeSession(directory, messages, timestamp, stamp);
+};
+
+function writeSession(directory, messages, timestamp = new Date().toISOString(), stamp = Date.now()) {
   const id = i => (i + 1).toString(16).padStart(8, '0');
   const file = join(directory, 'session.jsonl');
   const entries = [{ type: 'session', version: 3, id: 'vim-fixture', timestamp, cwd: directory },
@@ -35,13 +39,116 @@ const createSession = directory => {
       timestamp, message: { ...message, timestamp: stamp } }))];
   writeFileSync(file, entries.map(entry => JSON.stringify(entry)).join('\n') + '\n');
   return file;
-};
+}
 
 function load(path) {
   assert.ok(process.env.PI_TEST_BIN, 'PI_TEST_BIN must point to the patched Pi executable');
   const modules = process.env.PI_TEST_MODULES ?? join(dirname(dirname(process.env.PI_TEST_BIN)), 'lib', 'pi', 'node_modules');
   return import(pathToFileURL(join(modules, '@earendil-works', path)));
 }
+
+const longPrompt = tag => ['```text', ...Array.from({ length: 24 }, (_, i) => `${tag}-line-${i + 1}`), '```'].join('\n');
+
+test('user message folds rendered rows without touching the Markdown or terminal zones', async () => {
+  const { UserMessageComponent } = await load('pi-coding-agent/dist/modes/interactive/components/user-message.js');
+  const { initTheme } = await load('pi-coding-agent/dist/modes/interactive/theme/theme.js');
+  const { visibleWidth } = await load('pi-tui/dist/index.js');
+  initTheme('dark', false);
+  const component = new UserMessageComponent(longPrompt('prompt'));
+  const width = 62;
+  const preview = component.render(width);
+  assert.equal(preview.length, 12, 'six head rows, divider, three tail rows, and two padding rows');
+  assert.match(preview[0], /^\x1b\]133;A\x07/);
+  assert.match(preview.at(-1), /^\x1b\]133;B\x07\x1b\]133;C\x07/);
+  assert.match(stripVTControlCharacters(preview[7]), /^─+ 17 hidden lines ─+$/);
+  assert.ok(preview.every(line => visibleWidth(line) <= width));
+  assert.equal(component.render(width), preview, 'return the cached rows until the view changes');
+
+  component.toggleFold();
+  const expanded = component.render(width);
+  assert.match(stripVTControlCharacters(expanded[7]), / Collapse /);
+  assert.deepEqual(expanded.slice(0, 7), preview.slice(0, 7));
+  assert.deepEqual(expanded.slice(-4), preview.slice(-4));
+  assert.deepEqual(expanded.slice(8, -4).map(line => stripVTControlCharacters(line).trim()),
+    Array.from({ length: 17 }, (_, i) => `prompt-line-${i + 6}`));
+  component.toggleFold();
+  assert.deepEqual(component.render(width), preview);
+
+  const wrapped = new UserMessageComponent('界🙂 '.repeat(60));
+  assert.doesNotMatch(wrapped.render(340).join('\n'), /hidden lines/);
+  const narrow = wrapped.render(26);
+  assert.match(stripVTControlCharacters(narrow[7]), /\d+ hidden lines/);
+  assert.ok(narrow.every(line => visibleWidth(line) <= 26));
+  assert.equal(new UserMessageComponent('Short prompt').render(width).length, 3);
+});
+
+test('prompt dividers toggle individual messages in fullscreen and Alt+O works in regular', async () => {
+  assert.ok(process.env.PI_TEST_BIN, 'PI_TEST_BIN must point to the patched Pi executable');
+  const directory = mkdtempSync(join(tmpdir(), 'pi-fold-'));
+  const socket = `pi-fold-${process.pid}`;
+  const tmux = (...args) => execFileSync('tmux', ['-f', '/dev/null', '-L', socket, ...args], { encoding: 'utf8' });
+  const agent = join(directory, 'agent');
+  const messages = ['first', 'second'].map(tag => ({ role: 'user', content: [{ type: 'text', text: longPrompt(tag) }] }));
+  const session = writeSession(directory, [...messages, { role: 'user', content: 'short prompt stays visible' }]);
+  mkdirSync(agent);
+  const start = mode => tmux('new-session', '-d', '-P', '-F', '#{pane_id}', '-c', directory, '-x', '100', '-y', '53',
+    '-e', `PI_CODING_AGENT_DIR=${agent}`, process.env.PI_TEST_BIN,
+    '--offline', '--no-extensions', '--no-skills', '--no-mcp', '--tui-mode', mode, '--session', session).trim();
+  let pane;
+  const send = (...keys) => tmux('send-keys', '-t', pane, ...keys);
+  async function waitFor(condition, includeScrollback = false) {
+    const deadline = Date.now() + 8000;
+    let frame;
+    do {
+      frame = tmux('capture-pane', '-p', ...(includeScrollback ? ['-S', '-'] : []), '-t', pane);
+      if (condition(frame)) return frame;
+      await delay(40);
+    } while (Date.now() < deadline);
+    assert.fail(`Expected prompt frame was not rendered:\n${frame}`);
+  }
+  const click = (frame, label) => {
+    const lines = frame.split('\n');
+    const row = lines.findIndex(line => line.includes(label));
+    assert.notEqual(row, -1);
+    const col = lines[row].indexOf(label);
+    send('-l', `\x1b[<0;${col + 1};${row + 1}M\x1b[<0;${col + 1};${row + 1}m`);
+    return row;
+  };
+  const hidden = '17 hidden lines';
+  const bothFolded = frame => frame.split(hidden).length === 3 && !/first-line-10|second-line-10/.test(frame);
+  try {
+    pane = start('fullscreen');
+    const preview = await waitFor(bothFolded);
+    assert.match(preview, /first-line-1\b/);
+    assert.match(preview, /first-line-24\b/);
+    assert.match(preview, /short prompt stays visible/);
+    const clickedRow = click(preview, hidden);
+    const expanded = await waitFor(frame => frame.includes('first-line-10') && frame.includes(' Collapse '));
+    assert.equal(expanded.split('\n').findIndex(line => line.includes(' Collapse ')), clickedRow);
+    assert.doesNotMatch(expanded, /second-line-10/);
+    click(expanded, ' Collapse ');
+    await waitFor(bothFolded);
+
+    send('-l', 'keep this draft');
+    send('M-o');
+    const keyed = await waitFor(frame => frame.includes('second-line-10') && frame.includes('keep this draft'));
+    assert.doesNotMatch(keyed, /first-line-10/);
+    send('M-o');
+    await waitFor(bothFolded);
+
+    pane = start('regular');
+    await waitFor(bothFolded, true);
+    send('M-o');
+    await waitFor(frame => frame.includes('second-line-10') && frame.includes(' Collapse '), true);
+    send('M-o');
+    await waitFor(bothFolded, true);
+    const persisted = readFileSync(session, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(persisted.slice(1, 3).map(entry => entry.message.content), messages.map(message => message.content));
+  } finally {
+    try { tmux('kill-server'); } catch {}
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('word motions distinguish words and WORDs and preserve Unicode graphemes', async () => {
   const { VimText } = await load('pi-coding-agent/dist/modes/interactive/vim-text.js');
