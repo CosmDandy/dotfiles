@@ -5,10 +5,12 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { fleetFooterEvent, type FleetFooterUpdate } from "../subagents/fleet-footer.ts";
 
 const lightReady = rgbColor(152, 161, 106);
 const lightBackground = rgbColor(253, 246, 227);
 const ribbonGray = "\x1b[2;38;5;11m";
+const ribbonSeparator = ` ${ribbonGray}·\x1b[0m `;
 type TurnPhase = "wait" | "generation" | "bash" | "tools";
 type TurnSpan = { phase: TurnPhase; from: number; to: number };
 type TurnTiming = { started: number; spans: TurnSpan[]; tokens: number; textSeconds: number };
@@ -40,26 +42,27 @@ const frameInset = (columns: number): number => columns >= 10 ? 3 : 0;
 const captionText = (text: string) => stripVTControlCharacters(text).replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
 
 function ribbonRows([left, activity, limits]: [string, string, string], name: string, columns: number): string[] {
-  const separator = ` ${ribbonGray}·\x1b[0m `;
-  const metrics = [activity, limits].filter(Boolean).join(separator);
+  const metrics = [activity, limits].filter(Boolean).join(ribbonSeparator);
   const leftWidth = visibleWidth(left);
   const metricsWidth = visibleWidth(metrics);
   const gap = columns - leftWidth - metricsWidth;
   const sameRow = gap >= 2;
   const room = (sameRow ? gap - 2 : metrics ? columns - metricsWidth : 0) - (metrics ? 3 : 0);
   const title = room >= 4 ? truncateToWidth(name, room, "…") : "";
-  const right = [activity, title && `${ribbonGray}${title}\x1b[0m`, limits].filter(Boolean).join(separator);
+  const right = [activity, title && `${ribbonGray}${title}\x1b[0m`, limits].filter(Boolean).join(ribbonSeparator);
   if (!right) return [left];
   return sameRow ? [left + " ".repeat(columns - leftWidth - visibleWidth(right)) + right] : [left, right];
 }
 
 type Window = { used_percentage: number; resets_at: number };
 type WindowName = "five_hour" | "seven_day";
+type ParsedLimits = Partial<Record<WindowName, Window | null>>;
 const windowNames = ["five_hour", "seven_day"] as const;
+const windowName = (minutes: unknown): WindowName | undefined => minutes === 300 ? "five_hour" : minutes === 10080 ? "seven_day" : undefined;
 // Only actual subscription-window headers, never requests/minute or tokens/minute.
-export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000) {
+export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000): ParsedLimits {
   const h = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k.toLowerCase(), v]));
-  const result: Partial<Record<WindowName, Window | null>> = {};
+  const result: ParsedLimits = {};
   const number = (key: string) => h[key]?.trim() ? Number(h[key]) : NaN;
   for (const name of ["primary", "secondary"]) {
     const prefix = `x-codex-${name}-`;
@@ -69,7 +72,7 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
     const after = number(prefix + "reset-after-seconds");
     const reset = Number.isFinite(resetAt) ? resetAt : now + after;
     if (!Number.isFinite(used) || used < 0 || !Number.isFinite(reset)) continue;
-    const key = minutes === 300 ? "five_hour" : minutes === 10080 ? "seven_day" : undefined;
+    const key = windowName(minutes);
     if (key) result[key] = { used_percentage: used, resets_at: reset };
   }
   // A zero-length slot beside a valid weekly window explicitly disables the short window.
@@ -85,10 +88,34 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
   return result;
 }
 
+type CodexLimitSlot = { window_minutes?: unknown; used_percent?: unknown; reset_at?: unknown } | null;
+
+function parseCodexStreamLimits(raw: unknown): ParsedLimits {
+  if (!raw || typeof raw !== "object") return {};
+  const { type, metered_limit_name, limit_name, rate_limits } = raw as {
+    type?: unknown; metered_limit_name?: unknown; limit_name?: unknown;
+    rate_limits?: { primary?: CodexLimitSlot; secondary?: CodexLimitSlot };
+  };
+  const family = metered_limit_name ?? limit_name ?? "codex";
+  if (type !== "codex.rate_limits" || typeof family !== "string" || family.trim().toLowerCase() !== "codex" || !rate_limits) return {};
+  const slots = [rate_limits.primary, rate_limits.secondary];
+  const result: ParsedLimits = {};
+  for (const slot of slots) {
+    if (!slot) continue;
+    const key = windowName(slot.window_minutes);
+    const { used_percent: used, reset_at: reset } = slot;
+    if (key && typeof used === "number" && Number.isFinite(used) && used >= 0 && typeof reset === "number" && Number.isFinite(reset))
+      result[key] = { used_percentage: used, resets_at: reset };
+  }
+  // Missing slots are inconclusive; an explicit null or zero-length slot disables the old short window.
+  if (result.seven_day && !result.five_hour && slots.some(slot => slot === null || slot?.window_minutes === 0)) result.five_hour = null;
+  return result;
+}
+
 type Observation = { observedAt: number } & (Window | { absent: true });
 type ObservedLimits = Partial<Record<WindowName, Observation>>;
 
-function observe(parsed: ReturnType<typeof parseLimits>, observedAt: number): ObservedLimits {
+function observe(parsed: ParsedLimits, observedAt: number): ObservedLimits {
   const record: ObservedLimits = {};
   for (const name of windowNames) {
     const window = parsed[name];
@@ -98,8 +125,7 @@ function observe(parsed: ReturnType<typeof parseLimits>, observedAt: number): Ob
 }
 
 // Select the newest observation before checking expiry, so an older window cannot resurface.
-function loadSharedObservations(cache: string, provider: string, now: number) {
-  const latest: ObservedLimits = {};
+function loadSharedObservations(cache: string, provider: string, now: number, latest: ObservedLimits = {}) {
   const merge = (record: ObservedLimits) => {
     for (const name of windowNames) {
       const window = record[name];
@@ -132,7 +158,10 @@ function loadSharedObservations(cache: string, provider: string, now: number) {
 }
 
 export function loadSharedLimits(cache: string, provider: string, now = Date.now()) {
-  const latest = loadSharedObservations(cache, provider, now);
+  return activeLimits(loadSharedObservations(cache, provider, now), now);
+}
+
+function activeLimits(latest: ObservedLimits, now: number) {
   const active: Partial<Record<WindowName, Window & { observedAt: number }>> = {};
   for (const name of windowNames) {
     const window = latest[name];
@@ -190,11 +219,13 @@ export default function (pi: ExtensionAPI) {
   const root = join(homedir(), ".pi", "agent");
   const cache = join(root, "cache", "statusline");
   let enabled = true;
-  let refresh: (() => void) | undefined;
+  let refresh: ((snapshot?: { provider: string; windows: ObservedLimits }) => void) | undefined;
   let redraw: (() => void) | undefined;
   let busy = false;
   let waitingForUser = false;
-  let sessionTimer: ReturnType<typeof setInterval> | undefined;
+  let sessionTimer: ReturnType<typeof setInterval> | undefined, paneTimer: ReturnType<typeof setInterval> | undefined;
+  let hidden = false, activeCards = false;
+  pi.events.on("dotfiles:active-chat-cards", value => { activeCards = value === true; });
   const sessionsDir = join(root, "cache", "statusline", "sessions");
   const sessionFile = join(sessionsDir, `${process.pid}.json`);
   let sessionContext: ExtensionContext | undefined;
@@ -293,7 +324,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setFooter((tui, _theme, data) => {
       let width = 100, line = "", pending = false, dirty = false, disposed = false;
       let child: ReturnType<typeof spawn> | undefined;
-      function update() {
+      function update(snapshot?: { provider: string; windows: ObservedLimits }) {
         if (disposed) return;
         if (pending) { dirty = true; return; }
         pending = true;
@@ -306,7 +337,8 @@ export default function (pi: ExtensionAPI) {
           }
         }
         const usage = ctx.getContextUsage();
-        const limits = loadSharedLimits(cache, ctx.model?.provider ?? "unknown");
+        const provider = ctx.model?.provider ?? "unknown";
+        const limits = snapshot?.provider === provider ? activeLimits(snapshot.windows, Date.now()) : loadSharedLimits(cache, provider);
         const effort = pi.getThinkingLevel();
         const payload = {
           model: { display_name: ctx.model?.name ?? ctx.model?.id ?? "No model", id: ctx.model?.id },
@@ -344,30 +376,11 @@ export default function (pi: ExtensionAPI) {
       redraw = requestRender;
       // Queue state can change without a model or tool event.
       let queued = ctx.hasPendingMessages();
-      const pane = process.env.TMUX && process.env.TMUX_PANE;
-      let hidden = false, checking = false, nextProbe = 0, nextFrame = 0;
+      let nextFrame = 0;
       const clock = setInterval(() => {
         const nextQueued = ctx.hasPendingMessages();
         const animating = busy || generatingSince !== undefined;
         const now = Date.now();
-        if (animating && pane && /^%\d+$/.test(pane) && !checking && now >= nextProbe) {
-          checking = true;
-          nextProbe = now + 2000;
-          execFile("tmux", ["display-message", "-p", "-t", pane, "#{window_id}", ";", "list-clients", "-F", "#{window_id} #{window_zoomed_flag} #{pane_id}"], { timeout: 800 }, (error, stdout) => {
-            checking = false;
-            if (disposed) return;
-            const [win, ...clients] = stdout.trim().split("\n");
-            const nextHidden = !error && /^@\d+$/.test(win) && clients.every(row => {
-              const match = /^(@\d+) ([01]) (%\d+)$/.exec(row);
-              return match && (match[1] !== win || (match[2] === "1" && match[3] !== pane));
-            });
-            if (hidden !== nextHidden) {
-              hidden = nextHidden;
-              pi.events.emit("dotfiles:pane-hidden", hidden);
-              if (!hidden) requestRender();
-            }
-          });
-        }
         if (queued !== nextQueued || (animating && (!hidden || now >= nextFrame))) {
           if (hidden) {
             nextFrame = now + 1000;
@@ -458,6 +471,15 @@ export default function (pi: ExtensionAPI) {
       });
       update();
       let layout: { line: string; name: string; columns: number; lightColor?: string; rows: string[] } | undefined;
+      let fleetLabel: string | undefined;
+      const unsubscribeFleet = pi.events.on(fleetFooterEvent, data => {
+        const update = data as FleetFooterUpdate;
+        update.shown = true;
+        if (fleetLabel === update.label) return;
+        fleetLabel = update.label;
+        layout = undefined;
+        tui.requestRender();
+      });
       return {
         invalidate() { layout = undefined; },
         render(columns: number) {
@@ -471,16 +493,30 @@ export default function (pi: ExtensionAPI) {
           const hasSegments = line.startsWith("[");
           const name = hasSegments ? captionText((ctx.sessionManager.getSessionName() ?? "").replace(/\s+/gu, " ")) : "";
           if (layout && layout.line === line && layout.name === name && layout.columns === columns && layout.lightColor === lightColor) return layout.rows;
-          const rows = hasSegments ? ribbonRows(JSON.parse(line), name, innerWidth) : line.split("\n");
-          if (!hasSegments && rows.length === 1) {
-            // A renderer installed before --segments can count Nerd Font glyphs differently.
+          const withFleet = (left: string) => {
+            if (!fleetLabel) return left;
+            const label = `${ribbonGray}${fleetLabel}\x1b[0m`;
+            const room = innerWidth - visibleWidth(label) - visibleWidth(ribbonSeparator);
+            return left && room > 0 ? truncateToWidth(left, room) + ribbonSeparator + label : label;
+          };
+          let rows: string[];
+          if (hasSegments) {
+            const [left, activity, limits] = JSON.parse(line);
+            rows = ribbonRows([withFleet(left), activity, limits], name, innerWidth);
+          } else {
+            rows = line.split("\n");
             const row = rows[0];
-            const gap = [...row.matchAll(/ {2,}/g)].reduce<RegExpMatchArray | undefined>((longest, match) =>
-              !longest || match[0].length > longest[0].length ? match : longest, undefined);
-            if (gap && gap.index !== undefined) {
-              const size = gap[0].length + innerWidth - visibleWidth(row);
-              if (size > 0) rows[0] = row.slice(0, gap.index) + " ".repeat(size) + row.slice(gap.index + gap[0].length);
-            }
+            // Before --segments, the widest gap separates the Go renderer's two groups.
+            const gap = rows.length === 1
+              ? [...row.matchAll(/ {2,}/g)].reduce<RegExpMatchArray | undefined>((longest, match) =>
+                !longest || match[0].length > longest[0].length ? match : longest, undefined) : undefined;
+            if (gap?.index !== undefined) {
+              const left = withFleet(row.slice(0, gap.index));
+              const right = row.slice(gap.index + gap[0].length);
+              const size = innerWidth - visibleWidth(left) - visibleWidth(right);
+              if (size > 0) rows[0] = left + " ".repeat(size) + right;
+              else if (fleetLabel) rows = right ? [left, right] : [left];
+            } else rows[0] = withFleet(row);
           }
           const rendered = rows.flatMap(row => wrapTextWithAnsi(lightColor !== undefined
             ? row.replaceAll(ribbonGray, lightColor).replaceAll("\x1b[2;", "\x1b[") : row, innerWidth))
@@ -490,7 +526,7 @@ export default function (pi: ExtensionAPI) {
         },
         dispose() {
           disposed = true;
-          if (hidden) pi.events.emit("dotfiles:pane-hidden", false);
+          unsubscribeFleet();
           clearInterval(clock);
           child?.kill();
           if (refresh === update) refresh = undefined;
@@ -512,6 +548,29 @@ export default function (pi: ExtensionAPI) {
     activeTools.clear();
     waitingForUser = false;
     sessionContext = ctx;
+    const pane = process.env.TMUX && process.env.TMUX_PANE;
+    if (ctx.mode === "tui" && pane && /^%\d+$/.test(pane)) {
+      let checking = false;
+      // Card visibility survives footer replacement, including switching to the stock footer.
+      paneTimer = setInterval(() => {
+        if (checking || (!busy && generatingSince === undefined && !activeCards && !hidden)) return;
+        checking = true;
+        execFile("tmux", ["display-message", "-p", "-t", pane, "#{window_id}", ";", "list-clients", "-F", "#{window_id} #{window_zoomed_flag} #{pane_id}"], { timeout: 800 }, (error, stdout) => {
+          checking = false;
+          if (sessionContext !== ctx) return;
+          const [win, ...clients] = stdout.trim().split("\n");
+          const nextHidden = !error && /^@\d+$/.test(win) && clients.every(row => {
+            const match = /^(@\d+) ([01]) (%\d+)$/.exec(row);
+            return match && (match[1] !== win || (match[2] === "1" && match[3] !== pane));
+          });
+          if (hidden === nextHidden) return;
+          hidden = nextHidden;
+          pi.events.emit("dotfiles:pane-hidden", hidden);
+          if (!hidden) redraw?.();
+        });
+      }, 2000);
+      paneTimer.unref();
+    }
     if (ctx.mode === "tui") ctx.ui.setHiddenThinkingLabel("");
     mkdirSync(sessionsDir, { recursive: true, mode: 0o700 });
     publishSession();
@@ -608,29 +667,36 @@ export default function (pi: ExtensionAPI) {
     publishSession();
     redraw?.();
   });
-  pi.on("after_provider_response", async (event, ctx) => {
-    const next = parseLimits(event.headers);
-    const safeHeaders = Object.fromEntries(Object.entries(event.headers).filter(([name]) =>
-      /^x-codex-(primary|secondary)-(used-percent|window-minutes|reset-at|reset-after-seconds)$/i.test(name) ||
-      /^anthropic-ratelimit-unified-(5h|7d)-(utilization|reset)$/i.test(name)));
+  function publishLimits(provider: string, model: string | undefined, next: ParsedLimits, diagnostic: object) {
     const observedAt = Date.now();
-    const provider = ctx.model?.provider ?? "unknown";
     const directory = join(cache, encodeURIComponent(provider));
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const snapshot = { ...loadSharedObservations(cache, provider, observedAt), ...observe(next, observedAt) };
+    const snapshot = loadSharedObservations(cache, provider, observedAt, observe(next, observedAt));
     if (Object.keys(snapshot).length) {
       // Each process owns one atomic snapshot, so parallel writers cannot overwrite each other.
       const path = join(directory, `limits-${process.pid}.json`);
       writeFileSync(path + ".tmp", JSON.stringify(snapshot), { mode: 0o600 });
       renameSync(path + ".tmp", path);
     }
-    lastDiagnostic = { observed: true, at: new Date().toISOString(), observedAt, provider,
-      model: ctx.model?.id, status: event.status, subscriptionHeaders: safeHeaders, parsed: next };
+    lastDiagnostic = { observed: true, at: new Date().toISOString(), observedAt, provider, model, ...diagnostic, parsed: next };
     const diagnosticPath = join(cache, "transport-diagnostic.json");
     const diagnosticTemp = diagnosticPath + `.${process.pid}.tmp`;
     writeFileSync(diagnosticTemp, JSON.stringify(lastDiagnostic, null, 2), { mode: 0o600 });
     renameSync(diagnosticTemp, diagnosticPath);
-    refresh?.();
+    refresh?.({ provider, windows: snapshot });
+  }
+  pi.on("after_provider_response", (event, ctx) => {
+    const safeHeaders = Object.fromEntries(Object.entries(event.headers).filter(([name]) =>
+      /^x-codex-(primary|secondary)-(used-percent|window-minutes|reset-at|reset-after-seconds)$/i.test(name) ||
+      /^anthropic-ratelimit-unified-(5h|7d)-(utilization|reset)$/i.test(name)));
+    publishLimits(ctx.model?.provider ?? "unknown", ctx.model?.id, parseLimits(safeHeaders), {
+      status: event.status, subscriptionHeaders: safeHeaders,
+    });
+  });
+  pi.on("provider_stream_event", event => {
+    if (event.api !== "openai-codex-responses") return;
+    const limits = parseCodexStreamLimits(event.data);
+    if (Object.keys(limits).length) publishLimits(event.provider, event.model, limits, { source: "codex.rate_limits" });
   });
   pi.on("message_end", event => {
     if (event.message.role === "assistant") {
@@ -673,6 +739,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("ui_prompt_end", () => { waitingForUser = false; publishSession(); });
   pi.on("session_shutdown", () => {
     clearInterval(sessionTimer);
+    clearInterval(paneTimer);
+    hidden = activeCards = false;
     sessionContext = undefined;
     rmSync(sessionFile, { force: true });
   });

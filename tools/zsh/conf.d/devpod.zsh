@@ -1738,6 +1738,9 @@ _dp_recreate() {
   emulate -L zsh
   local id=$1
   [[ -z $id ]] && return 1
+  if (( $+functions[_dp_recreate_preflight] )); then
+    _dp_recreate_preflight "$id" || return $?
+  fi
   local _t0=$EPOCHREALTIME
   local -i _ms
   local image=$(_dp_ws_field "$id" .devContainerImage)
@@ -2171,7 +2174,13 @@ dp() {
                 _dp_pull "${prov:-$DP_PROVIDER}" "$prof"
                 _dp_up_one "$id" "$r" "$prof" "${prov:-$DP_PROVIDER}"
               done ;;
-    recreate) local i; for i in "$@"; do _dp_recreate "$i"; done ;;
+    recreate) local i rc=0 result
+              for i in "$@"; do
+                _dp_recreate "$i" && continue
+                result=$?
+                if (( rc == 0 || (rc == 2 && result != 2) )); then rc=$result; fi
+              done
+              return $rc ;;
     stop)     _dp_stop "$@" ;;
     rm)       devpod delete "$@" ;;
     secrets)  _dp_secrets "$@" ;;

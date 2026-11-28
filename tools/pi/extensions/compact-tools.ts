@@ -7,6 +7,8 @@ import { stripVTControlCharacters } from "node:util";
 import { formatReadLineRange, getLanguageFromPath, getMarkdownTheme, highlightCode, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { CodemodeToolDetails, ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { registerSubagentChat } from "../subagents/chat-card.ts";
+import { stripToolControls, toolStatusStyle } from "../tool-status.ts";
 
 const pulseInterval = 120;
 const timingInset = 3;
@@ -33,7 +35,7 @@ function expandedRows(rows: string[], expanded: boolean, width: number, theme: T
   });
 }
 
-function runningPulse(title: string, theme: Theme, step: number, strongLightPulse: boolean): string {
+function runningPulse(title: string, theme: Theme, step: number, strongLightPulse: boolean, boldLength = 0): string {
   const text = stripVTControlCharacters(title);
   const start = text.match(/^ */)![0];
   const segments = [...graphemes.segment(text.slice(start.length))];
@@ -46,24 +48,26 @@ function runningPulse(title: string, theme: Theme, step: number, strongLightPuls
   const peak = (1 - Math.abs(2 * phase - 1)) * (segments.length - 1);
   const spread = Math.min(16, Math.max(1.5, length * 0.26));
   const contrast = Math.max(18, 34 - Math.round(length / 3));
-  let output = start, run = "", previous = 0;
+  let output = start, run = "", previous = 0, bold = false;
   const paint = (value: string, shade: number) => {
     const shift = (channel: number) => Math.max(0, Math.min(255, channel + shade));
-    return theme.style(value, { fg: rgbColor(shift(r), shift(g), shift(b)) });
+    return theme.style(value, { fg: rgbColor(shift(r), shift(g), shift(b)), bold });
   };
   for (let i = 0; i < segments.length; i++) {
     const distance = Math.min(1, Math.abs(i - peak) / spread);
     const wave = Math.cos(distance * Math.PI);
     const shade = Math.round(contrast * (strongLightPulse ? -1.5 * (wave + 1) : wave));
-    if (shade !== previous && run) { output += paint(run, previous); run = ""; }
+    const nextBold = segments[i].index < boldLength;
+    if ((shade !== previous || nextBold !== bold) && run) { output += paint(run, previous); run = ""; }
     run += segments[i].segment;
     previous = shade;
+    bold = nextBold;
   }
   return output + paint(run, previous);
 }
 
 function clean(text: string): string {
-  return stripVTControlCharacters(text).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+  return stripToolControls(text).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 
 function shellLog(text: string): string {
@@ -596,7 +600,7 @@ function prepareDiff(diff: string) {
     if (hidden.has(i)) continue;
     const match = parsed[i];
     if (!match && !keep.has(i)) { gap = rows.length > 0; continue; }
-    if (gap) { rows.push({ text: " …" }); gap = false; }
+    if (gap) { rows.push({ text: "…" }); gap = false; }
     if (!match) {
       const [, number, text] = /^ [ \t]*(\d+)[ \t](.*)$/.exec(lines[i])!;
       rows.push({ number, text });
@@ -693,8 +697,21 @@ function quietMetadata(theme: Theme, text: string, expanded = false): string {
   });
 }
 
+function withRightMetadata(left: string, meta: string, width: number): string {
+  if (!meta) return left;
+  const gap = width - timingInset - visibleWidth(left) - visibleWidth(meta);
+  return left + " ".repeat(Math.max(1, gap)) + meta + " ".repeat(timingInset);
+}
+
+function subagentTimedLine(left: string, time: string, width: number, theme: Theme): string {
+  const available = width - timingInset;
+  if (!time || available < 16) return truncateToWidth(left, width);
+  const label = truncateToWidth(time, Math.floor(available * 0.5));
+  return withRightMetadata(truncateToWidth(left, available - visibleWidth(label) - 1), quietMetadata(theme, label), width);
+}
+
 function diffNumber(number: string, digits: number, kind: string, theme: Theme, expanded: boolean): string {
-  const label = number.padStart(digits) + " ";
+  const label = number.padEnd(digits) + " ";
   if (kind === " ") return quietMetadata(theme, label, expanded);
   const palette = diffPalette[theme.appearance][kind === "-" ? "remove" : "add"];
   return theme.style(label, { fg: parseColor(palette.number), bg: parseColor(palette.bg) });
@@ -762,7 +779,7 @@ function codemodeLabel(name: string): string {
 
 const codemodeTargetKeys = ["path", "file_path", "command", "query", "text", "title", "url", "pattern", "uri", "server"];
 
-function codemodeTarget(call: CodemodeCall, expanded: boolean): string {
+function codemodeTarget(call: Pick<CodemodeCall, "name" | "args">, expanded: boolean): string {
   if (!call.args.startsWith("{")) return clean(call.args).replace(/[\x80-\x9f]/g, ""); // Model calls carry a provider/model ID instead of JSON.
   let args: Record<string, unknown>;
   try { args = JSON.parse(call.args); } catch {
@@ -779,11 +796,27 @@ function codemodeTarget(call: CodemodeCall, expanded: boolean): string {
   return preview({ query: target }).replace(/[\x80-\x9f]/g, "") + range;
 }
 
+function subagentToolPreview(name: string, args: string | undefined, target: string | undefined, theme: Theme, width: number): string {
+  const label = clean(codemodeLabel(name));
+  const separator = name === "bash" ? shellSeparator : " ";
+  const room = width - visibleWidth(label) - visibleWidth(separator);
+  let preview = target ?? "";
+  if (args) {
+    if (name === "bash") {
+      let command = args;
+      if (args.startsWith("{")) command = codemodeTarget({ name, args }, false);
+      const summary = bashPreview(command);
+      preview = summary ? bashPreviewLine(summary, Math.max(0, room)) : command.split("\n", 1)[0];
+    } else preview = codemodeTarget({ name, args }, false) || preview;
+  }
+  return truncateToWidth(theme.fg("toolTitle", label) + (preview && room > 0 ? theme.fg("toolOutput", separator + clean(preview).replace(/[\p{Cc}\p{Cf}]/gu, " ")) : ""), width);
+}
+
 function codemodeProblem(call: CodemodeCall): boolean {
   return call.status === "error" || call.status === "cancelled";
 }
 
-function codemodeSummary(calls: readonly CodemodeCall[], partial: boolean, started: boolean, failed: boolean): string {
+function codemodeSummary(calls: readonly CodemodeCall[], partial: boolean, started: boolean, failed: boolean, theme: Theme) {
   const counts = new Map<string, number>();
   let errors = 0, cancelled = 0;
   for (const call of calls) {
@@ -794,14 +827,20 @@ function codemodeSummary(calls: readonly CodemodeCall[], partial: boolean, start
   }
   const activity = calls.length ? [...counts].map(([label, count]) => `${count} ${label}`).join(", ")
     : partial ? started ? "Running script" : "Preparing script" : failed ? "" : "No tool calls";
-  return [failed ? "Failed" : "", errors ? `${errors} failed` : "", cancelled ? `${cancelled} cancelled` : "", activity].filter(Boolean).join(" · ");
+  const failure = [failed ? "Failed" : "", errors ? `${errors} failed` : ""].filter(Boolean).join(" · ");
+  const summary = [cancelled ? `${cancelled} cancelled` : "", activity].filter(Boolean).join(" · ");
+  const text = [failure && theme.style(failure, toolStatusStyle(theme, "error")), summary && theme.fg("toolOutput", summary)]
+    .filter(Boolean).join(theme.fg("toolOutput", " · "));
+  return { text, failure };
 }
 
 function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, width: number, expanded: boolean, step: number | undefined, bash?: BashInput): string[] {
   const title = clean(codemodeLabel(call.name));
   const target = bash ? expanded ? bash.command : bash.command.split("\n", 1)[0] : codemodeTarget(call, expanded);
   const summary = bash && !expanded && storedBashPreview(bash);
-  const status = call.status === "ok" ? theme.fg("success", "✓") : call.status === "error" ? theme.fg("error", "✗")
+  const failed = call.status === "error";
+  const status = call.status === "ok" ? theme.style("✓", toolStatusStyle(theme, "success"))
+    : failed ? theme.style("✗", toolStatusStyle(theme, "error"))
     : theme.fg(call.status === "cancelled" ? "muted" : "warning", call.status === "cancelled" ? "⊘" : "…");
   const time = elapsedLabel(call.durationMs);
   const cost = call.cost ? `$${call.cost >= 0.01 ? call.cost.toFixed(2) : call.cost.toPrecision(2)}` : "";
@@ -816,13 +855,15 @@ function codemodeCallLines(call: CodemodeCall, theme: Theme, padding: string, wi
   const display = summary ? bashPreviewLine(summary, Math.max(0, targetRoom))
     : !expanded && targetRoom > 0 && (call.name === "read" || call.name === "edit" || call.name === "write")
     ? shortenPath(target, "", 0, targetRoom) : target;
-  const heading = theme.fg("toolTitle", theme.bold(title)) + (display ? theme.fg("toolOutput", separator + display) : "");
+  const label = failed ? theme.style(title, toolStatusStyle(theme, "error", true)) : theme.fg("toolTitle", theme.bold(title));
+  const heading = label + (display ? failed ? theme.style(separator + display, toolStatusStyle(theme, "error"))
+    : theme.fg("toolOutput", separator + display) : "");
   const short = expanded ? heading : truncateToWidth(heading, limit);
-  const text = call.status === "running" && step !== undefined ? runningPulse(short, theme, step, theme.appearance === "light") : short;
+  const text = call.status === "running" && step !== undefined ? runningPulse(short, theme, step, theme.appearance === "light", title.length) : short;
   const rows = expanded ? wrapTextWithAnsi(text, limit) : [text];
   rows[rows.length - 1] += suffix;
   const lines = rows.map((row, i) => truncateToWidth((i === 0 ? prefix : " ".repeat(prefixWidth)) + row, width));
-  if (expanded && call.error) lines.push(...indentedLines(theme.fg("error", clean(call.error)), padding + "  ", width));
+  if (expanded && call.error) lines.push(...indentedLines(theme.style(clean(call.error), toolStatusStyle(theme, "error")), padding + "  ", width));
   return lines;
 }
 
@@ -833,6 +874,21 @@ function shownCodemodeCalls(calls: readonly CodemodeCall[], live: boolean): read
     ...calls.filter(call => call.status === "ok").reverse()] : calls;
   const shown = new Set(prioritized.slice(0, codemodePreviewRows));
   return calls.filter(call => shown.has(call));
+}
+
+function bashTail(output: string, columns: number, limit: number): string[] {
+  if (!output.trim()) return [];
+  const lines = output.replace(/\n+$/, "").split("\n");
+  const start = Math.max(0, lines.length - limit);
+  let earlier = 0;
+  for (let i = 0; i < start; i++) {
+    const line = lines[i];
+    earlier += line.length <= columns && !/[^ -~]/.test(line) ? 1 : wrapTextWithAnsi(line, columns).length;
+  }
+  const rows = wrapTextWithAnsi(lines.slice(start).join("\n"), columns);
+  if (earlier + rows.length <= limit) return rows;
+  const visible = limit - 1;
+  return [`… ${earlier + rows.length - visible} earlier lines`, ...rows.slice(-visible)];
 }
 
 function cacheLines(render: (width: number) => string[]) {
@@ -997,8 +1053,10 @@ export default function compactTools(pi: ExtensionAPI) {
     if (pending.size === 0) stop();
   });
 
+  const subagentChat = registerSubagentChat(pi, subagentToolPreview, subagentTimedLine, quietMetadata);
   // Only rendering changes; tool definitions, execution and model-facing results stay intact.
-  pi.registerToolRenderer(toolName => {
+  pi.registerToolRenderer((toolName, next) => {
+    if (toolName === "subagent") return subagentChat(next());
     const mcp = toolName.startsWith("mcp__");
     const [server, action] = mcp ? toolName.slice(5).split(/__(.*)/, 2) : [];
     const list = listTools.has(toolName);
@@ -1080,6 +1138,8 @@ export default function compactTools(pi: ExtensionAPI) {
         const shellSummary = !expanded && complete && shell && !devops ? storedBashPreview(shell.input) : undefined;
         const elapsedMs = context.isPartial ? liveMs : context.durationMs;
         const failed = bash && context.isError && !context.isPartial;
+        const failedPreview = failed && !expanded;
+        const shellPreviewText = (text: string) => failedPreview ? theme.style(text, toolStatusStyle(theme, "error")) : theme.fg("toolOutput", text);
         const limit = bash && typeof args?.timeout === "number" && Number.isFinite(args.timeout) && args.timeout > 0 ? args.timeout : undefined;
         const showLimit = limit !== undefined && elapsedMs !== undefined &&
           elapsedMs >= (context.isPartial ? minToolTimingMs : limit * 1000 * 0.8);
@@ -1093,12 +1153,14 @@ export default function compactTools(pi: ExtensionAPI) {
           const metadata = [status, timing].filter(Boolean).join(" · ");
           const available = width - timingInset;
           const metaWidth = timedOut ? available - padding.length - 1 : Math.floor(available * 0.5);
-          const meta = metadata && available >= 16 ? quietMetadata(theme, truncateToWidth(metadata, metaWidth), expanded) : "";
+          const meta = !metadata || available < 16 ? "" : failed && status
+            ? truncateToWidth(theme.style(status, toolStatusStyle(theme, "error")) + (timing ? quietMetadata(theme, ` · ${timing}`, expanded) : ""), metaWidth)
+            : quietMetadata(theme, truncateToWidth(metadata, metaWidth), expanded);
           const compactWidth = Math.max(1, Math.floor(width * 0.7));
           const titleWidth = meta ? Math.min(compactWidth, available - visibleWidth(meta) - 1) : expanded ? width : compactWidth;
-          const animate = (text: string) => running ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light") : text;
-          const withMeta = (left: string) => meta ? left + " ".repeat(Math.max(1, available - visibleWidth(left) - visibleWidth(meta)))
-            + meta + " ".repeat(timingInset) : left;
+          const animate = (text: string, boldLength = 0) => running
+            ? runningPulse(text, theme, pulseStep, codemode && theme.appearance === "light", boldLength) : text;
+          const withMeta = (left: string) => withRightMetadata(left, meta, width);
           const withLastMeta = (rows: string[]) => {
             if (meta) {
               const last = rows.length - 1;
@@ -1111,30 +1173,37 @@ export default function compactTools(pi: ExtensionAPI) {
           if (codemode) {
             // The result slot receives the runtime snapshot before this component draws its first frame.
             const calls = context.state.codemodeCalls as CodemodeCall[] | undefined;
-            const summary = codemodeSummary(calls ?? [], context.isPartial, context.executionStarted, context.isError);
-            const title = padding + theme.fg(context.isError ? "error" : "toolOutput", theme.bold("codemode"));
+            const summary = codemodeSummary(calls ?? [], context.isPartial, context.executionStarted, context.isError, theme);
+            const title = padding + (context.isError ? theme.style("codemode", toolStatusStyle(theme, "error", true))
+              : theme.fg("toolOutput", theme.bold("codemode")));
             const room = titleWidth - visibleWidth(title) - 1;
-            const text = room > 2 ? " " + animate(truncateToWidth(theme.fg("toolOutput", `· ${summary}`), room)) : "";
-            return paint([truncateToWidth(withMeta(title + text), width)]);
+            const text = room > 2 ? truncateToWidth(theme.fg("toolOutput", "· ") + summary.text, room) : "";
+            return paint([truncateToWidth(withMeta(title + (text ? " " + (summary.failure ? text : animate(text)) : "")), width)]);
           }
           if (devops) {
-            const title = theme.fg(context.isError ? "error" : "accent", theme.bold("DEVOPS"));
-            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title), Math.max(0, titleWidth - padding.length))), width);
+            const devopsLabel = "DEVOPS";
+            const title = failedPreview ? theme.style(devopsLabel, toolStatusStyle(theme, "error", true))
+              : theme.fg("accent", theme.bold(devopsLabel));
+            const header = truncateToWidth(withMeta(padding + truncateToWidth(animate(title, devopsLabel.length), Math.max(0, titleWidth - padding.length))), width);
             const lines = devopsCommandLines(devops.map(word => shellDisplayWord(word)), Math.max(1, width - padding.length - 1));
-            const script = highlighted(lines.join("\n"), "bash", text => theme.fg("toolOutput", text));
+            const script = failedPreview ? lines.map(shellPreviewText).join("\n") : highlighted(lines.join("\n"), "bash", shellPreviewText);
             return [header, ...indentedLines(script, padding, width)];
           }
           if (bash) {
             const lines = command.split("\n");
             const source = expanded ? command : lines[0];
-            const shell = !expanded ? theme.fg("toolOutput", source)
-              : context.isError ? source.split("\n").map(line => theme.fg("error", line)).join("\n")
+            const shell = !expanded ? shellPreviewText(source)
+              : context.isError ? source.split("\n").map(line => theme.style(line, toolStatusStyle(theme, "error"))).join("\n")
               : context.isPartial && !context.argsComplete ? source
               : highlighted(source, "bash", text => theme.fg("toolOutput", text));
             const [first, ...rest] = shell.split("\n");
-            const title = source ? first : "…";
-            const prompt = (room: number) => room > padding.length + shellLabel.length + shellSeparator.length
-              ? theme.fg(expanded ? (context.isError ? "error" : "toolTitle") : "toolOutput", theme.bold(shellLabel) + shellSeparator) : "";
+            const title = source ? first : failedPreview ? shellPreviewText("…") : "…";
+            const prompt = (room: number) => {
+              if (room <= padding.length + shellLabel.length + shellSeparator.length) return "";
+              if (context.isError) return theme.style(shellLabel, toolStatusStyle(theme, "error", true))
+                + theme.style(shellSeparator, toolStatusStyle(theme, "error"));
+              return theme.fg(expanded ? "toolTitle" : "toolOutput", theme.bold(shellLabel) + shellSeparator);
+            };
             if (expanded) {
               const prefix = padding + prompt(width);
               const indent = padding + " ";
@@ -1159,11 +1228,12 @@ export default function compactTools(pi: ExtensionAPI) {
             const room = availableTitle - visibleWidth(badge);
             const prefix = padding + prompt(room);
             const commandRoom = Math.max(0, room - visibleWidth(prefix));
-            const text = shellSummary ? theme.fg("toolOutput", bashPreviewLine(shellSummary, commandRoom)) : truncateToWidth(title, commandRoom);
+            const text = shellSummary ? shellPreviewText(bashPreviewLine(shellSummary, commandRoom)) : truncateToWidth(title, commandRoom);
             const header = prefix + animate(text) + extra + badge;
             return paint([truncateToWidth(withMeta(header), width)]);
           }
-          const prefix = quiet ? theme.fg("muted", label) : theme.fg(context.isError ? "error" : "toolTitle", theme.bold(label));
+          const prefix = theme.style(label, context.isError ? toolStatusStyle(theme, "error", true)
+            : { fg: quiet ? "muted" : "toolTitle", bold: true });
           const counts = stats ? [
             stats.added ? theme.fg(quiet ? "muted" : "success", `+${stats.added}`) : "",
             stats.removed ? theme.fg(quiet ? "muted" : "error", `−${stats.removed}`) : "",
@@ -1185,8 +1255,8 @@ export default function compactTools(pi: ExtensionAPI) {
           const summary = (argsPreview ? " " + theme.fg(pathColor, displayArgs) : "") + suffix;
           const line = title + summary;
           const header = expanded && fileCall
-            ? withLastMeta(wrapTextWithAnsi(animate(line + badge) + rangeLabel, Math.max(1, width)))
-            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge) + rangeLabel), width)];
+            ? withLastMeta(wrapTextWithAnsi(animate(line + badge, label.length) + rangeLabel, Math.max(1, width)))
+            : [truncateToWidth(withMeta(animate(truncateToWidth(line, room - range.length) + shownBadge, label.length) + rangeLabel), width)];
           return paint(argumentsText ? [...header, ...indentedLines(theme.fg("muted", argumentsText), padding, width)] : header);
         };
         if (context.isPartial || codemode || failed) return cacheLines(render);
@@ -1224,7 +1294,8 @@ export default function compactTools(pi: ExtensionAPI) {
             };
             if (source) section("Script", highlighted(source, "javascript", text => theme.fg("toolOutput", text)));
             if (output) {
-              const log = theme.fg(context.isError ? "error" : "toolOutput", output) + (output.includes("\x1b[") ? "\x1b[0m" : "");
+              const log = (context.isError ? theme.style(output, toolStatusStyle(theme, "error")) : theme.fg("toolOutput", output))
+                + (output.includes("\x1b[") ? "\x1b[0m" : "");
               if (expanded) section("Output", log);
               else lines.push(...indentedLines(log, padding, width));
             }
@@ -1247,6 +1318,7 @@ export default function compactTools(pi: ExtensionAPI) {
           typeof startedAt === "number" && Date.now() - startedAt >= livePreviewDelayMs
           ? typeof command === "string" && shellProgram(command) === "ssh" ? sshTailRows : bashTailRows
           : 0;
+        if (bash && !tailRows) delete context.state.bashTail;
         if (toolName === "bash" && !expanded && !search && !tailRows) return new Text("", 0, 0);
         const details = result.details as { diff?: unknown; patch?: unknown } | undefined;
         const diff = typeof details?.diff === "string" ? clean(details.diff) : undefined;
@@ -1334,10 +1406,23 @@ export default function compactTools(pi: ExtensionAPI) {
             const page = context.state.servicePage as ReturnType<typeof serviceItems>;
             if (page && page.items.every(i => typeof (i?.uri ?? i?.uriTemplate) === "string")) {
               const lines = page.items.map(i => theme.fg("accent", clean([i.server, i.name].filter(Boolean).join(" · "))) + "  " + clean(i.uri ?? i.uriTemplate));
-              for (const e of page.errors) lines.push(theme.fg("error", clean(`${e?.server}: ${e?.error}`)));
+              for (const e of page.errors) lines.push(theme.style(clean(`${e?.server}: ${e?.error}`), toolStatusStyle(theme, "error")));
               if (typeof page.cursor === "string") lines.push(theme.fg("muted", "Next cursor: " + clean(page.cursor)));
               return paint(indentedLines(lines.join("\n") || "No entries", padding, width));
             }
+          }
+          if (tailRows) {
+            const indent = padding + " ";
+            const columns = Math.max(1, width - indent.length);
+            const block = result.content.length === 1 ? result.content[0] : undefined;
+            const raw = block?.type === "text";
+            const source = raw ? block.text : readOutput();
+            // Spinner invalidations rebuild this component without changing the log or its layout.
+            let tail = context.state.bashTail as { source: string; raw: boolean; columns: number; limit: number; rows: string[] } | undefined;
+            if (!tail || tail.source !== source || tail.raw !== raw || tail.columns !== columns || tail.limit !== tailRows) {
+              context.state.bashTail = tail = { source, raw, columns, limit: tailRows, rows: bashTail(raw ? clean(source) : source, columns, tailRows) };
+            }
+            return tail.rows.map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
           }
           const output = readOutput();
           if (cardTool && !isPartial && !context.isError) {
@@ -1398,31 +1483,11 @@ export default function compactTools(pi: ExtensionAPI) {
               return paint(rows);
             }
           }
-          if (tailRows) {
-            if (!output.trim()) return [];
-            const indent = padding + " ";
-            const columns = Math.max(1, width - indent.length);
-            const lines = output.replace(/\n+$/, "").split("\n");
-            const start = Math.max(0, lines.length - tailRows);
-            let earlier = 0;
-            // The collapsed log is sanitized. Short printable ASCII lines occupy exactly one row.
-            for (let i = 0; i < start; i++) {
-              const line = lines[i];
-              earlier += line.length <= columns && !/[^ -~]/.test(line) ? 1 : wrapTextWithAnsi(line, columns).length;
-            }
-            const rows = wrapTextWithAnsi(lines.slice(start).join("\n"), columns);
-            const overflow = earlier + rows.length > tailRows;
-            const visible = overflow ? tailRows - 1 : tailRows;
-            const tail = rows.slice(-visible).map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
-            if (!overflow) return tail;
-            const hint = quietMetadata(theme, `… ${earlier + rows.length - visible} earlier lines`);
-            return [truncateToWidth(indent + hint, width), ...tail];
-          }
           if (bash) {
             const log = theme.fg("toolOutput", output) + (output.includes("\x1b[") ? "\x1b[0m" : "");
             return output ? paint(["", ...indentedLines(log, padding, width)]) : [];
           }
-          const plain = (text: string) => theme.fg(context.isError && toolName !== "bash" ? "error" : "toolOutput", text);
+          const plain = (text: string) => context.isError ? theme.style(text, toolStatusStyle(theme, "error")) : theme.fg("toolOutput", text);
           const outputLanguage = toolName === "read" && !isPartial && !context.isError ? language : undefined;
           return paint(indentedLines(highlighted(output, outputLanguage, plain), padding, width));
         };

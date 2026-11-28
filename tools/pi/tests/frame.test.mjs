@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { stripVTControlCharacters } from "node:util";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,8 +22,16 @@ symlinkSync(realpathSync(process.env.PI_TEST_STATUSLINE ?? join(installedAgentDi
 process.env.HOME = testHome;
 const extensionPath = fileURLToPath(new URL("../extensions/solarized-status.ts", import.meta.url));
 const themesPath = fileURLToPath(new URL("../themes/", import.meta.url));
+let providerScans = 0;
+const readdir = fs.readdirSync;
+mock.method(fs, "readdirSync", function (dir, ...args) {
+  if (dir === join(agentDir, "cache", "statusline", "openai")) providerScans++;
+  return readdir.call(this, dir, ...args);
+});
+syncBuiltinESMExports();
 const load = path => import(pathToFileURL(join(modules, path)).href);
 const { loadExtensions } = await load("@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
+const { createEventBus } = await load("@earendil-works/pi-coding-agent/dist/core/event-bus.js");
 const { CustomEditor } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js");
 const { AssistantMessageComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/assistant-message.js");
 const { UserMessageComponent } = await load("@earendil-works/pi-coding-agent/dist/modes/interactive/components/user-message.js");
@@ -34,7 +44,8 @@ let now = 10_000;
 let wall = 1_000_000;
 mock.method(performance, "now", () => now);
 mock.method(Date, "now", () => wall);
-const loaded = await loadExtensions([extensionPath], "/tmp");
+const events = createEventBus();
+const loaded = await loadExtensions([extensionPath], "/tmp", events);
 assert.deepEqual(loaded.errors, []);
 let effort = "medium";
 loaded.runtime.getThinkingLevel = () => effort;
@@ -217,7 +228,7 @@ try {
   assert.match(sections.work_mode, /cheaper model/);
   assert.deepEqual(activeTools, [...buildTools, "subagent"]);
   assert.equal(globalThis.testCeiling.allowedAgents, undefined);
-  assert.deepEqual(globalThis.testCeiling.allowedTools, ["read", "grep", "find", "ls", "contact_supervisor"]);
+  assert.deepEqual(globalThis.testCeiling.allowedTools, ["read", "grep", "find", "ls", "bash", "contact_supervisor"]);
   await runSubagent();
   assert.equal(notifications.pop(), "Agent launched");
   idle = false;
@@ -278,6 +289,15 @@ try {
   assert.equal(plain(editor.render(151)[1]), ` ╭${"─".repeat(147)}╮ `);
   assert.match(plain(footer.render(151)[0]), /Shell timeout display {3}$/);
   assert.equal(visibleWidth(footer.render(151)[0]), 151);
+  const fleet = { label: "2 agents ↓" };
+  events.emit("dotfiles:fleet-footer", fleet);
+  assert.equal(fleet.shown, true);
+  assert.match(plain(footer.render(151)[0]), /^ {3}GPT-6\.1 SOL · medium · 24% · 2 agents ↓ +Shell timeout display {3}$/);
+  assert.doesNotMatch(top(), /agents ↓/);
+  assert.match(plain(footer.render(30)[0]), /2 agents ↓/);
+  assert.ok(footer.render(30).every(row => visibleWidth(row) <= 30));
+  events.emit("dotfiles:fleet-footer", {});
+  assert.doesNotMatch(plain(footer.render(151)[0]), /agents ↓/);
   sessionName = "\x1b[31m日本語のセッション\x1b[0m";
   assert.match(plain(footer.render(40)[0]), /日本… {3}$/);
   assert.equal(visibleWidth(footer.render(40)[0]), 40);
@@ -488,6 +508,9 @@ try {
     assert.ok(footer.render(151)[0].includes(modelColor + "GPT-6.1 SOL"));
     sessionName = "Shell timeout display";
     assert.ok(footer.render(151)[0].includes(modelColor + sessionName), `${appearance}: session name matches the model color`);
+    events.emit("dotfiles:fleet-footer", { label: "2 agents ↓" });
+    assert.ok(footer.render(151)[0].includes(modelColor + "2 agents ↓"), `${appearance}: agent count matches the model color`);
+    events.emit("dotfiles:fleet-footer", {});
     sessionName = undefined;
     if (light) assert.doesNotMatch(footer.render(151)[0], /\x1b\[2;/);
     await start();
@@ -634,8 +657,18 @@ try {
   const disabled = { ...weekly, "x-codex-secondary-window-minutes": "0", "x-codex-secondary-reset-at": "" };
   // A partial response does not say the old short window is gone.
   wall++;
+  const beforeResponse = providerScans;
   await emit("after_provider_response", { status: 200, headers: weekly });
   await waitForRibbon(/35%[\s\S]*0%/);
+  assert.equal(providerScans - beforeResponse, 1, "an idle footer refresh must reuse the response's scan");
+  // A response queued behind the Go renderer must still see a peer that writes before close.
+  await emit("model_select");
+  const queuedScans = providerScans;
+  await emit("after_provider_response", { status: 200, headers: weekly });
+  wall++;
+  writeFileSync(join(providerDir, "limits-999996.json"), JSON.stringify({ five_hour: snapshot(48, wall).five_hour }));
+  await waitForRibbon(/48%[\s\S]*0%/);
+  assert.equal(providerScans - queuedScans, 2, "the queued refresh rereads disk at execution time");
   writeFileSync(join(providerDir, "limits-999997.json"), JSON.stringify({ five_hour: snapshot(99, wall).five_hour }));
   await emit("after_provider_response", { status: 200, headers: disabled });
   const weekOnly = /^(?![\s\S]*(?:35%|99%|—))[\s\S]*0%/;
@@ -655,6 +688,39 @@ try {
     "x-codex-secondary-reset-at": String(reset),
   } });
   await waitForRibbon(/27%[\s\S]*0%/);
+
+  const streamLimits = async (primary, secondary, metered_limit_name = "codex") => {
+    wall++;
+    await emit("provider_stream_event", {
+      provider: "litellm-ws", api: "openai-codex-responses", model: "gpt-6.2-sol",
+      data: { type: "codex.rate_limits", metered_limit_name, rate_limits: { primary, secondary } },
+    });
+  };
+  const weeklyWindow = { window_minutes: 10080, used_percent: 13, reset_at: reset + 604800 };
+  const shortWindow = { window_minutes: 300, used_percent: 37, reset_at: reset };
+  ctx.model.provider = "litellm-ws";
+  await emit("model_select");
+  await streamLimits(weeklyWindow, shortWindow);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits({ ...weeklyWindow, used_percent: 99 }, null, "other-limit");
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits({ ...weeklyWindow, used_percent: "98" }, null);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits(weeklyWindow, undefined);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits({ ...weeklyWindow, used_percent: 14 }, null);
+  await waitForRibbon(/^(?![\s\S]*(?:37%|98%|99%))[\s\S]*14%/);
+  await extension.commands.get("statusline-limits").handler("", ctx);
+  const streamDiagnostic = JSON.parse(messages.at(-1).content.match(/```json\n([\s\S]*?)\n```/)[1]);
+  assert.equal(streamDiagnostic.lastResponse.source, "codex.rate_limits");
+  assert.equal(streamDiagnostic.lastResponse.provider, "litellm-ws");
+  assert.equal(streamDiagnostic.sharedLimits.five_hour, undefined);
+  assert.equal(streamDiagnostic.sharedLimits.seven_day.used_percentage, 14);
+  await streamLimits(weeklyWindow, shortWindow);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  ctx.model.provider = "openai";
+  await emit("model_select");
+  await waitForRibbon(/27%[\s\S]*0%/);
   for (const width of [1, 2, 3, 4, 5, 6, 8, 12, 40, 60, 80, 85, 100, 151, 200]) {
     const lines = editor.render(width);
     assert.ok(visibleWidth(lines[0]) <= width, `top overflow at ${width}`);
@@ -670,6 +736,9 @@ try {
   assert.equal(editor, undefined);
   assert.equal(footer, undefined);
   assert.equal(workingVisible, true);
+  const disabledFleet = { label: "2 agents ↓" };
+  events.emit("dotfiles:fleet-footer", disabledFleet);
+  assert.equal(disabledFleet.shown, undefined, "a disposed footer cannot claim the native summary");
   assert.equal(widgets.has("statusline-spacing"), false);
   assert.equal(widgets.has("statusline-half-edge"), false);
   await extension.commands.get("statusline").handler("", ctx);
@@ -697,6 +766,7 @@ try {
   assert.equal(existsSync(join(agentDir, "cache", "statusline", "sessions", `${process.pid}.json`)), false);
   footer?.dispose();
   mock.restoreAll();
+  syncBuiltinESMExports();
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
   rmSync(testHome, { recursive: true, force: true });

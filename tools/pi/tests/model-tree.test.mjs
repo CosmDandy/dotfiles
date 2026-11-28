@@ -26,4 +26,35 @@ try {
   selector.handleInput('\r');
   assert.equal(chosen, models[2]);
 } finally { selector.dispose(); }
-console.log('PASS: model tree, collapse, expand, flat search and model selection');
+const sol = { ...models[0], provider: 'litellm' };
+const preset = { ...sol, id: 'sol-medium', api: 'pi-virtual' };
+const directPreset = { ...preset, provider: 'openai-codex' };
+const otherVirtual = { ...preset, id: 'other-virtual', name: 'Other Virtual' };
+const catalog = [sol, preset, directPreset, otherVirtual];
+const picker = new ModelSelectorComponent({ requestRender() {} }, preset, {
+  getAvailableSnapshot: () => catalog,
+  getModel: (provider, id) => catalog.find(model => model.provider === provider && model.id === id),
+  refresh: async () => ({ errors: new Map() }), getError: () => undefined,
+}, [sol, preset].map(model => ({ model })), model => { chosen = model; }, () => {});
+try {
+  const screen = () => plain(picker.render(120).join('\n'));
+  assert.match(screen(), /sol-medium/);
+  picker.handleInput('\t');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.doesNotMatch(screen(), /sol-medium|Sol · medium/);
+  assert.match(screen(), /other-virtual/);
+  for (const key of 'sol-medium') picker.handleInput(key);
+  assert.match(screen(), /No matching models/);
+  for (const _ of 'sol-medium') picker.handleInput('\x7f');
+  for (const key of '6.2-sol') picker.handleInput(key);
+  assert.match(screen(), /gpt-6\.2-sol|6\.2 Sol/);
+  assert.doesNotMatch(screen(), /sol-medium|Sol · medium/);
+  picker.handleInput('\r');
+  assert.equal(chosen, sol);
+  for (const _ of '6.2-sol') picker.handleInput('\x7f');
+  picker.handleInput('\t');
+  assert.match(screen(), /sol-medium/);
+  picker.handleInput('\r');
+  assert.equal(chosen, preset);
+} finally { picker.dispose(); }
+console.log('PASS: model tree, collapse, expand, flat search, scoped-only Sol medium, and model selection');

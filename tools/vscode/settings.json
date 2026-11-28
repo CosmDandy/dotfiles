@@ -1,4 +1,5 @@
 {
+    "extensions.confirmedUriHandlerExtensionIds": ["anthropic.claude-code"],
     // ====== VIM MODE ======
     "vim.easymotion": true,
     "vim.incsearch": true,
