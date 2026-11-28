@@ -876,6 +876,21 @@ function shownCodemodeCalls(calls: readonly CodemodeCall[], live: boolean): read
   return calls.filter(call => shown.has(call));
 }
 
+function bashTail(output: string, columns: number, limit: number): string[] {
+  if (!output.trim()) return [];
+  const lines = output.replace(/\n+$/, "").split("\n");
+  const start = Math.max(0, lines.length - limit);
+  let earlier = 0;
+  for (let i = 0; i < start; i++) {
+    const line = lines[i];
+    earlier += line.length <= columns && !/[^ -~]/.test(line) ? 1 : wrapTextWithAnsi(line, columns).length;
+  }
+  const rows = wrapTextWithAnsi(lines.slice(start).join("\n"), columns);
+  if (earlier + rows.length <= limit) return rows;
+  const visible = limit - 1;
+  return [`… ${earlier + rows.length - visible} earlier lines`, ...rows.slice(-visible)];
+}
+
 function cacheLines(render: (width: number) => string[]) {
   let cached: { width: number; lines: string[] } | undefined;
   return {
@@ -1303,6 +1318,7 @@ export default function compactTools(pi: ExtensionAPI) {
           typeof startedAt === "number" && Date.now() - startedAt >= livePreviewDelayMs
           ? typeof command === "string" && shellProgram(command) === "ssh" ? sshTailRows : bashTailRows
           : 0;
+        if (bash && !tailRows) delete context.state.bashTail;
         if (toolName === "bash" && !expanded && !search && !tailRows) return new Text("", 0, 0);
         const details = result.details as { diff?: unknown; patch?: unknown } | undefined;
         const diff = typeof details?.diff === "string" ? clean(details.diff) : undefined;
@@ -1395,6 +1411,19 @@ export default function compactTools(pi: ExtensionAPI) {
               return paint(indentedLines(lines.join("\n") || "No entries", padding, width));
             }
           }
+          if (tailRows) {
+            const indent = padding + " ";
+            const columns = Math.max(1, width - indent.length);
+            const block = result.content.length === 1 ? result.content[0] : undefined;
+            const raw = block?.type === "text";
+            const source = raw ? block.text : readOutput();
+            // Spinner invalidations rebuild this component without changing the log or its layout.
+            let tail = context.state.bashTail as { source: string; raw: boolean; columns: number; limit: number; rows: string[] } | undefined;
+            if (!tail || tail.source !== source || tail.raw !== raw || tail.columns !== columns || tail.limit !== tailRows) {
+              context.state.bashTail = tail = { source, raw, columns, limit: tailRows, rows: bashTail(raw ? clean(source) : source, columns, tailRows) };
+            }
+            return tail.rows.map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
+          }
           const output = readOutput();
           if (cardTool && !isPartial && !context.isError) {
             const card = knowledgeCard(action, knowledgeResponse(output, result.structuredContent));
@@ -1453,26 +1482,6 @@ export default function compactTools(pi: ExtensionAPI) {
               }
               return paint(rows);
             }
-          }
-          if (tailRows) {
-            if (!output.trim()) return [];
-            const indent = padding + " ";
-            const columns = Math.max(1, width - indent.length);
-            const lines = output.replace(/\n+$/, "").split("\n");
-            const start = Math.max(0, lines.length - tailRows);
-            let earlier = 0;
-            // The collapsed log is sanitized. Short printable ASCII lines occupy exactly one row.
-            for (let i = 0; i < start; i++) {
-              const line = lines[i];
-              earlier += line.length <= columns && !/[^ -~]/.test(line) ? 1 : wrapTextWithAnsi(line, columns).length;
-            }
-            const rows = wrapTextWithAnsi(lines.slice(start).join("\n"), columns);
-            const overflow = earlier + rows.length > tailRows;
-            const visible = overflow ? tailRows - 1 : tailRows;
-            const tail = rows.slice(-visible).map(row => truncateToWidth(indent + quietMetadata(theme, row), width));
-            if (!overflow) return tail;
-            const hint = quietMetadata(theme, `… ${earlier + rows.length - visible} earlier lines`);
-            return [truncateToWidth(indent + hint, width), ...tail];
           }
           if (bash) {
             const log = theme.fg("toolOutput", output) + (output.includes("\x1b[") ? "\x1b[0m" : "");

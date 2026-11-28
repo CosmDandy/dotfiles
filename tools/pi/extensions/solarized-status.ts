@@ -125,8 +125,7 @@ function observe(parsed: ParsedLimits, observedAt: number): ObservedLimits {
 }
 
 // Select the newest observation before checking expiry, so an older window cannot resurface.
-function loadSharedObservations(cache: string, provider: string, now: number) {
-  const latest: ObservedLimits = {};
+function loadSharedObservations(cache: string, provider: string, now: number, latest: ObservedLimits = {}) {
   const merge = (record: ObservedLimits) => {
     for (const name of windowNames) {
       const window = record[name];
@@ -159,7 +158,10 @@ function loadSharedObservations(cache: string, provider: string, now: number) {
 }
 
 export function loadSharedLimits(cache: string, provider: string, now = Date.now()) {
-  const latest = loadSharedObservations(cache, provider, now);
+  return activeLimits(loadSharedObservations(cache, provider, now), now);
+}
+
+function activeLimits(latest: ObservedLimits, now: number) {
   const active: Partial<Record<WindowName, Window & { observedAt: number }>> = {};
   for (const name of windowNames) {
     const window = latest[name];
@@ -217,7 +219,7 @@ export default function (pi: ExtensionAPI) {
   const root = join(homedir(), ".pi", "agent");
   const cache = join(root, "cache", "statusline");
   let enabled = true;
-  let refresh: (() => void) | undefined;
+  let refresh: ((snapshot?: { provider: string; windows: ObservedLimits }) => void) | undefined;
   let redraw: (() => void) | undefined;
   let busy = false;
   let waitingForUser = false;
@@ -320,7 +322,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setFooter((tui, _theme, data) => {
       let width = 100, line = "", pending = false, dirty = false, disposed = false;
       let child: ReturnType<typeof spawn> | undefined;
-      function update() {
+      function update(snapshot?: { provider: string; windows: ObservedLimits }) {
         if (disposed) return;
         if (pending) { dirty = true; return; }
         pending = true;
@@ -333,7 +335,8 @@ export default function (pi: ExtensionAPI) {
           }
         }
         const usage = ctx.getContextUsage();
-        const limits = loadSharedLimits(cache, ctx.model?.provider ?? "unknown");
+        const provider = ctx.model?.provider ?? "unknown";
+        const limits = snapshot?.provider === provider ? activeLimits(snapshot.windows, Date.now()) : loadSharedLimits(cache, provider);
         const effort = pi.getThinkingLevel();
         const payload = {
           model: { display_name: ctx.model?.name ?? ctx.model?.id ?? "No model", id: ctx.model?.id },
@@ -663,7 +666,7 @@ export default function (pi: ExtensionAPI) {
     const observedAt = Date.now();
     const directory = join(cache, encodeURIComponent(provider));
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const snapshot = { ...loadSharedObservations(cache, provider, observedAt), ...observe(next, observedAt) };
+    const snapshot = loadSharedObservations(cache, provider, observedAt, observe(next, observedAt));
     if (Object.keys(snapshot).length) {
       // Each process owns one atomic snapshot, so parallel writers cannot overwrite each other.
       const path = join(directory, `limits-${process.pid}.json`);
@@ -675,7 +678,7 @@ export default function (pi: ExtensionAPI) {
     const diagnosticTemp = diagnosticPath + `.${process.pid}.tmp`;
     writeFileSync(diagnosticTemp, JSON.stringify(lastDiagnostic, null, 2), { mode: 0o600 });
     renameSync(diagnosticTemp, diagnosticPath);
-    refresh?.();
+    refresh?.({ provider, windows: snapshot });
   }
   pi.on("after_provider_response", (event, ctx) => {
     const safeHeaders = Object.fromEntries(Object.entries(event.headers).filter(([name]) =>

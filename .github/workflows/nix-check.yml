@@ -107,6 +107,16 @@ jobs:
           PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
             nix shell --inputs-from . nixpkgs#nodejs_24 --command \
             node ../../tools/pi/tests/frame.test.mjs
+          subagents_store=$(nix build .#pi-subagents --no-link --print-out-paths)
+          PI_TEST_SUBAGENTS="$subagents_store/lib/node_modules" PI_TEST_BIN="$pi_store/bin/pi" \
+            nix shell --inputs-from . nixpkgs#nodejs_22 --command \
+            node ../../tools/pi/tests/advertisement.test.mjs
+          PI_TEST_SUBAGENTS="$subagents_store/lib/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_22 --command \
+            node ../../tools/pi/tests/mutation-fingerprints.test.mjs
+          PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_22 --command \
+            node ../../tools/pi/tests/bash-tail.test.mjs
           PI_TEST_BIN="$pi_store/bin/pi" \
             nix shell --inputs-from . nixpkgs#nodejs_24 nixpkgs#tmux --command \
             node --test ../../tools/pi/tests/vim-transcript.test.mjs

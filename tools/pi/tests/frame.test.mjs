@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { stripVTControlCharacters } from "node:util";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +22,13 @@ symlinkSync(realpathSync(process.env.PI_TEST_STATUSLINE ?? join(installedAgentDi
 process.env.HOME = testHome;
 const extensionPath = fileURLToPath(new URL("../extensions/solarized-status.ts", import.meta.url));
 const themesPath = fileURLToPath(new URL("../themes/", import.meta.url));
+let providerScans = 0;
+const readdir = fs.readdirSync;
+mock.method(fs, "readdirSync", function (dir, ...args) {
+  if (dir === join(agentDir, "cache", "statusline", "openai")) providerScans++;
+  return readdir.call(this, dir, ...args);
+});
+syncBuiltinESMExports();
 const load = path => import(pathToFileURL(join(modules, path)).href);
 const { loadExtensions } = await load("@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
 const { createEventBus } = await load("@earendil-works/pi-coding-agent/dist/core/event-bus.js");
@@ -648,8 +657,18 @@ try {
   const disabled = { ...weekly, "x-codex-secondary-window-minutes": "0", "x-codex-secondary-reset-at": "" };
   // A partial response does not say the old short window is gone.
   wall++;
+  const beforeResponse = providerScans;
   await emit("after_provider_response", { status: 200, headers: weekly });
   await waitForRibbon(/35%[\s\S]*0%/);
+  assert.equal(providerScans - beforeResponse, 1, "an idle footer refresh must reuse the response's scan");
+  // A response queued behind the Go renderer must still see a peer that writes before close.
+  await emit("model_select");
+  const queuedScans = providerScans;
+  await emit("after_provider_response", { status: 200, headers: weekly });
+  wall++;
+  writeFileSync(join(providerDir, "limits-999996.json"), JSON.stringify({ five_hour: snapshot(48, wall).five_hour }));
+  await waitForRibbon(/48%[\s\S]*0%/);
+  assert.equal(providerScans - queuedScans, 2, "the queued refresh rereads disk at execution time");
   writeFileSync(join(providerDir, "limits-999997.json"), JSON.stringify({ five_hour: snapshot(99, wall).five_hour }));
   await emit("after_provider_response", { status: 200, headers: disabled });
   const weekOnly = /^(?![\s\S]*(?:35%|99%|—))[\s\S]*0%/;
@@ -747,6 +766,7 @@ try {
   assert.equal(existsSync(join(agentDir, "cache", "statusline", "sessions", `${process.pid}.json`)), false);
   footer?.dispose();
   mock.restoreAll();
+  syncBuiltinESMExports();
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
   rmSync(testHome, { recursive: true, force: true });

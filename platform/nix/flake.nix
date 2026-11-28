@@ -164,6 +164,11 @@
             ];
             dontNpmBuild = true;
             installPhase = ''
+              pushd node_modules/pi-subagents
+              patch --fuzz=0 -p1 < ${../../tools/pi/patches/subagents-fingerprints.patch}
+              patch --fuzz=0 -p1 < ${../../tools/pi/patches/subagents-advertisement.patch}
+              cp ${../../tools/pi/subagents/batch-fingerprints.mjs} batch-fingerprints.mjs
+              popd
               mkdir -p "$out/lib"
               cp -r node_modules "$out/lib/"
             '';
