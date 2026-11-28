@@ -47,6 +47,9 @@ async function emit(type, event = {}) {
   for (const handler of extension.handlers.get(type) ?? []) await handler({ type, ...event }, ctx);
 }
 const darkMetadata = { fg: rgbColor(89, 102, 106), dim: false };
+const metadataStyle = theme => theme.appearance === "light"
+  ? { fg: mixColors(theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb"), dim: true }
+  : darkMetadata;
 const failureStyle = theme => ({ fg: mixColors(theme.colors.toolOutput, theme.colors.error, 0.58, "srgb") });
 const successStyle = theme => ({ fg: mixColors(theme.colors.success, rgbColor(0, 0, 0), theme.appearance === "dark" ? 0.12 : 0.25, "srgb") });
 const plain = text => text.replace(/\x1b\[[0-9;]*m/g, "");
@@ -66,14 +69,16 @@ try {
   await emit("session_start");
   await emit("agent_start");
   const agents = tool("subagent", { tasks: [{ agent: "scout" }, { agent: "reviewer" }] });
-  const settled = { agent: "scout", index: 0, exitCode: 0, progress: { status: "completed", tokens: 6200, durationMs: 2300 } };
+  const settled = { agent: "scout", index: 0, exitCode: 0, context: "fresh", model: "openai-codex/gpt-6.2-sol:medium",
+    progress: { status: "completed", tokens: 6200, durationMs: 2300 } };
   agents.updateResult({ content: [{ type: "text", text: "RAW STDOUT" }], details: { results: [settled, {
     agent: "reviewer", index: 1, context: "fork", model: "openai-codex/gpt-6.2-astra", thinking: "xhigh",
     progress: { status: "running", tokens: 8420, durationMs: 1300, currentTool: "bash", currentToolArgs: '{"command":"rg -n needle tools/pi"}' },
   }] } }, true);
   const liveAgentRows = rows(agents);
   assert.equal(liveAgentRows[0], " subagents · scout, reviewer");
-  assert.match(liveAgentRows[2], /reviewer  Astra xhigh  fork  8\.4k tok +1 s {3}$/);
+  assert.match(liveAgentRows[1], /scout · Sol medium · fresh · 6\.2k tok +2 s {3}$/);
+  assert.match(liveAgentRows[2], /reviewer · Astra xhigh · fork · 8\.4k tok +1 s {3}$/);
   assert.equal(visibleWidth(liveAgentRows[2]), 100);
   assert.match(liveAgentRows[3], /^ {5}└ shell · rg -n needle tools\/pi/);
   assert.doesNotMatch(body(agents), /RAW STDOUT|✓|✗|to expand/);
@@ -84,7 +89,20 @@ try {
   const compactAgentRows = body(agents);
   agents.setExpanded(true);
   assert.equal(body(agents), compactAgentRows);
-  assert.ok(livePainted[2].includes(themes.theme.style("8.4k tok", darkMetadata)));
+  for (const appearance of ["dark", "light"]) {
+    const themePath = fileURLToPath(new URL(`../themes/solarized-${appearance}.json`, import.meta.url));
+    const theme = themes.loadThemeFromPath(themePath, "truecolor");
+    themes.setThemeInstance(theme);
+    agents.invalidate();
+    const [, scout, reviewer] = agents.render(100).filter(line => plain(line));
+    const dot = theme.style(" · ", metadataStyle(theme));
+    assert.ok(scout.includes(dot + theme.fg("muted", "Sol") + " " + theme.fg("thinkingMedium", "medium")
+      + dot + theme.fg("muted", "fresh") + dot + theme.style("6.2k tok", metadataStyle(theme))), appearance);
+    assert.ok(reviewer.includes(dot + theme.fg("muted", "Astra") + " " + theme.fg("thinkingXhigh", "xhigh")
+      + dot + theme.fg("toolTitle", "fork") + dot + theme.style("8.4k tok", metadataStyle(theme))), appearance);
+  }
+  themes.initTheme("dark", false);
+  agents.invalidate();
   assert.equal(globalThis.setInterval.mock.calls[0].arguments[1], 100, "redraw at the same cadence as the spinner");
   const frames = new Set();
   for (now = 0; now < 400; now += 100) {
@@ -121,9 +139,7 @@ try {
     }
     const painted = agents.render(100).join("\n");
     assert.ok(painted.includes(themes.theme.fg("toolOutput", themes.theme.bold("subagents"))));
-    const timingStyle = appearance === "light"
-      ? { fg: mixColors(themes.theme.colors.borderMuted, rgbColor(255, 249, 234), 0.20, "srgb"), dim: true }
-      : darkMetadata;
+    const timingStyle = metadataStyle(themes.theme);
     for (const label of ["15 s", "6.2k tok", "8.7k tok"]) {
       assert.ok(painted.includes(themes.theme.style(label, timingStyle)), `${appearance}: mute ${label}`);
     }

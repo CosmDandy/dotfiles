@@ -11,7 +11,10 @@ const frames = Array.from("⠖⠲⠴⠦");
 const tickMs = 100;
 const maxRows = 8;
 const runId = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
-const contextModes = new Set(["fresh", "fork"]);
+const effortTones = new Map<string, Parameters<Theme["fg"]>[0]>([
+  ["off", "thinkingOff"], ["minimal", "thinkingMinimal"], ["low", "thinkingLow"], ["medium", "thinkingMedium"],
+  ["high", "thinkingHigh"], ["xhigh", "thinkingXhigh"], ["max", "thinkingMax"],
+]);
 const tones = { queued: "muted", running: "accent", completed: "success", failed: "error", stopped: "warning", paused: "warning", unavailable: "muted" } as const;
 
 type State = keyof typeof tones;
@@ -131,7 +134,7 @@ function settle(card: Card, state: State, error?: string, duration?: number) {
 
 function cardLines(card: Card, theme: Theme, width: number, padding: string, preview: PreviewTool, timedLine: TimedLine, quietMetadata: QuietMetadata): string[] {
   const title = padding + theme.fg("toolOutput", theme.bold("subagents"));
-  const separator = theme.fg("toolOutput", " · ");
+  const separator = quietMetadata(theme, " · ");
   const rows = card.rows.length ? card.rows : card.planned;
   const shown = rows.slice(0, maxRows);
   const rest = rows.length > maxRows ? `, +${rows.length - maxRows}` : "";
@@ -159,11 +162,13 @@ function cardLines(card: Card, theme: Theme, width: number, padding: string, pre
   if (!card.active) return lines;
   for (const [i, row] of shown.entries()) {
     const [model, suffix] = clean(row.model).split(/:(?=[a-z]+$)/);
-    const profile = [modelLabel(model), clean(row.effort) || suffix].filter(Boolean).join(" ");
+    const label = modelLabel(model);
+    const effort = clean(row.effort) || suffix;
+    const profile = [label && theme.fg("muted", label), effort && theme.fg(effortTones.get(effort) ?? "muted", effort)].filter(Boolean).join(" ");
     const total = row.started !== undefined && row.state === "running" ? Math.max(row.duration ?? 0, Date.now() - row.started) : row.duration;
-    const profileMeta = [profile, contextModes.has(row.context ?? "") ? row.context : ""].filter(Boolean).join("  ");
-    const meta = [profileMeta ? theme.fg("muted", profileMeta) : "", count(row)].filter(Boolean).join("  ");
-    const left = `${padding}  ${isActive(row.state) ? glyph(row.state) : " "} ${nameTone(names[i], row.state)}${meta ? `  ${meta}` : ""}`;
+    const context = row.context === "fresh" ? theme.fg("muted", "fresh") : row.context === "fork" ? theme.fg("toolTitle", "fork") : "";
+    const meta = [profile, context, count(row)].filter(Boolean).join(separator);
+    const left = `${padding}  ${isActive(row.state) ? glyph(row.state) : " "} ${nameTone(names[i], row.state)}${meta ? separator + meta : ""}`;
     lines.push(timedLine(left, total === undefined ? "" : elapsed(total), width, theme));
     const branch = padding + theme.fg("dim", "    └ ");
     if (row.error && !isActive(row.state)) lines.push(fit(branch + theme.style(row.error, toolStatusStyle(theme, "error"))));
