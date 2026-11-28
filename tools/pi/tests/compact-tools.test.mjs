@@ -29,7 +29,13 @@ const subagentRenderers = resolve("subagent", () => ({ renderCall: () => adminHe
 assert.equal(subagentRenderers.renderCall({ action: "status" }, themes.theme, {}), adminHeader,
   "management calls still use the native renderer");
 let sessionEntries = [];
-const ctx = { mode: "tui", cwd: "/tmp", ui: { requestRender() {} }, sessionManager: {
+const ctx = { mode: "tui", cwd: "/tmp", ui: {
+  setWidget(key, factory, options) {
+    assert.equal(key, "dotfiles:subagent-chat-redraw");
+    assert.equal(options.placement, "belowEditor");
+    assert.deepEqual(factory({ requestRender() { redraws++; } }).render(100), []);
+  },
+}, sessionManager: {
   getEntries: () => sessionEntries, getBranch: () => sessionEntries,
   getSessionId: () => "test-session", getSessionFile: () => undefined,
 } };
@@ -68,7 +74,17 @@ function finish(component, text, isError = false, details, durationMs) {
 try {
   await emit("session_start");
   await emit("agent_start");
-  const agents = tool("subagent", { tasks: [{ agent: "scout" }, { agent: "reviewer" }] });
+  const agents = tool("subagent", { tasks: [
+    { agent: "scout", model: "openai-codex/gpt-6.2-sol:medium" },
+    { agent: "reviewer", model: "openai-codex/gpt-6.2-astra:xhigh" },
+  ] });
+  agents.markExecutionStarted();
+  assert.deepEqual(rows(agents), [
+    " subagents · scout, reviewer",
+    "   ◌ scout    · Sol medium · fresh",
+    "   ◌ reviewer · Astra xhigh · fresh",
+  ]);
+  assert.ok(agents.render(100).some(line => line.includes(themes.theme.fg("muted", "◌"))));
   const settled = { agent: "scout", index: 0, exitCode: 0, context: "fresh", model: "openai-codex/gpt-6.2-sol:medium",
     progress: { status: "completed", tokens: 6200, durationMs: 2300 } };
   agents.updateResult({ content: [{ type: "text", text: "RAW STDOUT" }], details: { results: [settled, {
@@ -77,8 +93,8 @@ try {
   }] } }, true);
   const liveAgentRows = rows(agents);
   assert.equal(liveAgentRows[0], " subagents · scout, reviewer");
-  assert.match(liveAgentRows[1], /scout · Sol medium · fresh · 6\.2k tok +2 s {3}$/);
-  assert.match(liveAgentRows[2], /reviewer · Astra xhigh · fork · 8\.4k tok +1 s {3}$/);
+  assert.match(liveAgentRows[1], /^ {5}scout {4}· Sol medium · fresh · 6\.2k tok +2 s {3}$/);
+  assert.match(liveAgentRows[2], /^ {3}● reviewer · Astra xhigh · fork · 8\.4k tok +1 s {3}$/);
   assert.equal(visibleWidth(liveAgentRows[2]), 100);
   assert.match(liveAgentRows[3], /^ {5}└ shell · rg -n needle tools\/pi/);
   assert.doesNotMatch(body(agents), /RAW STDOUT|✓|✗|to expand/);
@@ -89,31 +105,55 @@ try {
   const compactAgentRows = body(agents);
   agents.setExpanded(true);
   assert.equal(body(agents), compactAgentRows);
+  assert.equal(visibleWidth("◌"), 1);
+  assert.equal(visibleWidth("●"), 1);
+  assert.equal(globalThis.setInterval.mock.calls[0].arguments[1], 40, "the dot requests up to 25 frames a second");
+  const beforeDotTick = redraws;
+  for (const tick of timers.values()) tick();
+  assert.equal(redraws, beforeDotTick + 1, "the dot requests a TUI redraw without a tool or footer event");
   for (const appearance of ["dark", "light"]) {
+    now = 0;
     const themePath = fileURLToPath(new URL(`../themes/solarized-${appearance}.json`, import.meta.url));
     const theme = themes.loadThemeFromPath(themePath, "truecolor");
     themes.setThemeInstance(theme);
     agents.invalidate();
-    const [, scout, reviewer] = agents.render(100).filter(line => plain(line));
-    const dot = theme.style(" · ", metadataStyle(theme));
-    assert.ok(scout.includes(dot + theme.fg("muted", "Sol") + " " + theme.fg("thinkingMedium", "medium")
+    const [, scout, reviewer, command] = agents.render(100).filter(line => plain(line));
+    const metadata = metadataStyle(theme);
+    const previewStyle = tone => ({ fg: mixColors(theme.colors[tone], metadata.fg, .5, "srgb") });
+    assert.ok(command.includes(theme.style("shell", previewStyle("toolTitle"))
+      + theme.style(" · rg -n needle tools/pi", previewStyle("toolOutput"))), `${appearance}: command preview sits between tool text and elapsed time`);
+    assert.ok(reviewer.includes(theme.style("1 s", metadata)), `${appearance}: elapsed time stays subdued`);
+    const dot = theme.style(" · ", metadata);
+    const medium = theme.style("medium", { fg: mixColors(theme.colors.muted, theme.colors.thinkingLow, .35, "srgb") });
+    const xhigh = theme.style("xhigh", { fg: mixColors(theme.colors.muted, theme.colors.error, .35, "srgb") });
+    assert.ok(scout.includes(dot + theme.fg("muted", "Sol") + " " + medium
       + dot + theme.fg("muted", "fresh") + dot + theme.style("6.2k tok", metadataStyle(theme))), appearance);
-    assert.ok(reviewer.includes(dot + theme.fg("muted", "Astra") + " " + theme.fg("thinkingXhigh", "xhigh")
+    assert.ok(reviewer.includes(dot + theme.fg("muted", "Astra") + " " + xhigh
       + dot + theme.fg("toolTitle", "fork") + dot + theme.style("8.4k tok", metadataStyle(theme))), appearance);
+    const dimDot = mixColors(theme.colors.toolPendingBg, theme.colors.accent, .16, "srgb");
+    const halfDot = mixColors(dimDot, theme.colors.error, .5, "srgb");
+    const dotColors = [[0, dimDot], [1400, halfDot], [2800, theme.colors.error], [4200, halfDot], [5600, dimDot]];
+    for (const [at, fg] of dotColors) {
+      now = at;
+      for (const tick of timers.values()) tick();
+      const [title, settledRow, runningRow] = agents.render(100).filter(line => plain(line));
+      assert.match(plain(runningRow), /^ {3}● reviewer · Astra xhigh · fork · 8\.4k tok/);
+      assert.ok(runningRow.includes(theme.style("●", { fg })), `${appearance}: pulse at ${at} ms`);
+      assert.doesNotMatch(plain(title + settledRow), /[●◌]/);
+    }
+    themes.setThemeInstance(themes.loadThemeFromPath(themePath, "256color"));
+    agents.invalidate();
+    const colorFrames = new Set();
+    for (now = 0; now < 5600; now += 40) {
+      const runningRow = agents.render(100).filter(line => plain(line))[2];
+      const ansi = runningRow.match(/\x1b\[38;5;\d+m●/u);
+      assert.ok(ansi, `${appearance}: the running dot uses the terminal palette`);
+      colorFrames.add(ansi[0]);
+    }
+    assert.ok(colorFrames.size >= 4, `${appearance}: the pulse survives 256-color quantization`);
   }
   themes.initTheme("dark", false);
   agents.invalidate();
-  assert.equal(globalThis.setInterval.mock.calls[0].arguments[1], 100, "redraw at the same cadence as the spinner");
-  const frames = new Set();
-  for (now = 0; now < 400; now += 100) {
-    for (const tick of timers.values()) tick();
-    const frame = rows(agents)[2].match(/^ {3}(.) reviewer/u)?.[1];
-    assert.ok(frame, "the running child has a spinner");
-    const dots = frame.codePointAt(0) - 0x2800;
-    assert.ok(dots > 0 && (dots & ~0x36) === 0, "only the middle two Braille rows are painted");
-    frames.add(frame);
-  }
-  assert.equal(frames.size, 4, "the spinner advances without new output");
   now = 0;
   assert.ok(rows(agents, 20).every(row => visibleWidth(row) <= 20));
   finish(agents, "RAW STDOUT", true, { results: [settled, {
@@ -122,16 +162,20 @@ try {
   agents.setOutputPad(2);
   assert.match(rows(agents)[0], /^ {2}subagents · /);
   agents.setOutputPad(1);
+  const completed = tool("subagent", { agent: "scout" }, "completed-agent");
+  finish(completed, "", false, { results: [settled] }, 2300);
   const timingReference = tool("bash", { command: ":" }, "agent-timing-reference");
   finish(timingReference, "", false, undefined, 15_000);
   for (const appearance of ["dark", "light"]) {
     const themePath = fileURLToPath(new URL(`../themes/solarized-${appearance}.json`, import.meta.url));
     themes.setThemeInstance(themes.loadThemeFromPath(themePath, "truecolor"));
     agents.invalidate();
+    completed.invalidate();
     timingReference.invalidate();
     const [summary] = rows(agents);
     assert.equal(rows(agents).length, 1);
     assert.match(summary, /^ subagents · scout 6\.2k tok, reviewer 8\.7k tok — verification failed +15 s {3}$/);
+    assert.match(rows(completed)[0], /^ subagents · scout 6\.2k tok +2 s {3}$/);
     assert.equal(visibleWidth(summary), visibleWidth(rows(timingReference)[0]));
     assert.equal(visibleWidth(summary), 100);
     for (const width of [1, 8, 16, 20, 40, 100]) {
@@ -149,9 +193,17 @@ try {
     assert.ok(painted.includes(themes.theme.style("scout", green)));
     assert.ok(painted.includes(themes.theme.style("reviewer", red)));
     assert.ok(painted.includes(themes.theme.style(" — verification failed", red)));
+    assert.ok(completed.render(100).join("\n").includes(themes.theme.style("scout", green)));
   }
   themes.initTheme("dark", false);
   assert.equal(timers.size, 0, "finished cards release their animation timer");
+
+  const wideNames = tool("subagent", { tasks: [
+    { agent: "審査員", model: "Sol" }, { agent: "agent", model: "Astra" },
+  ] }, "wide-agent-names");
+  wideNames.markExecutionStarted();
+  assert.deepEqual(rows(wideNames).slice(1), ["   ◌ 審査員 · Sol · fresh", "   ◌ agent  · Astra · fresh"]);
+  finish(wideNames, "");
   const read = tool("read", { path: "src/app.ts", offset: 2, limit: 30 });
   assert.equal(rows(read).length, 1);
   assert.match(body(read), /^ *read src\/app.ts:2-31$/);

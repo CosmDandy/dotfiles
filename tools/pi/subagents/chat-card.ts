@@ -2,17 +2,15 @@ import { open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
-import { mixColors, truncateToWidth } from "@earendil-works/pi-tui";
+import { mixColors, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { stripToolControls, toolStatusStyle } from "../tool-status.ts";
 
-// Use only the middle two Braille rows so the spinner sits on the text line.
-const frames = Array.from("⠖⠲⠴⠦");
-const tickMs = 100;
+const tickMs = 40;
+const pulseMs = 5600;
 const maxRows = 8;
 const runId = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 const effortTones = new Map<string, Parameters<Theme["fg"]>[0]>([
-  ["off", "thinkingOff"], ["minimal", "thinkingMinimal"], ["low", "thinkingLow"], ["medium", "thinkingMedium"],
-  ["high", "thinkingHigh"], ["xhigh", "thinkingXhigh"], ["max", "thinkingMax"],
+  ["low", "thinkingMedium"], ["medium", "thinkingLow"], ["high", "warning"], ["xhigh", "error"], ["max", "error"],
 ]);
 const tones = { queued: "muted", running: "accent", completed: "success", failed: "error", stopped: "warning", paused: "warning", unavailable: "muted" } as const;
 
@@ -131,13 +129,19 @@ function settle(card: Card, state: State, error?: string, duration?: number) {
   card.error = firstLine(error) || undefined;
 }
 
+function runningDot(theme: Theme): string {
+  const phase = (Date.now() % pulseMs) / pulseMs;
+  const strength = (1 - Math.cos(phase * 2 * Math.PI)) / 2;
+  const dim = mixColors(theme.colors.toolPendingBg, theme.colors.accent, 0.16, "srgb");
+  return theme.style("●", { fg: mixColors(dim, theme.colors.error, strength, "srgb") });
+}
+
 function cardLines(card: Card, theme: Theme, width: number, padding: string, preview: PreviewTool, timedLine: TimedLine, quietMetadata: QuietMetadata): string[] {
   const title = padding + theme.fg("toolOutput", theme.bold("subagents"));
   const separator = quietMetadata(theme, " · ");
   const rows = card.rows.length ? card.rows : card.planned;
   const shown = rows.slice(0, maxRows);
   const rest = rows.length > maxRows ? `, +${rows.length - maxRows}` : "";
-  const glyph = (state: State) => theme.fg(tones[state], state === "queued" ? "◌" : frames[Math.floor(Date.now() / tickMs) % frames.length]);
   const names = shown.map(row => clean(row.name));
   const nameTone = (name: string, state: State) => isActive(state) ? theme.fg("toolTitle", name)
     : theme.style(name, state === "completed" || state === "failed" ? toolStatusStyle(theme, tones[state])
@@ -159,15 +163,23 @@ function cardLines(card: Card, theme: Theme, width: number, padding: string, pre
   }
   const lines = [fit(title + (names.length ? separator + list(shown.map((row, i) => nameTone(names[i], row.state))) : ""))];
   if (!card.active) return lines;
+  const nameWidths = names.map(visibleWidth);
+  const nameColumn = Math.max(0, ...nameWidths);
   for (const [i, row] of shown.entries()) {
     const [model, suffix] = clean(row.model).split(/:(?=[a-z]+$)/);
     const label = modelLabel(model);
-    const effort = clean(row.effort) || suffix;
-    const profile = [label && theme.fg("muted", label), effort && theme.fg(effortTones.get(effort) ?? "muted", effort)].filter(Boolean).join(" ");
+    const effort = clean(row.effort) || suffix || "";
+    const tone = effortTones.get(effort);
+    const effortLabel = effort && (tone ? theme.style(effort, { fg: mixColors(theme.colors.muted, theme.colors[tone], 0.35, "srgb") })
+      : theme.fg("muted", effort));
+    const profile = [label && theme.fg("muted", label), effortLabel].filter(Boolean).join(" ");
     const total = row.started !== undefined && row.state === "running" ? Math.max(row.duration ?? 0, Date.now() - row.started) : row.duration;
     const context = row.context === "fresh" ? theme.fg("muted", "fresh") : row.context === "fork" ? theme.fg("toolTitle", "fork") : "";
     const meta = [profile, context, count(row)].filter(Boolean).join(separator);
-    const left = `${padding}  ${isActive(row.state) ? glyph(row.state) : " "} ${nameTone(names[i], row.state)}${meta ? separator + meta : ""}`;
+    const marker = row.state === "queued" ? theme.fg("muted", "◌") : row.state === "running" ? runningDot(theme) : " ";
+    const name = nameTone(names[i], row.state);
+    const columns = meta ? " ".repeat(nameColumn - nameWidths[i]) + separator + meta : "";
+    const left = `${padding}  ${marker} ${name}${columns}`;
     lines.push(timedLine(left, total === undefined ? "" : elapsed(total), width, theme));
     const branch = padding + theme.fg("dim", "    └ ");
     if (row.error && !isActive(row.state)) lines.push(fit(branch + theme.style(row.error, toolStatusStyle(theme, "error"))));
@@ -420,7 +432,11 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
     const epoch = generation;
     transcriptRoot = "";
     asyncRoot = process.getuid ? join(resolve(process.env.PI_SUBAGENTS_TEMP_ROOT?.trim() || join(tmpdir(), `pi-subagents-uid-${process.getuid()}`)), "async-subagent-runs") : "";
-    redraw = () => ctx.ui.requestRender?.();
+    // Acquire the TUI without coupling card redraws to the footer's refresh cadence.
+    ctx.ui.setWidget("dotfiles:subagent-chat-redraw", tui => {
+      redraw = () => tui.requestRender();
+      return { render: () => [], invalidate() {} };
+    }, { placement: "belowEditor" });
     const historySlash = new Map<string, Result>();
     for (const entry of ctx.sessionManager.getBranch()) {
       if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolName === "subagent")

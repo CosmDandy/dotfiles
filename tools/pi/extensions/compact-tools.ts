@@ -689,12 +689,13 @@ function renderDelta(patch: string, cwd: string, appearance: Theme["appearance"]
   });
 }
 
+function metadataColor(theme: Theme, expanded = false) {
+  return theme.appearance === "light" ? mixColors(theme.colors.borderMuted,
+    expanded ? expandedBackgrounds.light : lightTimingBackground, expanded ? 0.12 : 0.20, "srgb") : rgbColor(89, 102, 106);
+}
+
 function quietMetadata(theme: Theme, text: string, expanded = false): string {
-  return theme.style(text, {
-    fg: theme.appearance === "light" ? mixColors(theme.colors.borderMuted,
-      expanded ? expandedBackgrounds.light : lightTimingBackground, expanded ? 0.12 : 0.20, "srgb") : rgbColor(89, 102, 106),
-    dim: !expanded && theme.appearance === "light",
-  });
+  return theme.style(text, { fg: metadataColor(theme, expanded), dim: !expanded && theme.appearance === "light" });
 }
 
 function withRightMetadata(left: string, meta: string, width: number): string {
@@ -809,7 +810,11 @@ function subagentToolPreview(name: string, args: string | undefined, target: str
       preview = summary ? bashPreviewLine(summary, Math.max(0, room)) : command.split("\n", 1)[0];
     } else preview = codemodeTarget({ name, args }, false) || preview;
   }
-  return truncateToWidth(theme.fg("toolTitle", label) + (preview && room > 0 ? theme.fg("toolOutput", separator + clean(preview).replace(/[\p{Cc}\p{Cf}]/gu, " ")) : ""), width);
+  const metadata = metadataColor(theme);
+  const title = theme.style(label, { fg: mixColors(theme.colors.toolTitle, metadata, 0.5, "srgb") });
+  const detail = preview && room > 0 ? theme.style(separator + clean(preview).replace(/[\p{Cc}\p{Cf}]/gu, " "),
+    { fg: mixColors(theme.colors.toolOutput, metadata, 0.5, "srgb") }) : "";
+  return truncateToWidth(title + detail, width);
 }
 
 function codemodeProblem(call: CodemodeCall): boolean {

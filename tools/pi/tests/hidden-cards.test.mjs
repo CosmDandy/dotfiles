@@ -36,9 +36,15 @@ try {
   const loaded = await loadExtensions([fileURLToPath(new URL("../extensions/compact-tools.ts", import.meta.url))], root, events);
   assert.deepEqual(loaded.errors, []);
   const ext = loaded.extensions[0], renderer = ext.toolRenderers[0]("subagent", () => undefined);
-  const ctx = { mode: "tui", ui: { requestRender() {} }, sessionManager: {
+  let redraws = 0;
+  const ctx = { mode: "tui", ui: {
+    setWidget(_key, factory) { factory({ requestRender() { redraws++; } }); },
+  }, sessionManager: {
     getSessionId: () => "owner", getSessionFile: () => parent, getBranch: () => [], getEntries: () => [],
   } };
+  let tick;
+  mock.method(globalThis, "setInterval", callback => { tick = callback; return { unref() {} }; });
+  mock.method(globalThis, "clearInterval", () => { tick = undefined; });
   const lifecycle = async name => { for (const h of ext.handlers.get(name) ?? []) await h({}, ctx); };
   const timers = new Map();
   mock.method(globalThis, "setTimeout", cb => {
@@ -63,10 +69,19 @@ try {
   renderer.renderResult({ details: { asyncId: id(0) }, content: [] }, { isPartial: false }, theme.theme, tc);
   await drain();
   assert.equal(paths.length, 5);
+  let before = redraws;
+  tick();
+  assert.equal(redraws, before + 1, "a visible card redraws the pulse");
   paths.length = 0; burst(); visible(false); await drain();
+  before = redraws;
+  tick();
+  assert.equal(redraws, before, "a hidden card does not redraw the pulse");
   for (let i = 0; i < 3; i++) { burst(); await drain(); }
   assert.deepEqual(paths, [], "a burst, including an already scheduled refresh, does not open hidden files");
   update(700); visible(true); await drain();
+  before = redraws;
+  tick();
+  assert.equal(redraws, before + 1, "the pulse redraws after reveal");
   assert.match(card.render(160).join("\n"), /700 tok/);
   assert.equal(paths.length, 5, "one parent and exactly four child snapshots on reveal");
   paths.length = 0; burst();

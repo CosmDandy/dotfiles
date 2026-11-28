@@ -44,6 +44,7 @@ try {
   mkdirSync(join(agent, "bin"));
   symlinkSync(statusline, join(agent, "bin", "solarized-statusline"));
   symlinkSync(join(source, "agents"), join(agent, "agents"));
+  symlinkSync(join(source, "themes"), join(agent, "themes"));
   symlinkSync(join(source, "keybindings.json"), join(agent, "keybindings.json"));
   for (const name of ["work-mode", "compact-tools", "solarized-status"]) {
     symlinkSync(join(source, "extensions", `${name}.ts`), join(agent, "extensions", `${name}.ts`));
@@ -54,6 +55,7 @@ try {
   assert.deepEqual(scope.allow, settings.enabledModels.map(model => model.split(":")[0]));
   const fixture = {
     quietStartup: true,
+    theme: "solarized-dark",
     enabledModels: ["probe/main:xhigh", "probe/quick:medium", "probe/other:xhigh"],
     subagents: {
       ...settings.subagents,
@@ -144,7 +146,7 @@ export default pi => {
 
   pane = tmux("new-session", "-d", "-P", "-F", "#{pane_id}", "-c", directory, "-x", "115", "-y", "45",
     "env", "-i", `PATH=${process.env.PATH}`, `HOME=${directory}`, `PI_CODING_AGENT_DIR=${agent}`,
-    `PROBE_LOG=${log}`, `PI_SUBAGENTS_TEMP_ROOT=${join(directory, "subagent-runs")}`, "TERM=xterm-256color", "PI_TELEMETRY=0", process.env.PI_TEST_BIN ?? "pi",
+    `PROBE_LOG=${log}`, `PI_SUBAGENTS_TEMP_ROOT=${join(directory, "subagent-runs")}`, "TERM=xterm-256color", "COLORTERM=truecolor", "PI_TELEMETRY=0", process.env.PI_TEST_BIN ?? "pi",
     "--offline", "--no-approve", "--no-mcp", "--tui-mode", "regular", "--model", "probe/main:xhigh", "parent_history_sentinel").trim();
   await waitFor(() => frame().includes("DONE parent_history_sentinel"), "parent prompt");
   prompt("/subagents");
@@ -189,7 +191,8 @@ export default pi => {
   await waitFor(() => frame().includes("outside the configured subagent model scope"), "model-scope rejection");
   prompt("parallel_probe");
   await waitFor(() => /^ subagents · scout, reviewer *$/m.test(frame()) && /└ shell · .*foreground_ stdout/.test(frame()), "parallel live card and command preview");
-  await waitFor(() => /^ {5}reviewer\b/m.test(frame()) && /└ shell · .*foreground_ stdout/.test(frame()), "one child finishes while another is still running");
+  await waitFor(() => /^ {5}reviewer\b/m.test(frame()) && /^ {3}● scout\b/m.test(frame())
+    && /└ shell · .*foreground_ stdout/.test(frame()), "only the running child has a dot");
   await waitFor(() => frame().includes("DONE parallel_probe") && /^ subagents · scout 40 tok, reviewer 20 tok +\d+ s *$/m.test(frame()), "parallel result with final token counts");
   prompt("background_card_probe");
   const liveCard = () => /^ {5}└ shell · sleep 12\s*;.*$/m.test(frame());
@@ -207,8 +210,23 @@ export default pi => {
   const roster = () => frame().includes("↑↓/jk select · enter inspect · esc back");
   await waitFor(() => roster() && !footerAgents(2), "Down opens the native roster");
   send("Escape");
-  await waitFor(() => !roster() && (footerAgents(2) || footerAgents(1)), "Escape restores the merged footer");
+  await waitFor(() => !roster() && footerAgents(2), "Escape restores the merged footer");
+  const checkLiveDot = async count => {
+    const colors = new Set();
+    const until = Date.now() + 1600;
+    let row;
+    do {
+      if (!footerAgents(count)) break;
+      row = tmux("capture-pane", "-e", "-p", "-t", pane).split("\n").find(line => line.includes("●") && line.includes("scout"));
+      const paint = row?.match(/\x1b\[38;2;(\d+;\d+;\d+)m●/u);
+      if (paint) colors.add(paint[1]);
+      await delay(60);
+    } while (Date.now() < until);
+    assert.ok(colors.size >= 8, `RGB pulse with ${count} active agents in the footer: ${[...colors].join(", ")} (last row: ${JSON.stringify(row)})`);
+  };
+  await checkLiveDot(2);
   await waitFor(() => liveCard() && footerAgents(1), "footer updates as the first child finishes");
+  await checkLiveDot(1);
   await waitFor(() => requests().some(r => r.key === "child_card_first_sentinel" && r.result?.some(x => x.text === "private_stdout")), "background shell completed");
   const settledCard = () => !liveCard() && /^ subagents · scout 80 tok, reviewer 30 tok +\d+ s *$/m.test(frame());
   await waitFor(settledCard, "background compact history");
