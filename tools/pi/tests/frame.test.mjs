@@ -669,6 +669,39 @@ try {
     "x-codex-secondary-reset-at": String(reset),
   } });
   await waitForRibbon(/27%[\s\S]*0%/);
+
+  const streamLimits = async (primary, secondary, metered_limit_name = "codex") => {
+    wall++;
+    await emit("provider_stream_event", {
+      provider: "litellm-ws", api: "openai-codex-responses", model: "gpt-6.2-sol",
+      data: { type: "codex.rate_limits", metered_limit_name, rate_limits: { primary, secondary } },
+    });
+  };
+  const weeklyWindow = { window_minutes: 10080, used_percent: 13, reset_at: reset + 604800 };
+  const shortWindow = { window_minutes: 300, used_percent: 37, reset_at: reset };
+  ctx.model.provider = "litellm-ws";
+  await emit("model_select");
+  await streamLimits(weeklyWindow, shortWindow);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits({ ...weeklyWindow, used_percent: 99 }, null, "other-limit");
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits({ ...weeklyWindow, used_percent: "98" }, null);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits(weeklyWindow, undefined);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  await streamLimits({ ...weeklyWindow, used_percent: 14 }, null);
+  await waitForRibbon(/^(?![\s\S]*(?:37%|98%|99%))[\s\S]*14%/);
+  await extension.commands.get("statusline-limits").handler("", ctx);
+  const streamDiagnostic = JSON.parse(messages.at(-1).content.match(/```json\n([\s\S]*?)\n```/)[1]);
+  assert.equal(streamDiagnostic.lastResponse.source, "codex.rate_limits");
+  assert.equal(streamDiagnostic.lastResponse.provider, "litellm-ws");
+  assert.equal(streamDiagnostic.sharedLimits.five_hour, undefined);
+  assert.equal(streamDiagnostic.sharedLimits.seven_day.used_percentage, 14);
+  await streamLimits(weeklyWindow, shortWindow);
+  await waitForRibbon(/37%[\s\S]*13%/);
+  ctx.model.provider = "openai";
+  await emit("model_select");
+  await waitForRibbon(/27%[\s\S]*0%/);
   for (const width of [1, 2, 3, 4, 5, 6, 8, 12, 40, 60, 80, 85, 100, 151, 200]) {
     const lines = editor.render(width);
     assert.ok(visibleWidth(lines[0]) <= width, `top overflow at ${width}`);

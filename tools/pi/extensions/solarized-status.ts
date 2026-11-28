@@ -56,11 +56,13 @@ function ribbonRows([left, activity, limits]: [string, string, string], name: st
 
 type Window = { used_percentage: number; resets_at: number };
 type WindowName = "five_hour" | "seven_day";
+type ParsedLimits = Partial<Record<WindowName, Window | null>>;
 const windowNames = ["five_hour", "seven_day"] as const;
+const windowName = (minutes: unknown): WindowName | undefined => minutes === 300 ? "five_hour" : minutes === 10080 ? "seven_day" : undefined;
 // Only actual subscription-window headers, never requests/minute or tokens/minute.
-export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000) {
+export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000): ParsedLimits {
   const h = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k.toLowerCase(), v]));
-  const result: Partial<Record<WindowName, Window | null>> = {};
+  const result: ParsedLimits = {};
   const number = (key: string) => h[key]?.trim() ? Number(h[key]) : NaN;
   for (const name of ["primary", "secondary"]) {
     const prefix = `x-codex-${name}-`;
@@ -70,7 +72,7 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
     const after = number(prefix + "reset-after-seconds");
     const reset = Number.isFinite(resetAt) ? resetAt : now + after;
     if (!Number.isFinite(used) || used < 0 || !Number.isFinite(reset)) continue;
-    const key = minutes === 300 ? "five_hour" : minutes === 10080 ? "seven_day" : undefined;
+    const key = windowName(minutes);
     if (key) result[key] = { used_percentage: used, resets_at: reset };
   }
   // A zero-length slot beside a valid weekly window explicitly disables the short window.
@@ -86,10 +88,34 @@ export function parseLimits(raw: Record<string, string>, now = Date.now() / 1000
   return result;
 }
 
+type CodexLimitSlot = { window_minutes?: unknown; used_percent?: unknown; reset_at?: unknown } | null;
+
+function parseCodexStreamLimits(raw: unknown): ParsedLimits {
+  if (!raw || typeof raw !== "object") return {};
+  const { type, metered_limit_name, limit_name, rate_limits } = raw as {
+    type?: unknown; metered_limit_name?: unknown; limit_name?: unknown;
+    rate_limits?: { primary?: CodexLimitSlot; secondary?: CodexLimitSlot };
+  };
+  const family = metered_limit_name ?? limit_name ?? "codex";
+  if (type !== "codex.rate_limits" || typeof family !== "string" || family.trim().toLowerCase() !== "codex" || !rate_limits) return {};
+  const slots = [rate_limits.primary, rate_limits.secondary];
+  const result: ParsedLimits = {};
+  for (const slot of slots) {
+    if (!slot) continue;
+    const key = windowName(slot.window_minutes);
+    const { used_percent: used, reset_at: reset } = slot;
+    if (key && typeof used === "number" && Number.isFinite(used) && used >= 0 && typeof reset === "number" && Number.isFinite(reset))
+      result[key] = { used_percentage: used, resets_at: reset };
+  }
+  // Missing slots are inconclusive; an explicit null or zero-length slot disables the old short window.
+  if (result.seven_day && !result.five_hour && slots.some(slot => slot === null || slot?.window_minutes === 0)) result.five_hour = null;
+  return result;
+}
+
 type Observation = { observedAt: number } & (Window | { absent: true });
 type ObservedLimits = Partial<Record<WindowName, Observation>>;
 
-function observe(parsed: ReturnType<typeof parseLimits>, observedAt: number): ObservedLimits {
+function observe(parsed: ParsedLimits, observedAt: number): ObservedLimits {
   const record: ObservedLimits = {};
   for (const name of windowNames) {
     const window = parsed[name];
@@ -633,13 +659,8 @@ export default function (pi: ExtensionAPI) {
     publishSession();
     redraw?.();
   });
-  pi.on("after_provider_response", async (event, ctx) => {
-    const next = parseLimits(event.headers);
-    const safeHeaders = Object.fromEntries(Object.entries(event.headers).filter(([name]) =>
-      /^x-codex-(primary|secondary)-(used-percent|window-minutes|reset-at|reset-after-seconds)$/i.test(name) ||
-      /^anthropic-ratelimit-unified-(5h|7d)-(utilization|reset)$/i.test(name)));
+  function publishLimits(provider: string, model: string | undefined, next: ParsedLimits, diagnostic: object) {
     const observedAt = Date.now();
-    const provider = ctx.model?.provider ?? "unknown";
     const directory = join(cache, encodeURIComponent(provider));
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const snapshot = { ...loadSharedObservations(cache, provider, observedAt), ...observe(next, observedAt) };
@@ -649,13 +670,25 @@ export default function (pi: ExtensionAPI) {
       writeFileSync(path + ".tmp", JSON.stringify(snapshot), { mode: 0o600 });
       renameSync(path + ".tmp", path);
     }
-    lastDiagnostic = { observed: true, at: new Date().toISOString(), observedAt, provider,
-      model: ctx.model?.id, status: event.status, subscriptionHeaders: safeHeaders, parsed: next };
+    lastDiagnostic = { observed: true, at: new Date().toISOString(), observedAt, provider, model, ...diagnostic, parsed: next };
     const diagnosticPath = join(cache, "transport-diagnostic.json");
     const diagnosticTemp = diagnosticPath + `.${process.pid}.tmp`;
     writeFileSync(diagnosticTemp, JSON.stringify(lastDiagnostic, null, 2), { mode: 0o600 });
     renameSync(diagnosticTemp, diagnosticPath);
     refresh?.();
+  }
+  pi.on("after_provider_response", (event, ctx) => {
+    const safeHeaders = Object.fromEntries(Object.entries(event.headers).filter(([name]) =>
+      /^x-codex-(primary|secondary)-(used-percent|window-minutes|reset-at|reset-after-seconds)$/i.test(name) ||
+      /^anthropic-ratelimit-unified-(5h|7d)-(utilization|reset)$/i.test(name)));
+    publishLimits(ctx.model?.provider ?? "unknown", ctx.model?.id, parseLimits(safeHeaders), {
+      status: event.status, subscriptionHeaders: safeHeaders,
+    });
+  });
+  pi.on("provider_stream_event", event => {
+    if (event.api !== "openai-codex-responses") return;
+    const limits = parseCodexStreamLimits(event.data);
+    if (Object.keys(limits).length) publishLimits(event.provider, event.model, limits, { source: "codex.rate_limits" });
   });
   pi.on("message_end", event => {
     if (event.message.role === "assistant") {
