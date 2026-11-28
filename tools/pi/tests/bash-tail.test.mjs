@@ -19,7 +19,8 @@ const ext = process.argv[2] ?? fileURLToPath(new URL("../extensions/compact-tool
 const loaded = await loadExtensions([ext], "/tmp", createEventBus());
 assert.deepEqual(loaded.errors, []);
 const extension = loaded.extensions[0];
-const ctx = { mode: "tui", cwd: "/tmp", ui: { requestRender() {} }, sessionManager: {
+const ui = { requestRender() {}, setWidget(_key, factory) { factory(this); } };
+const ctx = { mode: "tui", cwd: "/tmp", ui, sessionManager: {
   getEntries: () => [], getBranch: () => [], getSessionId: () => "test", getSessionFile: () => undefined,
 } };
 let now = 0;
