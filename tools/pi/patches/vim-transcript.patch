@@ -1364,7 +1364,13 @@ index 6672529..bc1141d 100644
  		this.tui.requestRender();
  		void this.refreshModels();
  	}
-@@ -173,11 +180,11 @@
+@@ -168,16 +175,16 @@
+ 			id: model.id,
+ 			model,
+ 		}));
+-		this.allModels = this.sortModels(models);
++		this.allModels = this.sortModels(models.filter(({ model }) => model.id !== "sol-medium" || model.api !== "pi-virtual"));
+ 		this.scopedModels = this.scopedModels.map((scoped) => {
  			const refreshed = this.modelRuntime.getModel(scoped.model.provider, scoped.model.id);
  			return refreshed ? { ...scoped, model: refreshed } : scoped;
  		});
