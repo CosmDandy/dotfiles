@@ -20,8 +20,10 @@ test("upgrades the old managed agent tool lists, preserving other settings", t =
   };
   const legacyTools = ["read", "grep", "find", "ls"];
   const customTools = ["read", "ls"];
+  assert.equal(JSON.parse(readFileSync(defaultsPath)).compaction?.modelOverrides, undefined);
   writeFileSync(path, JSON.stringify({
     theme: "custom",
+    compaction: { enabled: false, modelOverrides: { "openai-codex/gpt-6.2-sol": { reserveTokens: 200000 }, custom: { reserveTokens: 400, keepRecentTokens: 600 } } },
     subagents: {
       agentOverrides: {
         scout: { tools: legacyTools, thinking: "low" },
@@ -34,6 +36,7 @@ test("upgrades the old managed agent tool lists, preserving other settings", t =
   install();
   assert.deepEqual(JSON.parse(readFileSync(path)), {
     theme: "custom",
+    compaction: { enabled: false, modelOverrides: { custom: { reserveTokens: 400, keepRecentTokens: 600 } } },
     subagents: {
       ...defaults,
       agentOverrides: {

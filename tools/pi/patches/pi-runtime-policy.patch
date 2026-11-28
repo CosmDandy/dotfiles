@@ -1,0 +1,281 @@
+diff --git a/packages/coding-agent/src/core/compaction/compaction.ts b/packages/coding-agent/src/core/compaction/compaction.ts
+index cb95a0e..92a804e 100644
+--- a/packages/coding-agent/src/core/compaction/compaction.ts
++++ b/packages/coding-agent/src/core/compaction/compaction.ts
+@@ -265,8 +265,8 @@ export function estimateProjectedContextTokens(
+  * Check if compaction should trigger based on context usage.
+  */
+ export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
+-	if (!settings.enabled) return false;
+-	return contextTokens > contextWindow - settings.reserveTokens;
++	// Automatic compaction uses the effective window, independent of the model ID and summary budget.
++	return settings.enabled && contextWindow > 0 && contextTokens >= contextWindow * 0.75;
+ }
+ 
+ // ============================================================================
+diff --git a/packages/coding-agent/src/extensions/mcp/index.ts b/packages/coding-agent/src/extensions/mcp/index.ts
+index d3ef248..a56e6e6 100644
+--- a/packages/coding-agent/src/extensions/mcp/index.ts
++++ b/packages/coding-agent/src/extensions/mcp/index.ts
+@@ -1183,7 +1183,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
+ 
+ 		// A tool that reaches other tools (`reachesTools`) waits for the servers it may reach, so their
+ 		// tools are registered before it runs: a codemode script for the servers it names, or for every
+-		// server when it searches or enumerates tools, and tool_search for every server. The resource
++		// server when it searches or enumerates tools. Exact MCP searches need only possible owners. The resource
+ 		// tools reach every server, so they wait for all of them. Direct MCP calls wait only for their
+ 		// own server, including a reconnect still closing its old transport.
+ 		pi.on("tool_call", async (event, ctx) => {
+@@ -1195,7 +1195,20 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
+ 			if (readyServers.length === 0) return;
+ 			let waiting: McpServer[] = [];
+ 			const reach = tool.reachesTools?.(event.input);
+-			if (reach !== undefined) {
++			if (tool.name === "tool_search" && Array.isArray(reach) && reach.length === 1) {
++				// Namespaces can overlap and names can be truncated. Only a recorded owner is unambiguous.
++				const owner = toolOwners.get(reach[0])?.split("\0", 1)[0];
++				if (owner) waiting = readyServers.filter(server => server.entry.name === owner);
++				else {
++					const name = reach[0];
++					// A 64-character hashed name may have lost even its server/tool delimiter.
++					const stem = name.length === 64 && /_[0-9a-f]{8}$/.test(name) ? name.slice(0, -9) : undefined;
++					waiting = readyServers.filter(server => {
++						const prefix = mcpNamespace(server.entry.name) + "__";
++						return name.startsWith(prefix) || (stem !== undefined && prefix.startsWith(stem));
++					});
++				}
++			} else if (reach !== undefined) {
+ 				waiting = readyServers.filter((server) => reachesServer(reach, server.entry.name));
+ 			} else if (RESOURCE_TOOL_NAMES.has(tool.name)) {
+ 				waiting = readyServers;
+diff --git a/packages/coding-agent/src/extensions/tool-search/tool.ts b/packages/coding-agent/src/extensions/tool-search/tool.ts
+index 59942b1..298dad7 100644
+--- a/packages/coding-agent/src/extensions/tool-search/tool.ts
++++ b/packages/coding-agent/src/extensions/tool-search/tool.ts
+@@ -262,7 +262,7 @@ export class Bm25Ranker implements ToolRanker {
+ }
+ 
+ export const toolSearchSchema = Type.Object({
+-	query: Type.String({ description: "Search query for deferred tools." }),
++	query: Type.String({ description: "Search query for deferred tools, or one exact fully qualified MCP tool name." }),
+ 	limit: Type.Optional(
+ 		Type.Number({ description: `Maximum number of tools to return. Defaults to ${DEFAULT_TOOL_SEARCH_LIMIT}.` }),
+ 	),
+@@ -288,6 +288,13 @@ export interface ToolSearchToolOptions {
+ 	tools?: Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">;
+ }
+ 
++function exactMcpName(query: unknown): string | undefined {
++	if (typeof query !== "string") return undefined;
++	const name = query.trim();
++	return /^mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+$/.test(name)
++		|| (name.length === 64 && /^mcp__[A-Za-z0-9_]+_[0-9a-f]{8}$/.test(name)) ? name : undefined;
++}
++
+ /** Whether `tool_search` can load a tool with this exposure. */
+ function isSearchable(exposure: ToolExposure): boolean {
+ 	return exposure === "codemode" || exposure === "deferred";
+@@ -304,6 +311,13 @@ function searchAndLoad(
+ ): ToolSearchResultTool[] {
+ 	const active = tools.getActiveTools();
+ 	const candidates = tools.getAllTools().filter((tool) => isSearchable(tool.exposure) && !active.includes(tool.name));
++	const exact = exactMcpName(query);
++	if (exact) {
++		const match = candidates.find(tool => tool.name === exact);
++		if (!match) return [];
++		tools.setActiveTools([...active, exact]);
++		return [{ name: exact, description: match.description }];
++	}
+ 	const documents = candidates.map((tool) => createToolSearchDocument(tool, tool.namespace));
+ 	const matches = new Bm25Ranker().rank(query, documents, limit);
+ 	if (matches.length > 0) tools.setActiveTools([...active, ...matches.map((match) => match.name)]);
+@@ -330,8 +344,10 @@ export function createToolSearchToolDefinition(
+ 		parameters: toolSearchSchema,
+ 		// Searching is not something scripts need; it changes what the model sees.
+ 		exposure: "model-only",
+-		// A query can match any tool that is not declared yet.
+-		reachesTools: () => "all",
++		reachesTools: ({ query }) => {
++			const name = exactMcpName(query);
++			return name ? [name] : "all";
++		},
+ 		async execute(_toolCallId, { query, limit }) {
+ 			if (query.trim() === "") throw new Error("query must not be empty");
+ 			const max = limit ?? DEFAULT_TOOL_SEARCH_LIMIT;
+diff --git a/packages/coding-agent/src/modes/interactive/components/custom-editor.ts b/packages/coding-agent/src/modes/interactive/components/custom-editor.ts
+index f486bcb..61b0e11 100644
+--- a/packages/coding-agent/src/modes/interactive/components/custom-editor.ts
++++ b/packages/coding-agent/src/modes/interactive/components/custom-editor.ts
+@@ -86,7 +86,7 @@ export class CustomEditor extends Editor {
+ 		this.actionHandlers.set(action, handler);
+ 	}
+ 
+-	handleInput(data: string): void {
++	handleInput(data: string): "dock" | void {
+ 		// Check extension-registered shortcuts first
+ 		if (this.onExtensionShortcut?.(data)) {
+ 			return;
+@@ -168,7 +168,7 @@ export class CustomEditor extends Editor {
+ 			}
+ 		}
+ 
+-		// Pass to parent for editor handling
+-		super.handleInput(data);
++		// The dock can reflow while the transcript stays unchanged. Actions above never take this path.
++		if (this.handleEditorInput(data) === "insert") return "dock";
+ 	}
+ }
+diff --git a/packages/coding-agent/src/modes/interactive/vim-transcript.ts b/packages/coding-agent/src/modes/interactive/vim-transcript.ts
+index 84528dd..2bafc63 100644
+--- a/packages/coding-agent/src/modes/interactive/vim-transcript.ts
++++ b/packages/coding-agent/src/modes/interactive/vim-transcript.ts
+@@ -282,6 +282,18 @@ export class VimTranscript extends Container {
+ 		this.revealPending = true;
+ 	}
+ 
++	handleViewInput(data: string): boolean {
++		if (!this.focused || this.detail || this.opening || this.count || this.notice || this.copied) return false;
++		const up = matchesKey(data, "k") || matchesKey(data, "up");
++		if (!up && !matchesKey(data, "j") && !matchesKey(data, "down")) return false;
++		const viewport = this.viewport();
++		const positions = this.positions();
++		const index = this.positionIndex(this.selected);
++		if (!viewport || index < 0) return false;
++		this.jumpBlock(viewport, positions, index, up ? -1 : 1);
++		return true;
++	}
++
+ 	handleInput(data: string): void {
+ 		const key = (id: Parameters<typeof matchesKey>[1]) => matchesKey(data, id);
+ 		const viewport = this.viewport();
+@@ -365,8 +377,13 @@ export class VimTranscript extends Container {
+ 		const selected = this.focused ? this.selected : undefined;
+ 		for (const tool of this.children.filter(isTool)) tool.setResultHidden(selected !== undefined && tool !== this.detail?.block);
+ 		const source = super.render(width);
++		this.scheduleReveal();
++		return source;
++	}
++
++	private scheduleReveal(): void {
+ 		const opening = this.opening;
+-		if (opening || (selected && this.revealPending)) {
++		if (opening || (this.focused && this.selected && this.revealPending)) {
+ 			this.revealPending = false;
+ 			this.opening = undefined;
+ 			// The expanded layout must set the new scroll limit before anchoring to the header.
+@@ -376,10 +393,10 @@ export class VimTranscript extends Container {
+ 				else if (this.focused) this.reveal();
+ 			});
+ 		}
+-		return source;
+ 	}
+ 
+ 	paintVisible(screen: string[], width: number, { top, bottom, offset }: TranscriptPaintRegion): void {
++		this.scheduleReveal();
+ 		const positions = this.positions();
+ 		const index = this.positionIndex(this.selected);
+ 		if (index === -1 || width < 1) return;
+diff --git a/packages/tui/src/components/editor.ts b/packages/tui/src/components/editor.ts
+index a7844f7..7f4228e 100644
+--- a/packages/tui/src/components/editor.ts
++++ b/packages/tui/src/components/editor.ts
+@@ -700,6 +700,10 @@ export class Editor implements Component, Focusable {
+ 	}
+ 
+ 	handleInput(data: string): void {
++		this.handleEditorInput(data);
++	}
++
++	protected handleEditorInput(data: string): "insert" | void {
+ 		const kb = getKeybindings();
+ 
+ 		// Handle character jump mode (awaiting next character to jump to)
+@@ -961,12 +965,13 @@ export class Editor implements Component, Focusable {
+ 		const printable = decodePrintableKey(data);
+ 		if (printable !== undefined) {
+ 			this.insertCharacter(printable);
+-			return;
++			return "insert";
+ 		}
+ 
+ 		// Regular characters
+ 		if (data.charCodeAt(0) >= 32) {
+ 			this.insertCharacter(data);
++			return "insert";
+ 		}
+ 	}
+ 
+diff --git a/packages/tui/src/tui-alt-screen.ts b/packages/tui/src/tui-alt-screen.ts
+index c306369..cc04425 100644
+--- a/packages/tui/src/tui-alt-screen.ts
++++ b/packages/tui/src/tui-alt-screen.ts
+@@ -1709,8 +1709,14 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
+ 		const height = Math.max(1, this.terminal.rows);
+ 		const root = this.layoutRoot ?? this.implicitScrollView;
+ 		const requestViewRender = () => this.requestViewRender();
+-		const reusableOutput = this.contentChanged ? undefined : this.currentLayout?.renderCache;
++		let reusableOutput = this.contentChanged ? undefined : this.currentLayout?.renderCache;
++		if (this.dockChanged && reusableOutput) {
++			const document = this.currentLayout?.primaryScrollView?.children[0];
++			const widths = document && reusableOutput.get(document);
++			reusableOutput = document && widths ? new Map([[document, widths]]) : undefined;
++		}
+ 		this.contentChanged = false;
++		this.dockChanged = false;
+ 		let nextLayout = renderLayoutFrame(root, width, height, requestViewRender, reusableOutput);
+ 		if (this.refreshSearch(nextLayout)) {
+ 			nextLayout = renderLayoutFrame(root, width, height, requestViewRender, nextLayout.renderCache);
+diff --git a/packages/tui/src/tui.ts b/packages/tui/src/tui.ts
+index bc1141d..317f5d9 100644
+--- a/packages/tui/src/tui.ts
++++ b/packages/tui/src/tui.ts
+@@ -129,8 +129,10 @@ export interface Component {
+ 	 */
+ 	render(width: number): readonly string[];
+ 
+-	/** Optional handler for keyboard input when component has focus. */
+-	handleInput?(data: string): void;
++	/** A dock editor may return "dock" when only content outside the primary scroll view changed. */
++	handleInput?(data: string): "dock" | void;
++	/** Return true only when the key was handled without changing component output. */
++	handleViewInput?(data: string): boolean;
+ 
+ 	/** Optional normalized mouse handler. */
+ 	handleMouse?(event: TuiMouseEvent): TuiMouseEventResult | undefined;
+@@ -622,6 +624,7 @@ export abstract class TuiBase extends Container implements TUI {
+ 	 * `requestViewRender()` leaves it false, so a renderer may reuse the previous frame's output.
+ 	 */
+ 	protected contentChanged = true;
++	protected dockChanged = false;
+ 	private immediateRenderScheduled = false;
+ 	private renderTimer: NodeJS.Timeout | undefined;
+ 	private lastRenderAt = 0;
+@@ -1177,8 +1180,8 @@ export abstract class TuiBase extends Container implements TUI {
+ 		process.nextTick(() => this.scheduleRender());
+ 	}
+ 
+-	private requestImmediateRender(): void {
+-		this.contentChanged = true;
++	private requestImmediateRender(contentChanged = true): void {
++		if (contentChanged) this.contentChanged = true;
+ 		this.cancelRenderTimer();
+ 		this.renderRequested = true;
+ 		if (this.immediateRenderScheduled) return;
+@@ -1292,10 +1295,15 @@ export abstract class TuiBase extends Container implements TUI {
+ 			if (isKeyRelease(data) && !this.focusedComponent.wantsKeyRelease) {
+ 				return;
+ 			}
+-			this.focusedComponent.handleInput(data);
++			if (this.focusedComponent.handleViewInput?.(data)) {
++				this.requestImmediateRender(false);
++				return;
++			}
++			const dock = this.focusedComponent.handleInput(data) === "dock";
++			if (dock) this.dockChanged = true;
+ 			// Keyboard input is latency-sensitive. Avoid the throttled timer path,
+ 			// where even setTimeout(0) can take a full 16 ms tick on Windows.
+-			this.requestImmediateRender();
++			this.requestImmediateRender(!dock);
+ 		}
+ 	}
+ 

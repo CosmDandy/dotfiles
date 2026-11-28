@@ -223,7 +223,9 @@ export default function (pi: ExtensionAPI) {
   let redraw: (() => void) | undefined;
   let busy = false;
   let waitingForUser = false;
-  let sessionTimer: ReturnType<typeof setInterval> | undefined;
+  let sessionTimer: ReturnType<typeof setInterval> | undefined, paneTimer: ReturnType<typeof setInterval> | undefined;
+  let hidden = false, activeCards = false;
+  pi.events.on("dotfiles:active-chat-cards", value => { activeCards = value === true; });
   const sessionsDir = join(root, "cache", "statusline", "sessions");
   const sessionFile = join(sessionsDir, `${process.pid}.json`);
   let sessionContext: ExtensionContext | undefined;
@@ -374,30 +376,11 @@ export default function (pi: ExtensionAPI) {
       redraw = requestRender;
       // Queue state can change without a model or tool event.
       let queued = ctx.hasPendingMessages();
-      const pane = process.env.TMUX && process.env.TMUX_PANE;
-      let hidden = false, checking = false, nextProbe = 0, nextFrame = 0;
+      let nextFrame = 0;
       const clock = setInterval(() => {
         const nextQueued = ctx.hasPendingMessages();
         const animating = busy || generatingSince !== undefined;
         const now = Date.now();
-        if (animating && pane && /^%\d+$/.test(pane) && !checking && now >= nextProbe) {
-          checking = true;
-          nextProbe = now + 2000;
-          execFile("tmux", ["display-message", "-p", "-t", pane, "#{window_id}", ";", "list-clients", "-F", "#{window_id} #{window_zoomed_flag} #{pane_id}"], { timeout: 800 }, (error, stdout) => {
-            checking = false;
-            if (disposed) return;
-            const [win, ...clients] = stdout.trim().split("\n");
-            const nextHidden = !error && /^@\d+$/.test(win) && clients.every(row => {
-              const match = /^(@\d+) ([01]) (%\d+)$/.exec(row);
-              return match && (match[1] !== win || (match[2] === "1" && match[3] !== pane));
-            });
-            if (hidden !== nextHidden) {
-              hidden = nextHidden;
-              pi.events.emit("dotfiles:pane-hidden", hidden);
-              if (!hidden) requestRender();
-            }
-          });
-        }
         if (queued !== nextQueued || (animating && (!hidden || now >= nextFrame))) {
           if (hidden) {
             nextFrame = now + 1000;
@@ -544,7 +527,6 @@ export default function (pi: ExtensionAPI) {
         dispose() {
           disposed = true;
           unsubscribeFleet();
-          if (hidden) pi.events.emit("dotfiles:pane-hidden", false);
           clearInterval(clock);
           child?.kill();
           if (refresh === update) refresh = undefined;
@@ -566,6 +548,29 @@ export default function (pi: ExtensionAPI) {
     activeTools.clear();
     waitingForUser = false;
     sessionContext = ctx;
+    const pane = process.env.TMUX && process.env.TMUX_PANE;
+    if (ctx.mode === "tui" && pane && /^%\d+$/.test(pane)) {
+      let checking = false;
+      // Card visibility survives footer replacement, including switching to the stock footer.
+      paneTimer = setInterval(() => {
+        if (checking || (!busy && generatingSince === undefined && !activeCards && !hidden)) return;
+        checking = true;
+        execFile("tmux", ["display-message", "-p", "-t", pane, "#{window_id}", ";", "list-clients", "-F", "#{window_id} #{window_zoomed_flag} #{pane_id}"], { timeout: 800 }, (error, stdout) => {
+          checking = false;
+          if (sessionContext !== ctx) return;
+          const [win, ...clients] = stdout.trim().split("\n");
+          const nextHidden = !error && /^@\d+$/.test(win) && clients.every(row => {
+            const match = /^(@\d+) ([01]) (%\d+)$/.exec(row);
+            return match && (match[1] !== win || (match[2] === "1" && match[3] !== pane));
+          });
+          if (hidden === nextHidden) return;
+          hidden = nextHidden;
+          pi.events.emit("dotfiles:pane-hidden", hidden);
+          if (!hidden) redraw?.();
+        });
+      }, 2000);
+      paneTimer.unref();
+    }
     if (ctx.mode === "tui") ctx.ui.setHiddenThinkingLabel("");
     mkdirSync(sessionsDir, { recursive: true, mode: 0o700 });
     publishSession();
@@ -734,6 +739,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("ui_prompt_end", () => { waitingForUser = false; publishSession(); });
   pi.on("session_shutdown", () => {
     clearInterval(sessionTimer);
+    clearInterval(paneTimer);
+    hidden = activeCards = false;
     sessionContext = undefined;
     rmSync(sessionFile, { force: true });
   });

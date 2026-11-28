@@ -142,7 +142,10 @@
                 pkgs.stdenv.mkDerivation (
                   args
                   // pkgs.lib.optionalAttrs (args.pname == "pi-workspace-packages") {
-                    patches = (args.patches or [ ]) ++ [ ../../tools/pi/patches/vim-transcript.patch ];
+                    patches = (args.patches or [ ]) ++ [
+                      ../../tools/pi/patches/vim-transcript.patch
+                      ../../tools/pi/patches/pi-runtime-policy.patch
+                    ];
                   }
                 );
             };

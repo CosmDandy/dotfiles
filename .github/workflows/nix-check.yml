@@ -120,9 +120,18 @@ jobs:
           PI_TEST_BIN="$pi_store/bin/pi" \
             nix shell --inputs-from . nixpkgs#nodejs_24 nixpkgs#tmux --command \
             node --test ../../tools/pi/tests/vim-transcript.test.mjs
-          TERM=xterm-256color COLORTERM=truecolor PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
-            nix shell --inputs-from . nixpkgs#nodejs_24 --command \
-            node ../../tools/pi/tests/compact-tools.test.mjs
+          PI_TEST_SUBAGENTS="$subagents_store/lib/node_modules" PI_TEST_BIN="$pi_store/bin/pi" \
+            PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_22 --command node --test \
+            ../../tools/pi/tests/{compaction-threshold,hidden-cards,mcp-exact}.test.mjs
+          REPO="$GITHUB_WORKSPACE" PI_EXPECT_VIEW_CACHE=1 PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+            nix shell --inputs-from . nixpkgs#nodejs_22 --command \
+            node ../../tools/pi/bench/vim-transcript.mjs 100
+          for version in 22 24; do
+            TERM=xterm-256color COLORTERM=truecolor PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
+              nix shell --inputs-from . "nixpkgs#nodejs_$version" --command \
+              node ../../tools/pi/tests/compact-tools.test.mjs
+          done
           PI_TEST_MODULES="$pi_store/lib/pi/node_modules" \
             nix shell --inputs-from . nixpkgs#nodejs_24 --command \
             node ../../tools/pi/tests/session-auto-title.test.mjs

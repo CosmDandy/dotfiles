@@ -19,8 +19,19 @@ jq -e --slurpfile defaults "$defaults" '
          else .
          end)) as $subagents
   | .subagents = $subagents
+  | if (.compaction.modelOverrides | type) == "object" then
+      # Remove only the old managed reserves; this settings file may also be opened by stock Pi.
+      .compaction.modelOverrides |= with_entries(
+        (.key | sub("^openai-codex/"; "")) as $id
+        | (if ($id | IN("gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.2-astra")) then 95200
+           elif ($id | test("^gpt-6\\.1-(sol|terra)$")) then 175000
+           elif $id == "gpt-6.2-sol" then 200000 else null end) as $old
+        | if (.key | startswith("openai-codex/")) and $old != null and .value.reserveTokens == $old
+          then .value |= del(.reserveTokens) | select(.value != {}) else . end)
+      | if .compaction.modelOverrides == {} then del(.compaction.modelOverrides) else . end
+    else . end
 ' "$settings" > "$tmp"
-if jq -e --slurpfile updated "$tmp" '.subagents == $updated[0].subagents' "$settings" >/dev/null; then
+if jq -e --slurpfile updated "$tmp" '. == $updated[0]' "$settings" >/dev/null; then
   exit 0
 fi
 chmod 0600 "$tmp"

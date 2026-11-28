@@ -1,10 +1,9 @@
 import { open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { mixColors, truncateToWidth } from "@earendil-works/pi-tui";
-import { toolStatusStyle } from "../tool-status.ts";
+import { stripToolControls, toolStatusStyle } from "../tool-status.ts";
 
 // Use only the middle two Braille rows so the spinner sits on the text line.
 const frames = Array.from("⠖⠲⠴⠦");
@@ -45,7 +44,7 @@ type PreviewTool = (tool: string, args: string | undefined, target: string | und
 type TimedLine = (left: string, time: string, width: number, theme: Theme) => string;
 type QuietMetadata = (theme: Theme, text: string) => string;
 
-const clean = (s: string | undefined) => typeof s === "string" ? stripVTControlCharacters(s.slice(0, 1024)).replace(/[\p{Cc}\p{Cf}]+/gu, " ").trim() : "";
+const clean = (s: string | undefined) => typeof s === "string" ? stripToolControls(s.slice(0, 1024)).replace(/[\p{Cc}\p{Cf}]+/gu, " ").trim() : "";
 const firstLine = (s: string | undefined) => clean(s?.trimStart().split("\n", 1)[0]);
 const elapsed = (ms: number) => ms < 60_000 ? `${Math.floor(ms / 1000)} s` : `${Math.floor(ms / 60_000)} m ${Math.floor(ms / 1000) % 60} s`;
 const tokenText = (n: number) => n < 1000 ? `${n} tok` : `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k tok`;
@@ -202,10 +201,10 @@ async function diskRun(root: string, id: string, owners: ReadonlySet<string>) {
   } catch { /* Retention or an incomplete publication leaves the last observed state intact. */ }
 }
 
-async function transcriptArgs(file: string, root: string, tool: string, started: number | undefined) {
+async function transcriptArgs(file: string, root: string, tool: string, started: number | undefined, visible: () => boolean) {
   try {
     const canonical = await realpath(file);
-    if (!canonical.startsWith(root + sep)) return;
+    if (!canonical.startsWith(root + sep) || !visible()) return;
     const tail = await readBounded(canonical, 64 * 1024, true);
     const finished = new Set<string>();
     for (const line of (tail ?? "").trimEnd().split("\n").reverse()) {
@@ -232,22 +231,29 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
   const endings = new Map<string, Completion>();
   const historyCalls = new Set<string>();
   const commands = new WeakSet<Row>();
+  const deferredUsage = new Map<string, Card>();
 
   function repaint() { if (!hidden) redraw?.(); }
   function track(card: Card) {
+    const hadActive = active.size > 0;
     if (card.active) active.add(card); else active.delete(card);
+    if (hadActive !== (active.size > 0)) pi.events.emit("dotfiles:active-chat-cards", !hadActive);
     if (active.size && redraw && !spin) {
       spin = setInterval(repaint, tickMs);
       spin.unref();
     } else if (!active.size && spin) { clearInterval(spin); spin = undefined; }
   }
   function fillCommands(card: Card) {
-    if (!transcriptRoot || !card.active) return;
+    if (hidden || !transcriptRoot || !card.active) return;
     for (const row of card.rows) {
       if (row.state !== "running" || !row.file || !row.tool || row.args || commands.has(row)) continue;
       commands.add(row);
       const epoch = generation;
-      void transcriptArgs(row.file, transcriptRoot, row.tool, row.toolStarted).then(args => {
+      void transcriptArgs(row.file, transcriptRoot, row.tool, row.toolStarted, () => {
+        if (!hidden && epoch === generation) return true;
+        commands.delete(row);
+        return false;
+      }).then(args => {
         if (!args || generation !== epoch) return;
         const current = card.rows.find(item => item.key === row.key);
         if (current && current.tool === row.tool && current.toolStarted === row.toolStarted && !current.args) {
@@ -263,9 +269,14 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
     if (generation !== epoch || !status || isActive(stateOf(status))) return;
     let changed = false;
     for (const [i, step] of (status.steps ?? []).slice(0, maxRows).entries()) {
-      const row = card.rows.find(row => step.runId ? row.runId === step.runId : row.key === rowKey(step, i));
+      const key = rowKey(step, i);
+      const row = card.rows.find(row => step.runId && row.runId ? row.runId === step.runId : row.key === key);
       const count = tokensOf(step);
-      if (row && count !== undefined && row.tokens !== count) {
+      if (!row && !card.rows.some(existing => existing.key === key)) {
+        // A sparse receipt can settle a hidden card before its first presentation read.
+        card.rows.splice(i, 0, projectRow(step, key, undefined, card.planned[i]));
+        changed = true;
+      } else if (row && count !== undefined && row.tokens !== count) {
         row.tokens = count;
         changed = true;
       }
@@ -286,7 +297,10 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
     track(card);
     repaint();
     // Persisted notification receipts omit usage. Recover it from the terminal snapshot.
-    if (!rows?.length || rows.some(row => tokensOf(row) === undefined)) return fillFinalTokens(card, id);
+    if (!rows?.length || rows.some(row => tokensOf(row) === undefined)) {
+      if (hidden) deferredUsage.set(id, card);
+      else return fillFinalTokens(card, id);
+    }
   }
   async function childStep(id: string) {
     const child = await diskRun(asyncRoot, id, owners);
@@ -295,10 +309,12 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
   }
   function refreshAsync() {
     dirty = true;
+    if (hidden) return;
     const foreground = [...active].filter(card => card.workflow && !card.asyncId && card.rows.some(row => row.runId && isActive(row.state)));
     if (!redraw || (!asyncCards.size && !foreground.length) || refresh || reading) return;
     refresh = setTimeout(async () => {
       refresh = undefined;
+      if (hidden) return;
       reading = true;
       dirty = false;
       const epoch = generation;
@@ -314,6 +330,7 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
         await Promise.all([...foregroundUpdates, ...[...asyncCards].map(async ([id, card]) => {
           const status = await diskRun(asyncRoot, id, owners);
           if (generation !== epoch || asyncCards.get(id) !== card) return;
+          if (hidden) { dirty = true; return; }
           if (!status) {
             if (card.historical) {
               settle(card, "unavailable");
@@ -385,7 +402,8 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
     generation++;
     for (const off of listeners) off();
     listeners = [];
-    active.clear(); asyncCards.clear(); slashCards.clear(); endings.clear(); historyCalls.clear();
+    if (active.size) pi.events.emit("dotfiles:active-chat-cards", false);
+    active.clear(); asyncCards.clear(); slashCards.clear(); endings.clear(); historyCalls.clear(); deferredUsage.clear();
     if (spin) clearInterval(spin);
     if (refresh) clearTimeout(refresh);
     spin = refresh = undefined;
@@ -433,7 +451,17 @@ export function registerSubagentChat(pi: ExtensionAPI, preview: PreviewTool, tim
       slashCards.set(id, card);
     }
     listeners = [
-      pi.events.on("dotfiles:pane-hidden", value => { hidden = value === true; if (!hidden) repaint(); }),
+      pi.events.on("dotfiles:pane-hidden", value => {
+        const wasHidden = hidden;
+        hidden = value === true;
+        if (hidden && active.size) dirty = true;
+        if (!wasHidden || hidden) return;
+        if (dirty) refreshAsync();
+        for (const card of active) fillCommands(card);
+        for (const [id, card] of deferredUsage) void fillFinalTokens(card, id);
+        deferredUsage.clear();
+        repaint();
+      }),
       pi.events.on("subagent:jobs-changed", refreshAsync),
       pi.events.on("subagent:async-complete", data => {
         const completion = data as Completion;

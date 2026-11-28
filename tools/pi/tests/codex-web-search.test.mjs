@@ -104,22 +104,19 @@ test('the codemode tool requires provider search evidence and returns structured
     { type: 'response.output_text.annotation.added', annotation: { type: 'url_citation', url: 'https://example.org/', title: 'Example' } },
   ];
   let observed = events;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(observed.map(event => `data: ${JSON.stringify(event)}\n\n`).join(''));
-  try {
-    const ctx = { ...codex, modelRegistry: { streamSimple(_model, context, options) {
-      assert.deepEqual(context.messages.map(message => message.content), ['public query']);
-      assert.equal(options.onPayload({}).tool_choice, 'required');
-      return { async result() {
-        await (await options.fetch('https://example.org/')).text();
-        return { stopReason: 'stop', content: [{ type: 'text', text: 'Answer' }] };
-      } };
-    } } };
-    const run = () => tool.execute('id', { query: 'public query' }, undefined, undefined, ctx);
-    assert.deepEqual((await run()).structuredContent, { answer: 'Answer', sources: [{ url: 'https://example.org/', title: 'Example' }] });
-    observed = events.slice(1);
-    await assert.rejects(run, /did not return a completed web search/);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const ctx = { ...codex, modelRegistry: { streamSimple(_model, context, options) {
+    assert.deepEqual(context.messages.map(message => message.content), ['public query']);
+    assert.equal(options.onPayload({}).tool_choice, 'required');
+    assert.equal(options.fetch, undefined, 'leave the response body to the provider');
+    return { async result() {
+      options.onResponse({});
+      for (const event of observed) options.onProviderStreamEvent(event);
+      return { stopReason: 'stop', content: [{ type: 'text', text: 'Answer' }] };
+    } };
+  } } };
+  const run = () => tool.execute('id', { query: 'public query' }, undefined, undefined, ctx);
+  observed = [...events, { item: { content: [null, { annotations: {} }] } },
+    { item: { content: [{ annotations: [{ ...events[1].annotation, title: 42 }, { type: 'url_citation', url: 'file:///tmp/x' }] }] } }];
+  assert.deepEqual((await run()).structuredContent, { answer: 'Answer', sources: [{ url: 'https://example.org/', title: 'Example' }] });
+  for (observed of [events.slice(1), events.slice(0, 1)]) await assert.rejects(run, /did not return a completed web search/);
 });

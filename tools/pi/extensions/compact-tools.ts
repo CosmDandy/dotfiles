@@ -8,7 +8,7 @@ import { formatReadLineRange, getLanguageFromPath, getMarkdownTheme, highlightCo
 import type { CodemodeToolDetails, ExtensionAPI, Theme, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { colorToRgb, mixColors, parseColor, rgbColor, Markdown, Text, sliceByColumn, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { registerSubagentChat } from "../subagents/chat-card.ts";
-import { toolStatusStyle } from "../tool-status.ts";
+import { stripToolControls, toolStatusStyle } from "../tool-status.ts";
 
 const pulseInterval = 120;
 const timingInset = 3;
@@ -67,7 +67,7 @@ function runningPulse(title: string, theme: Theme, step: number, strongLightPuls
 }
 
 function clean(text: string): string {
-  return stripVTControlCharacters(text).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+  return stripToolControls(text).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 
 function shellLog(text: string): string {
